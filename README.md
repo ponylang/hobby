@@ -1,6 +1,6 @@
 # hobby
 
-A simple HTTP web framework for [Pony](https://www.ponylang.io/), inspired by [Jennet](https://github.com/Theodus/jennet) and powered by [Stallion](https://github.com/ponylang/stallion).
+A simple HTTP web framework for Pony, inspired by [Jennet](https://github.com/Theodus/jennet) and powered by [Stallion](https://github.com/ponylang/stallion).
 
 ## Status
 
