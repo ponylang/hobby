@@ -9,3 +9,7 @@ Starts an HTTP server with two routes: a static greeting at `/` and a parameteri
 ## [middleware](middleware/)
 
 Starts an HTTP server with public and protected routes. Demonstrates two middleware patterns: an auth middleware that short-circuits with 401 in the `before` phase when a token is missing, and a logging middleware that records requests in the `after` phase. Also shows the typed accessor convention for inter-middleware communication — `AuthData.user()` extracts domain types (`AuthenticatedUser` or `NotAuthenticated`) from the context data map, avoiding raw string-key lookups.
+
+## [route-groups](route-groups/)
+
+Starts an HTTP server with grouped routes sharing prefixes and middleware. Demonstrates application-level middleware (logging on every route), a `/api` group with auth middleware, and a nested `/api/admin` group that adds admin middleware on top. Shows the complete middleware composition order: application middleware runs first, then group middleware, then per-route middleware.

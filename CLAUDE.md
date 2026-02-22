@@ -26,9 +26,10 @@ make clean              # clean build artifacts + corral cache
 
 ### Public API
 
-Users interact with four types:
+Users interact with five types:
 
-- **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.). `serve()` consumes the Application, freezes routes into an immutable router, and starts listening.
+- **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_middleware()` for app-level middleware. `serve()` consumes the Application, freezes routes into an immutable router, and starts listening.
+- **`RouteGroup`** (`class iso`): Groups routes under a shared prefix and optional middleware. Supports nesting via `group()`. Consumed by `Application.group()` or outer `RouteGroup.group()`.
 - **`Handler`** (`interface val`): Request handler. Receives `Context ref`, calls `ctx.respond()` to send a response. Partial (`?`) — errors without responding produce 500.
 - **`Middleware`** (`interface val`): Two-phase processor. `before` (partial) runs before the handler; `after` (not partial) runs after, in reverse order.
 - **`Context`** (`class ref`): Request context with route params, body, data map, and respond methods.
@@ -47,6 +48,7 @@ Users interact with four types:
 - **Build/lookup separation**: Mutable `_BuildNode ref` trees for construction, frozen into immutable `_TreeNode val` trees for lookup. Params built bottom-up as `val` arrays to avoid ref-to-val boundary issues in recover blocks.
 - **Static priority**: Static children checked before param child during lookup.
 - **Trailing slash normalization**: `/users/` and `/users` match the same route.
+- **Flatten at registration time**: Route groups are flattened when consumed by `group()`. Prefixes are joined and middleware arrays are concatenated at that point, so the router sees only flat routes with fully resolved paths and middleware chains.
 
 ## File Layout
 
@@ -59,6 +61,8 @@ hobby/
   handler.pony            - Handler interface (public)
   middleware.pony          - Middleware interface (public)
   application.pony        - Application class (public)
+  route_group.pony        - RouteGroup class (public)
+  _flatten.pony           - Path joining + middleware concatenation (internal)
   _connection.pony        - Connection actor (internal)
   _listener.pony          - Listener actor (internal)
   _router.pony            - Router + radix tree (internal)
@@ -68,6 +72,7 @@ hobby/
   _mort.pony              - _Unreachable primitive (internal)
   _test.pony              - Test runner
   _test_router.pony       - Router property-based + example tests
+  _test_route_group.pony  - Route group unit + property tests
   _test_integration.pony  - HTTP round-trip integration tests
 ```
 

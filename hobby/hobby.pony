@@ -60,6 +60,47 @@ Middleware has two phases:
 - **`after`**: runs after the handler in reverse order. Always runs for every
   middleware whose `before` was invoked, regardless of how the chain ended.
 
+## Route Groups
+
+Group related routes under a shared prefix and middleware with `RouteGroup`:
+
+```pony
+let auth_mw: Array[hobby.Middleware val] val =
+  recover val [as hobby.Middleware val: AuthMiddleware] end
+let api = hobby.RouteGroup("/api" where middleware = auth_mw)
+api.>get("/users", UsersHandler)
+api.>get("/users/:id", UserHandler)
+app.>group(consume api)
+```
+
+Groups can be nested — inner groups inherit the outer group's prefix and
+middleware, with outer middleware running first:
+
+```pony
+let admin = hobby.RouteGroup("/admin" where middleware = admin_mw)
+admin.get("/dashboard", DashboardHandler)
+api.>group(consume admin)
+// Registers /api/admin/dashboard with [auth_mw, admin_mw]
+```
+
+## Application Middleware
+
+Apply middleware to every route with `Application.add_middleware()`:
+
+```pony
+let log_mw: Array[hobby.Middleware val] val =
+  recover val [as hobby.Middleware val: LogMiddleware(env.out)] end
+hobby.Application
+  .>add_middleware(log_mw)
+  .>get("/", HelloHandler)
+  .>group(consume api)
+  .serve(auth, config, env.out)
+```
+
+Application middleware runs before group middleware, which runs before
+per-route middleware. Can be called multiple times — middleware accumulates
+in registration order.
+
 ## Context Data
 
 Middleware communicates with handlers through `ctx.set()` / `ctx.get()`.
@@ -71,7 +112,7 @@ convention demonstrated in the middleware example.
 
 Users import three packages:
 
-- **`hobby`**: Application, Context, Handler, Middleware
+- **`hobby`**: Application, Context, Handler, Middleware, RouteGroup
 - **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig)
 - **`lori`**: `TCPListenAuth(env.root)` for network access
 """

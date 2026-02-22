@@ -2,10 +2,11 @@ use stallion = "stallion"
 
 class val _RouteDefinition
   """
-  A route registration captured by `Application` before the router is built.
+  A route registration captured during route setup.
 
   Stores the HTTP method, path pattern, handler, and optional middleware chain.
-  `Application.serve()` iterates these definitions to populate the router.
+  Created by `Application` and `RouteGroup` route methods, then iterated by
+  `Application.serve()` to populate the router.
   """
   let method: stallion.Method
   let path: String

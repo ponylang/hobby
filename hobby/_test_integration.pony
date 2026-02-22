@@ -14,6 +14,10 @@ primitive _TestIntegrationList
     test(_TestMiddlewareShortCircuit)
     test(_TestHandlerError500)
     test(_TestMultipleRoutes)
+    test(_TestGroupedRoute)
+    test(_TestGroupMiddlewareIntegration)
+    test(_TestAppMiddlewareIntegration)
+    test(_TestNestedGroupIntegration)
 
 // --- Test helpers ---
 
@@ -296,3 +300,72 @@ class \nodoc\ iso _TestMultipleRoutes is UnitTest
     _IntegrationHelpers.run_test(h, router,
       "GET /greet/Pony HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "Hello, Pony!")
+
+class \nodoc\ iso _TestGroupedRoute is UnitTest
+  """Route at a group-prefixed path resolves correctly."""
+  fun name(): String => "integration/grouped route"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let joined = _JoinPath("/api", "/users")
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.GET, joined, _HelloHandler, None)]
+    end)
+    _IntegrationHelpers.run_test(h, router,
+      "GET /api/users HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "Hello from Hobby!")
+
+class \nodoc\ iso _TestGroupMiddlewareIntegration is UnitTest
+  """Group middleware short-circuits with 401."""
+  fun name(): String => "integration/group middleware"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let group_mw: Array[Middleware val] val = recover val
+      [as Middleware val: _ShortCircuitMiddleware]
+    end
+    let joined = _JoinPath("/api", "/secret")
+    let combined_mw = _ConcatMiddleware(group_mw, None)
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.GET, joined, _HelloHandler, combined_mw)]
+    end)
+    _IntegrationHelpers.run_test(h, router,
+      "GET /api/secret HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "Unauthorized")
+
+class \nodoc\ iso _TestAppMiddlewareIntegration is UnitTest
+  """App-level middleware sets data that the handler reads."""
+  fun name(): String => "integration/app middleware"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let app_mw: Array[Middleware val] val = recover val
+      [as Middleware val:
+        _SetDataMiddleware("test_key", "from_app_middleware")]
+    end
+    let combined_mw = _ConcatMiddleware(app_mw, None)
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.GET, "/data", _DataReadHandler, combined_mw)]
+    end)
+    _IntegrationHelpers.run_test(h, router,
+      "GET /data HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "from_app_middleware")
+
+class \nodoc\ iso _TestNestedGroupIntegration is UnitTest
+  """Nested group path resolves correctly through the HTTP stack."""
+  fun name(): String => "integration/nested group"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let inner_path = _JoinPath("/admin", "/dashboard")
+    let outer_path = _JoinPath("/api", inner_path)
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.GET, outer_path, _HelloHandler, None)]
+    end)
+    _IntegrationHelpers.run_test(h, router,
+      "GET /api/admin/dashboard HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "Hello from Hobby!")
