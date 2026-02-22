@@ -200,4 +200,4 @@ The `recover val ... end` block is necessary because array literals are `ref` by
 
 When a route has multiple middleware, they execute in array order during the forward phase and reverse order during the `after` phase. Order matters — put auth checks before permission checks, and logging outermost if you want it to run regardless.
 
-Middleware is per-route, not global. There is currently no built-in mechanism for applying middleware to all routes at once. To share middleware across routes, define the array once and pass it to each route registration.
+Middleware can also be applied at the group or application level. `RouteGroup` attaches middleware to all routes in the group, and `Application.add_middleware()` applies middleware to every route in the application. The execution order is: application middleware first, then group middleware, then per-route middleware. See the [route-groups example](../examples/route-groups/main.pony) for a complete demonstration.

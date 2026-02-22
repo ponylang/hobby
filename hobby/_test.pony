@@ -6,4 +6,5 @@ actor \nodoc\ Main is TestList
 
   fun tag tests(test: PonyTest) =>
     _TestRouterList.tests(test)
+    _TestRouteGroupList.tests(test)
     _TestIntegrationList.tests(test)
