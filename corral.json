@@ -7,13 +7,13 @@
     "homepage": "https://github.com/ponylang/hobby",
     "license": "BSD-2-Clause",
     "documentation_url": "https://ponylang.github.io/hobby/",
-    "version": "0.1.0",
+    "version": "0.0.0",
     "name": "hobby"
   },
   "deps": [
     {
       "locator": "github.com/ponylang/stallion.git",
-      "version": "0.0.0"
+      "version": "0.1.0"
     }
   ]
 }
