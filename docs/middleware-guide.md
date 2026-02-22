@@ -33,7 +33,7 @@ When a request hits a route with middleware, the framework runs a three-phase pi
 
 Here's the normal flow for a chain of three middleware:
 
-```
+```text
 MW-1.before
     ↓
 MW-2.before
@@ -53,7 +53,7 @@ Response sent
 
 If any middleware short-circuits (by calling `ctx.respond()`) or errors during `before`, the forward phase stops — remaining middleware and the handler are skipped. But `after` always runs for every middleware whose `before` was invoked:
 
-```
+```text
 MW-1.before
     ↓
 MW-2.before  ← responds (short-circuits)
