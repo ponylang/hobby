@@ -23,15 +23,32 @@ else
 	PONYC = $(COMPILE_WITH) --debug
 endif
 
+ifdef ssl
+  ifeq ($(ssl), 3.0.x)
+    SSL = -Dopenssl_3.0.x
+  else ifeq ($(ssl), 1.1.x)
+    SSL = -Dopenssl_1.1.x
+  else ifeq ($(ssl), libressl)
+    SSL = -Dlibressl
+  else
+    $(error Unknown SSL version "$(ssl)". Must set using 'ssl=FOO')
+  endif
+
+  PONYC := $(PONYC) $(SSL)
+endif
+
 SOURCE_FILES := $(shell find $(SRC_DIR) -name *.pony)
 EXAMPLES := $(notdir $(shell find $(EXAMPLES_DIR)/* -type d))
 EXAMPLES_SOURCE_FILES := $(shell find $(EXAMPLES_DIR) -name *.pony)
 EXAMPLES_BINARIES := $(addprefix $(BUILD_DIR)/,$(EXAMPLES))
 
-test: unit-tests build-examples
+test: unit-tests integration-tests build-examples
 
 unit-tests: $(tests_binary)
 	$^ --exclude=integration --sequential
+
+integration-tests: $(tests_binary)
+	$^ --only=integration --sequential
 
 $(tests_binary): $(SOURCE_FILES) | $(BUILD_DIR)
 	$(GET_DEPENDENCIES_WITH)
@@ -62,4 +79,4 @@ all: test
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-.PHONY: all build-examples clean TAGS test
+.PHONY: all build-examples clean integration-tests TAGS test unit-tests
