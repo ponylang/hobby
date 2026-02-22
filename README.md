@@ -38,7 +38,7 @@ class val GreetHandler is hobby.Handler
     ctx.respond(stallion.StatusOK, "Hello, " + ctx.param("name")? + "!")
 ```
 
-See the [examples](examples/) directory for more, including middleware usage.
+See the [examples](examples/) directory for more, including middleware usage. For a detailed walkthrough, read the [Writing Middleware](docs/middleware-guide.md) guide.
 
 ## API Documentation
 

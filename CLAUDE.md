@@ -51,6 +51,8 @@ Users interact with four types:
 ## File Layout
 
 ```
+docs/
+  middleware-guide.md     - Writing Middleware tutorial guide
 hobby/
   hobby.pony              - Package docstring
   context.pony            - Context class (public)
