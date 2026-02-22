@@ -16,7 +16,29 @@ hobby is beta quality software that will change frequently. Expect breaking chan
 
 ## Usage
 
-See the [examples](examples/) directory for working programs that demonstrate hobby's API, including a basic hello-world server and middleware usage.
+```pony
+use hobby = "hobby"
+use stallion = "stallion"
+use lori = "lori"
+
+actor Main
+  new create(env: Env) =>
+    let auth = lori.TCPListenAuth(env.root)
+    hobby.Application
+      .>get("/", HelloHandler)
+      .>get("/greet/:name", GreetHandler)
+      .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+
+primitive HelloHandler is hobby.Handler
+  fun apply(ctx: hobby.Context ref) =>
+    ctx.respond(stallion.StatusOK, "Hello!")
+
+class val GreetHandler is hobby.Handler
+  fun apply(ctx: hobby.Context ref) ? =>
+    ctx.respond(stallion.StatusOK, "Hello, " + ctx.param("name")? + "!")
+```
+
+See the [examples](examples/) directory for more, including middleware usage.
 
 ## API Documentation
 
