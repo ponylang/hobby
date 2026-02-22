@@ -11,6 +11,9 @@
     "name": "hobby"
   },
   "deps": [
-    {}
+    {
+      "locator": "github.com/ponylang/stallion.git",
+      "version": "0.1.0"
+    }
   ]
 }
