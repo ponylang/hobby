@@ -4,9 +4,3 @@ All notable changes to this project will be documented in this file. This projec
 
 ## [0.1.0] - 2026-02-22
 
-## [0.1.0] - 2026-02-22
-
-### Added
-
-- Add route groups and application-level middleware ([PR #10](https://github.com/ponylang/hobby/pull/10))
-
