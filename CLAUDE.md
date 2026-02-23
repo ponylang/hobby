@@ -38,7 +38,7 @@ Users interact with five types:
 ### Internal layers
 
 - **`_Listener`** (`actor`): Implements `lori.TCPListenerActor`. Accepts TCP connections and spawns `_Connection` actors.
-- **`_Connection`** (`actor`): Implements `stallion.HTTPServerActor`. Accumulates body chunks, runs route lookup, executes middleware chain + handler via `_ChainRunner`. Sends 404 for unmatched routes.
+- **`_Connection`** (`actor`): Implements `stallion.HTTPServerActor`. Accumulates body chunks, runs route lookup, executes middleware chain + handler via `_ChainRunner`. Sends 404 for unmatched routes. Buffers pipelined requests during streaming responses and drains the buffer when the stream finishes.
 - **`_Router`** (`class val`): Immutable radix tree router. One tree per HTTP method. Built from `_RouterBuilder` (mutable `_BuildNode ref` trees frozen into `_TreeNode val` trees).
 - **`_ChainRunner`** (`primitive`): Executes middleware `before` phases, then handler, then middleware `after` phases in reverse. Tracks invocation count so `after` runs for every middleware whose `before` was called.
 
@@ -52,6 +52,7 @@ Users interact with five types:
 - **Flatten at registration time**: Route groups are flattened when consumed by `group()`. Prefixes are joined and middleware arrays are concatenated at that point, so the router sees only flat routes with fully resolved paths and middleware chains.
 - **StreamSender is _Connection**: `_Connection` structurally matches `StreamSender` by having `send_chunk` and `finish` behaviors. No wrapper actor. Users interact through `StreamSender tag`; `_Connection` is package-private.
 - **Streaming error cleanup**: `_ChainRunner` detects handler error + streaming mode and calls `_finish_streaming()` to terminate abandoned streams.
+- **Pipelined request buffering**: Requests arriving during an active streaming response are buffered and drained after the stream finishes, rather than using a wrapper actor per stream. The buffering approach has zero overhead for the common case (no pipelining during streaming) and avoids adding a message hop per chunk.
 
 ## File Layout
 

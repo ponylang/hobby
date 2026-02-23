@@ -21,6 +21,7 @@ primitive _TestIntegrationList
     test(_TestStreamingResponse)
     test(_TestStreamingErrorCleanup)
     test(_TestStreamingMiddlewareErrorCleanup)
+    test(_TestPipelinedStreaming)
 
 // --- Test helpers ---
 
@@ -453,3 +454,44 @@ class \nodoc\ iso _TestStreamingMiddlewareErrorCleanup is UnitTest
     _IntegrationHelpers.run_test(h, router,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "0\r\n")
+
+// --- Pipelined streaming test handlers ---
+
+primitive \nodoc\ _PipelinedStreamHandler is Handler
+  """Starts streaming and passes sender to a producer that sends a marker."""
+  fun apply(ctx: Context ref) =>
+    let sender = ctx.start_streaming(stallion.StatusOK)
+    _PipelinedStreamProducer(sender)
+
+actor \nodoc\ _PipelinedStreamProducer
+  """Sends a single marker chunk and finishes."""
+  let _sender: StreamSender tag
+
+  new create(sender: StreamSender tag) =>
+    _sender = sender
+    _send()
+
+  be _send() =>
+    _sender.send_chunk("pipelined-ok")
+    _sender.finish()
+
+// --- Pipelined streaming integration test ---
+
+class \nodoc\ iso _TestPipelinedStreaming is UnitTest
+  """
+  Pipelined streaming request is buffered and processed after first stream
+  finishes.
+  """
+  fun name(): String => "integration/pipelined streaming"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let router = _IntegrationHelpers.build_router(recover val
+      [ (stallion.GET, "/stream1", _StreamingHandler, None)
+        (stallion.GET, "/stream2", _PipelinedStreamHandler, None) ]
+    end)
+    _IntegrationHelpers.run_test(h, router,
+      "GET /stream1 HTTP/1.1\r\nHost: localhost\r\n\r\n" +
+        "GET /stream2 HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "pipelined-ok")

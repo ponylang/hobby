@@ -2,6 +2,10 @@ use "collections"
 use stallion = "stallion"
 use lori = "lori"
 
+// A request stashed during an active streaming response: the HTTP request,
+// its Stallion responder, and the accumulated body.
+type _PendingRequest is (stallion.Request val, stallion.Responder, Array[U8] val)
+
 actor _Connection is stallion.HTTPServerActor
   """
   Internal connection actor that handles a single HTTP connection.
@@ -14,14 +18,17 @@ actor _Connection is stallion.HTTPServerActor
   let _router: _Router val
   var _body: Array[U8] iso = recover iso Array[U8] end
   var _has_body: Bool = false
-  // Single-field: only one streaming response per connection at a time.
-  // Pipelined requests during streaming could overwrite this (hobby#13).
+  // Only one streaming response per connection at a time. Pipelined
+  // requests arriving during streaming are buffered in _pending_requests
+  // and drained when the stream finishes.
   var _streaming_responder: (stallion.Responder | None) = None
+  embed _pending_requests: Array[_PendingRequest]
 
   new create(auth: lori.TCPServerAuth, fd: U32,
     config: stallion.ServerConfig, router: _Router val)
   =>
     _router = router
+    _pending_requests = Array[_PendingRequest]
     _http = stallion.HTTPServer(auth, fd, this, config)
 
   fun ref _http_connection(): stallion.HTTPServer => _http
@@ -37,6 +44,7 @@ actor _Connection is stallion.HTTPServerActor
       r.finish_response()
       _streaming_responder = None
     end
+    _drain_pending()
 
   fun ref on_body_chunk(data: Array[U8] val) =>
     _has_body = true
@@ -53,6 +61,15 @@ actor _Connection is stallion.HTTPServerActor
         recover val Array[U8] end
       end
 
+    if _streaming_responder isnt None then
+      _pending_requests.push((request', responder, body))
+    else
+      _process_request(request', responder, body)
+    end
+
+  fun ref _process_request(request': stallion.Request val,
+    responder: stallion.Responder, body: Array[U8] val)
+  =>
     let path = request'.uri.path
     match _router.lookup(request'.method, path)
     | let m: _RouteMatch =>
@@ -68,4 +85,14 @@ actor _Connection is stallion.HTTPServerActor
         .add_chunk("Not Found")
         .build()
       responder.respond(response)
+    end
+
+  fun ref _drain_pending() =>
+    while (_streaming_responder is None) and (_pending_requests.size() > 0) do
+      try
+        (let req, let resp, let body) = _pending_requests.shift()?
+        _process_request(req, resp, body)
+      else
+        _Unreachable()
+      end
     end
