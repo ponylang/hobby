@@ -8,10 +8,15 @@ interface val Handler
 
   Call `ctx.respond()` or `ctx.respond_with_headers()` to send a complete
   response, or `ctx.start_streaming()` to begin a chunked streaming response.
+  `start_streaming()` is partial — it errors if a response has already been
+  sent, and returns `(StreamSender tag | ChunkedNotSupported)` so handlers
+  can fall back to a non-streaming response when the client doesn't support
+  chunked encoding.
+
   If the handler returns without responding, the framework sends 500 Internal
   Server Error. The `?` allows genuine errors to propagate — if the handler
   errors without having called `respond`, the framework also sends 500. If the
-  handler errors after calling `start_streaming()`, the framework sends the
-  terminal chunk to close the stream instead of sending 500.
+  handler errors after a successful `start_streaming()`, the framework sends
+  the terminal chunk to close the stream instead of sending 500.
   """
   fun apply(ctx: Context ref) ?

@@ -22,6 +22,8 @@ primitive _TestIntegrationList
     test(_TestStreamingErrorCleanup)
     test(_TestStreamingMiddlewareErrorCleanup)
     test(_TestPipelinedStreaming)
+    test(_TestStreamingAlreadyResponded)
+    test(_TestStreamingChunkedNotSupported)
 
 // --- Test helpers ---
 
@@ -378,9 +380,11 @@ class \nodoc\ iso _TestNestedGroupIntegration is UnitTest
 
 primitive \nodoc\ _StreamingHandler is Handler
   """Starts streaming and passes sender to a producer."""
-  fun apply(ctx: Context ref) =>
-    let sender = ctx.start_streaming(stallion.StatusOK)
-    _StreamingProducer(sender)
+  fun apply(ctx: Context ref) ? =>
+    match ctx.start_streaming(stallion.StatusOK)?
+    | let sender: StreamSender tag =>
+      _StreamingProducer(sender)
+    end
 
 actor \nodoc\ _StreamingProducer
   """Sends numbered chunks and finishes."""
@@ -399,13 +403,13 @@ actor \nodoc\ _StreamingProducer
 primitive \nodoc\ _StreamingErrorHandler is Handler
   """Starts streaming then errors — tests error cleanup."""
   fun apply(ctx: Context ref) ? =>
-    ctx.start_streaming(stallion.StatusOK)
+    ctx.start_streaming(stallion.StatusOK)?
     error
 
 class \nodoc\ val _StreamingErrorMiddleware is Middleware
   """Starts streaming in before then errors — tests middleware error cleanup."""
   fun before(ctx: Context ref) ? =>
-    ctx.start_streaming(stallion.StatusOK)
+    ctx.start_streaming(stallion.StatusOK)?
     error
 
 // --- Streaming integration tests ---
@@ -459,9 +463,11 @@ class \nodoc\ iso _TestStreamingMiddlewareErrorCleanup is UnitTest
 
 primitive \nodoc\ _PipelinedStreamHandler is Handler
   """Starts streaming and passes sender to a producer that sends a marker."""
-  fun apply(ctx: Context ref) =>
-    let sender = ctx.start_streaming(stallion.StatusOK)
-    _PipelinedStreamProducer(sender)
+  fun apply(ctx: Context ref) ? =>
+    match ctx.start_streaming(stallion.StatusOK)?
+    | let sender: StreamSender tag =>
+      _PipelinedStreamProducer(sender)
+    end
 
 actor \nodoc\ _PipelinedStreamProducer
   """Sends a single marker chunk and finishes."""
@@ -495,3 +501,57 @@ class \nodoc\ iso _TestPipelinedStreaming is UnitTest
       "GET /stream1 HTTP/1.1\r\nHost: localhost\r\n\r\n" +
         "GET /stream2 HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "pipelined-ok")
+
+// --- start_streaming() result handling test handlers ---
+
+primitive \nodoc\ _StreamingAlreadyRespondedHandler is Handler
+  """Responds, then tries to start streaming — tests AlreadyResponded error."""
+  fun apply(ctx: Context ref) ? =>
+    ctx.respond(stallion.StatusOK, "first response")
+    ctx.start_streaming(stallion.StatusOK)?
+
+primitive \nodoc\ _StreamingFallbackHandler is Handler
+  """Starts streaming with fallback for ChunkedNotSupported."""
+  fun apply(ctx: Context ref) ? =>
+    match ctx.start_streaming(stallion.StatusOK)?
+    | let sender: StreamSender tag =>
+      _StreamingProducer(sender)
+    | stallion.ChunkedNotSupported =>
+      ctx.respond(stallion.StatusOK, "chunked-fallback")
+    end
+
+// --- start_streaming() result handling integration tests ---
+
+class \nodoc\ iso _TestStreamingAlreadyResponded is UnitTest
+  """
+  Handler responds then calls start_streaming — error propagates, original
+  response stands (no 500).
+  """
+  fun name(): String => "integration/streaming already responded"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.GET, "/", _StreamingAlreadyRespondedHandler, None)]
+    end)
+    _IntegrationHelpers.run_test(h, router,
+      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "first response")
+
+class \nodoc\ iso _TestStreamingChunkedNotSupported is UnitTest
+  """
+  HTTP/1.0 request to a streaming handler — ChunkedNotSupported triggers
+  fallback to ctx.respond().
+  """
+  fun name(): String => "integration/streaming chunked not supported"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.GET, "/", _StreamingFallbackHandler, None)]
+    end)
+    _IntegrationHelpers.run_test(h, router,
+      "GET / HTTP/1.0\r\nHost: localhost\r\n\r\n",
+      "chunked-fallback")

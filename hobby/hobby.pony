@@ -110,14 +110,18 @@ convention demonstrated in the middleware example.
 
 ## Streaming Responses
 
-Send chunked HTTP responses by calling `ctx.start_streaming()` to get a
-`StreamSender`:
+Send chunked HTTP responses by calling `ctx.start_streaming()` and matching
+on the result:
 
 ```pony
 primitive StreamHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) =>
-    let sender = ctx.start_streaming(stallion.StatusOK)
-    MyProducer(sender)
+  fun apply(ctx: hobby.Context ref) ? =>
+    match ctx.start_streaming(stallion.StatusOK)?
+    | let sender: hobby.StreamSender tag =>
+      MyProducer(sender)
+    | stallion.ChunkedNotSupported =>
+      ctx.respond(stallion.StatusOK, "Chunked encoding not supported.")
+    end
 
 actor MyProducer
   let _sender: hobby.StreamSender tag
@@ -132,14 +136,19 @@ actor MyProducer
     _sender.finish()
 ```
 
-If the handler errors after starting a stream, the framework automatically
-terminates the chunked response to prevent a hung connection.
+`start_streaming()` is partial — it errors if a response has already been
+sent. It returns `(StreamSender tag | ChunkedNotSupported)` so handlers can
+fall back to a non-streaming response when the client doesn't support chunked
+encoding (e.g., HTTP/1.0). If the handler errors after a successful
+`start_streaming()`, the framework automatically terminates the chunked
+response to prevent a hung connection.
 
 ## Imports
 
 Users import three packages:
 
 - **`hobby`**: Application, Context, Handler, Middleware, RouteGroup, StreamSender
-- **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig)
+- **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig,
+  ChunkedNotSupported)
 - **`lori`**: `TCPListenAuth(env.root)` for network access
 """

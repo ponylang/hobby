@@ -88,27 +88,38 @@ class ref Context
     _handled
 
   fun ref start_streaming(status: stallion.Status,
-    headers: (stallion.Headers val | None) = None): StreamSender tag
+    headers: (stallion.Headers val | None) = None)
+    : (StreamSender tag | stallion.ChunkedNotSupported) ?
   =>
     """
     Begin a streaming response using chunked transfer encoding.
 
-    Calls Stallion's `start_chunked_response()` synchronously and returns a
-    `StreamSender tag` for sending chunks asynchronously. Sets `is_handled()`
-    to `true` — no further `respond()` calls will take effect.
+    Returns `StreamSender tag` on success or `ChunkedNotSupported` if the
+    client does not support chunked encoding (e.g., HTTP/1.0). Errors if
+    a response has already been sent (programmer error).
 
-    Pass the returned sender to a producer actor. The producer calls
-    `send_chunk()` to send data and `finish()` to terminate the stream.
+    When `ChunkedNotSupported` is returned, `is_handled()` remains `false` and
+    the handler can fall back to `ctx.respond()` for a non-streaming response.
 
-    If the handler errors after calling this method, the framework
+    On success, sets `is_handled()` to `true` — no further `respond()` calls
+    will take effect. Pass the returned sender to a producer actor. The
+    producer calls `send_chunk()` to send data and `finish()` to terminate
+    the stream.
+
+    If the handler errors after a successful `start_streaming()`, the framework
     automatically sends the terminal chunk to prevent a hung connection.
     """
-    if not _handled then
+    if _handled then error end
+    match _responder.start_chunked_response(status, headers)
+    | stallion.StreamingStarted =>
       _handled = true
       _streaming = true
-      _responder.start_chunked_response(status, headers)
+      _conn
+    | stallion.ChunkedNotSupported =>
+      stallion.ChunkedNotSupported
+    | stallion.AlreadyResponded =>
+      error
     end
-    _conn
 
   fun box is_streaming(): Bool =>
     """Returns `true` if a streaming response has been started."""

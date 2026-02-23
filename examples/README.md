@@ -16,4 +16,4 @@ Starts an HTTP server with grouped routes sharing prefixes and middleware. Demon
 
 ## [streaming](streaming/)
 
-Streaming responses with chunked transfer encoding. A handler starts a stream and passes the sender to a producer actor that sends chunks asynchronously.
+Streaming responses with chunked transfer encoding. A handler starts a stream and passes the sender to a producer actor that sends chunks asynchronously. Also demonstrates falling back to a non-streaming response when the client doesn't support chunked encoding (`ChunkedNotSupported`).

@@ -29,9 +29,14 @@ primitive IndexHandler is hobby.Handler
       "Visit /stream to see a chunked streaming response.")
 
 primitive StreamHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) =>
-    let sender = ctx.start_streaming(stallion.StatusOK)
-    ChunkProducer(sender)
+  fun apply(ctx: hobby.Context ref) ? =>
+    match ctx.start_streaming(stallion.StatusOK)?
+    | let sender: hobby.StreamSender tag =>
+      ChunkProducer(sender)
+    | stallion.ChunkedNotSupported =>
+      ctx.respond(stallion.StatusOK,
+        "Chunked encoding not supported — upgrade to HTTP/1.1.")
+    end
 
 actor ChunkProducer
   """Sends 5 numbered chunks and finishes the stream."""
