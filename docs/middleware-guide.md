@@ -152,7 +152,7 @@ The framework handles errors differently depending on where they occur and wheth
 
 **Handler errors without responding**: same as middleware — the framework sends 500.
 
-**`before`/handler errors after starting a stream**: the framework sends the terminal chunk to close the chunked response, preventing a hung connection. The `after` phases still run as normal.
+**`before`/handler errors after starting a stream**: the framework sends the terminal chunk to close the chunked response, preventing a hung connection. The `after` phases still run as normal. Note that `ctx.start_streaming()` is itself partial — it errors if a response has already been sent (programmer error). It also returns `(StreamSender tag | ChunkedNotSupported)`, so handlers can fall back to `ctx.respond()` when the client doesn't support chunked encoding.
 
 **`after` is not partial**: `after` cannot raise errors. If your `after` logic might fail (e.g., writing to a log file), handle the failure internally. This is a design choice — `after` is for cleanup and post-processing, and it must always complete.
 

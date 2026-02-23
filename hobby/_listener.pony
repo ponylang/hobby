@@ -21,8 +21,7 @@ actor _Listener is lori.TCPListenerActor
     _config = config
     _router = router
     _out = out
-    _tcp_listener = lori.TCPListener(auth, config.host, config.port, this
-      where limit = config.max_concurrent_connections)
+    _tcp_listener = lori.TCPListener(auth, config.host, config.port, this)
 
   fun ref _listener(): lori.TCPListener => _tcp_listener
 

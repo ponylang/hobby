@@ -7,33 +7,37 @@ Design: https://github.com/ponylang/hobby/discussions/2
 ## Building and Testing
 
 ```bash
-make                    # build tests + examples (release)
-make test               # same as above
-make config=debug       # debug build
-make build-examples     # examples only
+make ssl=3.0.x          # build tests + examples (release, OpenSSL 3.x)
+make test ssl=3.0.x     # same as above
+make ssl=libressl       # use LibreSSL (CI uses this)
+make config=debug       # debug build (combine with ssl=...)
+make build-examples ssl=3.0.x  # examples only
 make clean              # clean build artifacts + corral cache
 ```
+
+The `ssl` option is required — Stallion transitively depends on the `ssl` package. Valid values: `3.0.x` (OpenSSL 3.x), `1.1.x` (OpenSSL 1.1.x), `libressl` (LibreSSL).
 
 `make test` runs unit tests, integration tests, and builds examples. `make unit-tests` and `make integration-tests` can be run individually.
 
 ## Dependencies
 
-- **Stallion** (0.1.0): HTTP/1.x server built on lori. Provides `HTTPServerActor`, `HTTPServer`, `Responder`, `ResponseBuilder`, `Request`, `ServerConfig`, `Status`, `Method`, `Headers`.
+- **Stallion** (0.3.0): HTTP/1.x server built on lori. Provides `HTTPServerActor`, `HTTPServer`, `Responder`, `ResponseBuilder`, `Request`, `ServerConfig`, `Status`, `Method`, `Headers`, `StartChunkedResponseResult`, `StreamingStarted`, `AlreadyResponded`, `ChunkedNotSupported`.
 - **lori** (transitive via Stallion): TCP layer. Provides `TCPListenerActor`, `TCPListener`, `TCPConnectionActor`, `TCPConnection`, auth types.
 - **uri** (transitive via Stallion): URI parsing. Used to read `request.uri.path`.
+- **ssl** (transitive via Stallion): SSL/TLS support. Requires an SSL version flag at build time (`ssl=3.0.x`, `ssl=1.1.x`, or `ssl=libressl`).
 
 ## Architecture
 
 ### Public API
 
-Users interact with five types:
+Users interact with six types:
 
 - **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_middleware()` for app-level middleware. `serve()` consumes the Application, freezes routes into an immutable router, and starts listening.
 - **`RouteGroup`** (`class iso`): Groups routes under a shared prefix and optional middleware. Supports nesting via `group()`. Consumed by `Application.group()` or outer `RouteGroup.group()`.
 - **`Handler`** (`interface val`): Request handler. Receives `Context ref`, calls `ctx.respond()` to send a response. Partial (`?`) — errors without responding produce 500.
 - **`Middleware`** (`interface val`): Two-phase processor. `before` (partial) runs before the handler; `after` (not partial) runs after, in reverse order.
-- **`Context`** (`class ref`): Request context with route params, body, data map, and respond methods.
-- **`StreamSender`** (`interface tag`): Streaming response sender. Returned by `Context.start_streaming()`. Receives `send_chunk()` and `finish()` behavior calls from producer actors.
+- **`Context`** (`class ref`): Request context with route params, body, data map, and respond methods. `start_streaming()` is partial and returns `(StreamSender tag | stallion.ChunkedNotSupported)`.
+- **`StreamSender`** (`interface tag`): Streaming response sender. Returned by `Context.start_streaming()` on success. Receives `send_chunk()` and `finish()` behavior calls from producer actors.
 
 ### Internal layers
 
