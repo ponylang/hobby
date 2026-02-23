@@ -143,12 +143,50 @@ encoding (e.g., HTTP/1.0). If the handler errors after a successful
 `start_streaming()`, the framework automatically terminates the chunked
 response to prevent a hung connection.
 
+## Static File Serving
+
+Serve files from a directory using the built-in `ServeFiles` handler. Small
+files are served with `Content-Length`; large files use chunked streaming.
+Path traversal is prevented by Pony's `FilePath` capability system.
+
+```pony
+use "files"
+use hobby = "hobby"
+use stallion = "stallion"
+use lori = "lori"
+
+actor Main
+  new create(env: Env) =>
+    let auth = lori.TCPListenAuth(env.root)
+    let root = FilePath(FileAuth(env.root), "./public")
+    hobby.Application
+      .>get("/static/*filepath", hobby.ServeFiles(root))
+      .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+```
+
+Routes must use `*filepath` as the wildcard parameter name. `ServeFiles`
+detects content types from file extensions. Directory requests return 404
+— there is no automatic index file lookup (e.g., `/dir/` does not serve
+`/dir/index.html`). For HTTP/1.0 clients requesting files above the chunk
+threshold, it responds with 505 rather than loading the entire file into
+memory.
+
+The `chunk_threshold` parameter (in kilobytes) controls the cutoff between
+serving a file in one response vs chunked streaming. Default is 1024 (1 MB):
+
+```pony
+// Stream files at or above 256 KB instead of the default 1 MB
+hobby.ServeFiles(root where chunk_threshold = 256)
+```
+
 ## Imports
 
 Users import three packages:
 
-- **`hobby`**: Application, Context, Handler, Middleware, RouteGroup, StreamSender
+- **`hobby`**: Application, Context, Handler, Middleware, RouteGroup,
+  ServeFiles, StreamSender
 - **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig,
   ChunkedNotSupported)
 - **`lori`**: `TCPListenAuth(env.root)` for network access
+- **`files`**: `FilePath`, `FileAuth` (only needed when using `ServeFiles`)
 """
