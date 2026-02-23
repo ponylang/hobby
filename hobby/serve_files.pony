@@ -30,6 +30,9 @@ class val ServeFiles is Handler
 
   Path traversal is prevented by Pony's `FilePath.from()`, which rejects
   any resolved path that is not a child of the base directory.
+
+  Directory requests return 404 — there is no automatic index file lookup
+  (e.g., `/dir/` does not serve `/dir/index.html`).
   """
   let _root: FilePath
   let _chunk_threshold: USize
