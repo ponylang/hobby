@@ -3,6 +3,7 @@
 A simple HTTP web framework for Pony, inspired by [Jennet](https://github.com/Theodus/jennet) and powered by [Stallion](https://github.com/ponylang/stallion).
 
 Design: https://github.com/ponylang/hobby/discussions/2
+Static file serving design: https://github.com/ponylang/hobby/discussions/18
 
 ## Building and Testing
 
@@ -30,13 +31,14 @@ The `ssl` option is required — Stallion transitively depends on the `ssl` pack
 
 ### Public API
 
-Users interact with six types:
+Users interact with seven types:
 
 - **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_middleware()` for app-level middleware. `serve()` consumes the Application, freezes routes into an immutable router, and starts listening.
 - **`RouteGroup`** (`class iso`): Groups routes under a shared prefix and optional middleware. Supports nesting via `group()`. Consumed by `Application.group()` or outer `RouteGroup.group()`.
 - **`Handler`** (`interface val`): Request handler. Receives `Context ref`, calls `ctx.respond()` to send a response. Partial (`?`) — errors without responding produce 500.
 - **`Middleware`** (`interface val`): Two-phase processor. `before` (partial) runs before the handler; `after` (not partial) runs after, in reverse order.
 - **`Context`** (`class ref`): Request context with route params, body, data map, and respond methods. `start_streaming()` is partial and returns `(StreamSender tag | stallion.ChunkedNotSupported)`.
+- **`ServeFiles`** (`class val`): Built-in handler for serving static files from a directory. Small files served with Content-Length; large files streamed with chunked encoding. Path traversal prevented by `FilePath.from()`. Routes must use `*filepath` as the wildcard param name.
 - **`StreamSender`** (`interface tag`): Streaming response sender. Returned by `Context.start_streaming()` on success. Receives `send_chunk()` and `finish()` behavior calls from producer actors.
 
 ### Internal layers
@@ -71,6 +73,9 @@ hobby/
   middleware.pony          - Middleware interface (public)
   application.pony        - Application class (public)
   route_group.pony        - RouteGroup class (public)
+  serve_files.pony        - ServeFiles handler (public)
+  _content_type.pony      - File extension to MIME type mapping (internal)
+  _file_streamer.pony     - Chunked file reader actor (internal)
   _flatten.pony           - Path joining + middleware concatenation (internal)
   _connection.pony        - Connection actor (internal)
   _listener.pony          - Listener actor (internal)
@@ -82,7 +87,9 @@ hobby/
   _test.pony              - Test runner
   _test_router.pony       - Router property-based + example tests
   _test_route_group.pony  - Route group unit + property tests
+  _test_content_type.pony - Content type mapping property + example tests
   _test_integration.pony  - HTTP round-trip integration tests
+  _test_serve_files.pony  - ServeFiles integration tests
 ```
 
 ## Conventions
