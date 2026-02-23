@@ -8,7 +8,7 @@ actor Main
   """
   Streaming response example.
 
-  Starts an HTTP server on localhost:8080 with two routes:
+  Starts an HTTP server on 0.0.0.0:8080 with two routes:
   - GET /        -> static page explaining the /stream endpoint
   - GET /stream  -> chunked streaming response with 5 numbered chunks
 
@@ -21,7 +21,7 @@ actor Main
     hobby.Application
       .>get("/", IndexHandler)
       .>get("/stream", StreamHandler)
-      .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+      .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
 
 primitive IndexHandler is hobby.Handler
   fun apply(ctx: hobby.Context ref) =>

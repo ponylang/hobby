@@ -34,7 +34,7 @@ actor Main
       .>get("/", HelloHandler)
       .>get("/dashboard", DashboardHandler where middleware = auth_mw)
       .>get("/health", HealthHandler where middleware = log_mw)
-      .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+      .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
 
 // --- Handlers ---
 
