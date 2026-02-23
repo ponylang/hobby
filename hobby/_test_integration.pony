@@ -4,7 +4,7 @@ use stallion = "stallion"
 use lori = "lori"
 use "net"
 
-primitive _TestIntegrationList
+primitive \nodoc\ _TestIntegrationList
   fun tests(test: PonyTest) =>
     test(_TestBasicGet)
     test(_TestUnknownPath404)
@@ -27,11 +27,11 @@ primitive _TestIntegrationList
 
 // --- Test helpers ---
 
-primitive _TestHost
+primitive \nodoc\ _TestHost
   fun apply(): String =>
     ifdef linux then "127.0.0.2" else "localhost" end
 
-actor _TestClient is (lori.TCPConnectionActor & lori.ClientLifecycleEventReceiver)
+actor \nodoc\ _TestClient is (lori.TCPConnectionActor & lori.ClientLifecycleEventReceiver)
   """Simple TCP client that sends raw HTTP and collects the response."""
   var _tcp_connection: lori.TCPConnection = lori.TCPConnection.none()
   let _h: TestHelper
@@ -72,7 +72,7 @@ actor _TestClient is (lori.TCPConnectionActor & lori.ClientLifecycleEventReceive
     _listener.dispose()
     _h.complete(false)
 
-actor _TestIntegrationListener is lori.TCPListenerActor
+actor \nodoc\ _TestIntegrationListener is lori.TCPListenerActor
   var _tcp_listener: lori.TCPListener = lori.TCPListener.none()
   let _server_auth: lori.TCPServerAuth
   let _config: stallion.ServerConfig
@@ -116,20 +116,20 @@ actor _TestIntegrationListener is lori.TCPListenerActor
 
 // --- Test handlers ---
 
-primitive _HelloHandler is Handler
+primitive \nodoc\ _HelloHandler is Handler
   fun apply(ctx: Context ref) =>
     ctx.respond(stallion.StatusOK, "Hello from Hobby!")
 
-class val _GreetHandler is Handler
+class \nodoc\ val _GreetHandler is Handler
   fun apply(ctx: Context ref) ? =>
     let name = ctx.param("name")?
     ctx.respond(stallion.StatusOK, "Hello, " + name + "!")
 
-primitive _EchoBodyHandler is Handler
+primitive \nodoc\ _EchoBodyHandler is Handler
   fun apply(ctx: Context ref) =>
     ctx.respond(stallion.StatusOK, ctx.body())
 
-primitive _DataReadHandler is Handler
+primitive \nodoc\ _DataReadHandler is Handler
   fun apply(ctx: Context ref) ? =>
     let value = ctx.get("test_key")?
     match value
@@ -138,13 +138,13 @@ primitive _DataReadHandler is Handler
       ctx.respond(stallion.StatusInternalServerError, "wrong type")
     end
 
-primitive _ErrorHandler is Handler
+primitive \nodoc\ _ErrorHandler is Handler
   fun apply(ctx: Context ref) ? =>
     error
 
 // --- Test middleware ---
 
-class val _SetDataMiddleware is Middleware
+class \nodoc\ val _SetDataMiddleware is Middleware
   let _key: String
   let _value: String
   new val create(key: String, value: String) =>
@@ -153,13 +153,13 @@ class val _SetDataMiddleware is Middleware
   fun before(ctx: Context ref) =>
     ctx.set(_key, _value)
 
-class val _ShortCircuitMiddleware is Middleware
+class \nodoc\ val _ShortCircuitMiddleware is Middleware
   fun before(ctx: Context ref) =>
     ctx.respond(stallion.StatusUnauthorized, "Unauthorized")
 
 // --- Helpers ---
 
-primitive _IntegrationHelpers
+primitive \nodoc\ _IntegrationHelpers
   fun build_router(
     routes: Array[(stallion.Method, String, Handler,
       (Array[Middleware val] val | None))] val): _Router val
