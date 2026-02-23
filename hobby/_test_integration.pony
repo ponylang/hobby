@@ -18,6 +18,9 @@ primitive _TestIntegrationList
     test(_TestGroupMiddlewareIntegration)
     test(_TestAppMiddlewareIntegration)
     test(_TestNestedGroupIntegration)
+    test(_TestStreamingResponse)
+    test(_TestStreamingErrorCleanup)
+    test(_TestStreamingMiddlewareErrorCleanup)
 
 // --- Test helpers ---
 
@@ -369,3 +372,84 @@ class \nodoc\ iso _TestNestedGroupIntegration is UnitTest
     _IntegrationHelpers.run_test(h, router,
       "GET /api/admin/dashboard HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "Hello from Hobby!")
+
+// --- Streaming test handlers ---
+
+primitive \nodoc\ _StreamingHandler is Handler
+  """Starts streaming and passes sender to a producer."""
+  fun apply(ctx: Context ref) =>
+    let sender = ctx.start_streaming(stallion.StatusOK)
+    _StreamingProducer(sender)
+
+actor \nodoc\ _StreamingProducer
+  """Sends numbered chunks and finishes."""
+  let _sender: StreamSender tag
+
+  new create(sender: StreamSender tag) =>
+    _sender = sender
+    _send()
+
+  be _send() =>
+    _sender.send_chunk("chunk-1;")
+    _sender.send_chunk("chunk-2;")
+    _sender.send_chunk("chunk-3;")
+    _sender.finish()
+
+primitive \nodoc\ _StreamingErrorHandler is Handler
+  """Starts streaming then errors — tests error cleanup."""
+  fun apply(ctx: Context ref) ? =>
+    ctx.start_streaming(stallion.StatusOK)
+    error
+
+class \nodoc\ val _StreamingErrorMiddleware is Middleware
+  """Starts streaming in before then errors — tests middleware error cleanup."""
+  fun before(ctx: Context ref) ? =>
+    ctx.start_streaming(stallion.StatusOK)
+    error
+
+// --- Streaming integration tests ---
+
+class \nodoc\ iso _TestStreamingResponse is UnitTest
+  """Streaming handler delivers chunks to the client."""
+  fun name(): String => "integration/streaming response"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.GET, "/", _StreamingHandler, None)]
+    end)
+    _IntegrationHelpers.run_test(h, router,
+      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "chunk-1;")
+
+class \nodoc\ iso _TestStreamingErrorCleanup is UnitTest
+  """Handler error after start_streaming sends terminal chunk."""
+  fun name(): String => "integration/streaming error cleanup"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.GET, "/", _StreamingErrorHandler, None)]
+    end)
+    _IntegrationHelpers.run_test(h, router,
+      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "0\r\n")
+
+class \nodoc\ iso _TestStreamingMiddlewareErrorCleanup is UnitTest
+  """Middleware before error after start_streaming sends terminal chunk."""
+  fun name(): String => "integration/streaming middleware error cleanup"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let mw: Array[Middleware val] val = recover val
+      [as Middleware val: _StreamingErrorMiddleware]
+    end
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.GET, "/", _HelloHandler, mw)]
+    end)
+    _IntegrationHelpers.run_test(h, router,
+      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "0\r\n")

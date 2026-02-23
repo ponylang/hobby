@@ -33,6 +33,7 @@ Users interact with five types:
 - **`Handler`** (`interface val`): Request handler. Receives `Context ref`, calls `ctx.respond()` to send a response. Partial (`?`) — errors without responding produce 500.
 - **`Middleware`** (`interface val`): Two-phase processor. `before` (partial) runs before the handler; `after` (not partial) runs after, in reverse order.
 - **`Context`** (`class ref`): Request context with route params, body, data map, and respond methods.
+- **`StreamSender`** (`interface tag`): Streaming response sender. Returned by `Context.start_streaming()`. Receives `send_chunk()` and `finish()` behavior calls from producer actors.
 
 ### Internal layers
 
@@ -49,6 +50,8 @@ Users interact with five types:
 - **Static priority**: Static children checked before param child during lookup.
 - **Trailing slash normalization**: `/users/` and `/users` match the same route.
 - **Flatten at registration time**: Route groups are flattened when consumed by `group()`. Prefixes are joined and middleware arrays are concatenated at that point, so the router sees only flat routes with fully resolved paths and middleware chains.
+- **StreamSender is _Connection**: `_Connection` structurally matches `StreamSender` by having `send_chunk` and `finish` behaviors. No wrapper actor. Users interact through `StreamSender tag`; `_Connection` is package-private.
+- **Streaming error cleanup**: `_ChainRunner` detects handler error + streaming mode and calls `_finish_streaming()` to terminate abandoned streams.
 
 ## File Layout
 
@@ -59,6 +62,7 @@ hobby/
   hobby.pony              - Package docstring
   context.pony            - Context class (public)
   handler.pony            - Handler interface (public)
+  stream_sender.pony      - StreamSender interface (public)
   middleware.pony          - Middleware interface (public)
   application.pony        - Application class (public)
   route_group.pony        - RouteGroup class (public)

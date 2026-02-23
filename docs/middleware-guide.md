@@ -152,9 +152,11 @@ The framework handles errors differently depending on where they occur and wheth
 
 **Handler errors without responding**: same as middleware — the framework sends 500.
 
+**`before`/handler errors after starting a stream**: the framework sends the terminal chunk to close the chunked response, preventing a hung connection. The `after` phases still run as normal.
+
 **`after` is not partial**: `after` cannot raise errors. If your `after` logic might fail (e.g., writing to a log file), handle the failure internally. This is a design choice — `after` is for cleanup and post-processing, and it must always complete.
 
-The general rule: if `error` happens at any point and no response has been sent yet, the framework sends 500. If a response was already sent, the error is absorbed and the chain continues to `after` phases.
+The general rule: if `error` happens at any point and no response has been sent yet, the framework sends 500. If a response was already sent, the error is absorbed and the chain continues to `after` phases. If a streaming response was started, the framework terminates the stream with the terminal chunk.
 
 ## Using `after` for Post-Processing
 
