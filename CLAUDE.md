@@ -89,6 +89,6 @@ hobby/
 
 - Private types (`_` prefix) are package-private, accessible within `hobby/` but not externally.
 - All public API elements have docstrings.
-- `_Unreachable()` is used in `else` branches of `try` blocks where the error path is impossible due to prior bounds checks.
+- `_Unreachable()` is used in `else` branches of `try` blocks where the error path is impossible due to prior bounds checks. Do not use it in `match` expressions — Pony's `match` performs exhaustiveness checking on union types, so an `else` branch on a fully-covered union is a compile error.
 - Integration tests use `label(): String => "integration"` for selective execution.
 - WSL2 compatibility: integration tests use `127.0.0.2` on Linux to avoid the Hyper-V mirrored networking bug (see ponylang/lori#153).
