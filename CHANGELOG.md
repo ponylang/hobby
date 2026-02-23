@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Fixed
 
+- Buffer pipelined requests during streaming responses ([PR #15](https://github.com/ponylang/hobby/pull/15))
 
 ### Added
 
