@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Added
 
+- Add streaming response support ([PR #14](https://github.com/ponylang/hobby/pull/14))
 
 ### Changed
 
