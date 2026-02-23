@@ -169,6 +169,14 @@ detects content types from file extensions and rejects directory requests
 with 404. For HTTP/1.0 clients requesting files above the chunk threshold,
 it responds with 505 rather than loading the entire file into memory.
 
+The `chunk_threshold` parameter (in kilobytes) controls the cutoff between
+serving a file in one response vs chunked streaming. Default is 1024 (1 MB):
+
+```pony
+// Stream files at or above 256 KB instead of the default 1 MB
+hobby.ServeFiles(root where chunk_threshold = 256)
+```
+
 ## Imports
 
 Users import three packages:
