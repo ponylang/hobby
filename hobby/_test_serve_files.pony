@@ -3,7 +3,7 @@ use "files"
 use stallion = "stallion"
 use lori = "lori"
 
-primitive _TestServeFilesList
+primitive \nodoc\ _TestServeFilesList
   fun tests(test: PonyTest) =>
     test(_TestServeFilesSmallFile)
     test(_TestServeFilesContentType)
@@ -15,7 +15,7 @@ primitive _TestServeFilesList
 
 // --- Test setup ---
 
-primitive _ServeFilesTestSetup
+primitive \nodoc\ _ServeFilesTestSetup
   """
   Create a temporary directory with test files for ServeFiles integration
   tests. Idempotent — safe to call multiple times.

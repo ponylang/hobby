@@ -1,7 +1,7 @@
 use "pony_test"
 use "pony_check"
 
-primitive _TestContentTypeList
+primitive \nodoc\ _TestContentTypeList
   fun tests(test: PonyTest) =>
     test(Property1UnitTest[String](_PropertyKnownExtensionMapsToMime))
     test(Property1UnitTest[String](_PropertyUnknownExtensionMapsToOctetStream))
@@ -9,7 +9,7 @@ primitive _TestContentTypeList
 
 // --- Generators ---
 
-primitive _GenKnownExtension
+primitive \nodoc\ _GenKnownExtension
   """Generate a known file extension."""
   fun apply(): Generator[String] =>
     Generators.one_of[String]([
@@ -18,7 +18,7 @@ primitive _GenKnownExtension
       "woff"; "woff2"; "pdf"; "wasm"
     ])
 
-primitive _GenUnknownExtension
+primitive \nodoc\ _GenUnknownExtension
   """Generate an extension guaranteed not to be in the known set."""
   fun apply(): Generator[String] =>
     // Use a prefix that can't collide with any known extension
