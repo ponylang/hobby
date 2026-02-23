@@ -8,7 +8,7 @@ actor Main
   """
   Hello world example.
 
-  Starts an HTTP server on localhost:8080 with two routes:
+  Starts an HTTP server on 0.0.0.0:8080 with two routes:
   - GET /         -> "Hello from Hobby!"
   - GET /greet/:name -> "Hello, <name>!"
 
@@ -21,7 +21,7 @@ actor Main
     hobby.Application
       .>get("/", HelloHandler)
       .>get("/greet/:name", GreetHandler)
-      .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+      .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
 
 primitive HelloHandler is hobby.Handler
   fun apply(ctx: hobby.Context ref) =>

@@ -50,7 +50,7 @@ actor Main
           .>group(
             hobby.RouteGroup("/admin" where middleware = admin_mw)
               .>get("/dashboard", DashboardHandler)))
-      .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+      .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
 
 // --- Handlers ---
 
