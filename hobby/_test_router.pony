@@ -3,7 +3,7 @@ use "pony_check"
 use "collections"
 use stallion = "stallion"
 
-primitive _TestRouterList
+primitive \nodoc\ _TestRouterList
   fun tests(test: PonyTest) =>
     test(Property1UnitTest[String](_PropertyStaticRouteMatches))
     test(Property1UnitTest[String](_PropertyUnregisteredReturnsNone))
@@ -21,12 +21,12 @@ primitive _TestRouterList
 
 // --- Generators ---
 
-primitive _GenPathSegment
+primitive \nodoc\ _GenPathSegment
   """Generate a single path segment: lowercase letters, length 1-10."""
   fun apply(): Generator[String] =>
     Generators.ascii(1, 10 where range = ASCIILetters)
 
-primitive _GenStaticPath
+primitive \nodoc\ _GenStaticPath
   """Generate a static path like `/foo/bar/baz` with 1-3 segments."""
   fun apply(): Generator[String] =>
     Generators.map2[String, String, String](
@@ -43,12 +43,12 @@ primitive _GenStaticPath
         end
       })
 
-primitive _GenParamName
+primitive \nodoc\ _GenParamName
   """Generate a parameter name: alphabetic, length 1-10."""
   fun apply(): Generator[String] =>
     Generators.ascii(1, 10 where range = ASCIILetters)
 
-primitive _GenMethod
+primitive \nodoc\ _GenMethod
   """Generate a random HTTP method."""
   fun apply(): Generator[stallion.Method] =>
     Generators.one_of[stallion.Method]([
@@ -58,7 +58,7 @@ primitive _GenMethod
 
 // --- Test handler ---
 
-primitive _NoOpHandler is Handler
+primitive \nodoc\ _NoOpHandler is Handler
   fun apply(ctx: Context ref) => ctx.respond(stallion.StatusOK, "ok")
 
 // --- Property tests ---
@@ -246,7 +246,7 @@ class \nodoc\ iso _TestStaticPriorityOverParam is UnitTest
       h.fail("expected match for /users/42")
     end
 
-class val _TestMarkerHandler is Handler
+class \nodoc\ val _TestMarkerHandler is Handler
   let _label: String
   new val create(label: String) => _label = label
   fun apply(ctx: Context ref) => ctx.respond(stallion.StatusOK, _label)
