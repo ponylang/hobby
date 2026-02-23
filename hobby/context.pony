@@ -7,11 +7,12 @@ class ref Context
 
   Provides access to the HTTP request, route parameters, accumulated request
   body, and a key-value data map for inter-middleware communication. Call
-  `respond()` or `respond_with_headers()` to send an HTTP response.
+  `respond()` or `respond_with_headers()` to send a complete HTTP response,
+  or `start_streaming()` to begin a chunked streaming response.
 
-  Mutation methods (`respond`, `respond_with_headers`, `set`) require `ref`
-  access. Read-only methods (`param`, `body`, `get`, `is_handled`) require only
-  `box` access. This split supports the typed accessor convention: middleware
+  Mutation methods (`respond`, `respond_with_headers`, `start_streaming`, `set`)
+  require `ref` access. Read-only methods (`param`, `body`, `get`, `is_handled`,
+  `is_streaming`) require only `box` access. This split supports the typed accessor convention: middleware
   authors provide accessor primitives that take `Context box`, letting them
   read context data without requiring write access.
   """
@@ -19,19 +20,23 @@ class ref Context
   let _responder: stallion.Responder
   let _params: Map[String, String] val
   let _body: Array[U8] val
+  let _conn: _Connection tag
   embed _data: Map[String, Any val]
   var _handled: Bool = false
+  var _streaming: Bool = false
 
   new create(
     request': stallion.Request val,
     responder': stallion.Responder,
     params': Map[String, String] val,
-    body': Array[U8] val)
+    body': Array[U8] val,
+    conn': _Connection tag)
   =>
     request = request'
     _responder = responder'
     _params = params'
     _body = body'
+    _conn = conn'
     _data = Map[String, Any val]
 
   fun ref respond(status: stallion.Status, body': ByteSeq) =>
@@ -81,6 +86,43 @@ class ref Context
   fun box is_handled(): Bool =>
     """Returns `true` if a response has already been sent."""
     _handled
+
+  fun ref start_streaming(status: stallion.Status,
+    headers: (stallion.Headers val | None) = None): StreamSender tag
+  =>
+    """
+    Begin a streaming response using chunked transfer encoding.
+
+    Calls Stallion's `start_chunked_response()` synchronously and returns a
+    `StreamSender tag` for sending chunks asynchronously. Sets `is_handled()`
+    to `true` — no further `respond()` calls will take effect.
+
+    Pass the returned sender to a producer actor. The producer calls
+    `send_chunk()` to send data and `finish()` to terminate the stream.
+
+    If the handler errors after calling this method, the framework
+    automatically sends the terminal chunk to prevent a hung connection.
+    """
+    if not _handled then
+      _handled = true
+      _streaming = true
+      _responder.start_chunked_response(status, headers)
+    end
+    _conn
+
+  fun box is_streaming(): Bool =>
+    """Returns `true` if a streaming response has been started."""
+    _streaming
+
+  fun ref _finish_streaming() =>
+    """
+    Send the terminal chunk to close an abandoned streaming response.
+
+    Called by `_ChainRunner` when a handler or middleware errors after starting
+    a stream. Package-private — not part of the public API.
+    """
+    _streaming = false
+    _responder.finish_response()
 
   fun box param(key: String): String ? =>
     """

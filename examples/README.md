@@ -13,3 +13,7 @@ Starts an HTTP server with public and protected routes. Demonstrates two middlew
 ## [route-groups](route-groups/)
 
 Starts an HTTP server with grouped routes sharing prefixes and middleware. Demonstrates application-level middleware (logging on every route), a `/api` group with auth middleware, and a nested `/api/admin` group that adds admin middleware on top. Shows the complete middleware composition order: application middleware runs first, then group middleware, then per-route middleware.
+
+## [streaming](streaming/)
+
+Streaming responses with chunked transfer encoding. A handler starts a stream and passes the sender to a producer actor that sends chunks asynchronously.

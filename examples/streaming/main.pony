@@ -1,0 +1,50 @@
+// in your code this `use` statement would be:
+// use hobby = "hobby"
+use hobby = "../../hobby"
+use stallion = "stallion"
+use lori = "lori"
+
+actor Main
+  """
+  Streaming response example.
+
+  Starts an HTTP server on localhost:8080 with two routes:
+  - GET /        -> static page explaining the /stream endpoint
+  - GET /stream  -> chunked streaming response with 5 numbered chunks
+
+  Try it:
+    curl http://localhost:8080/
+    curl http://localhost:8080/stream
+  """
+  new create(env: Env) =>
+    let auth = lori.TCPListenAuth(env.root)
+    hobby.Application
+      .>get("/", IndexHandler)
+      .>get("/stream", StreamHandler)
+      .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+
+primitive IndexHandler is hobby.Handler
+  fun apply(ctx: hobby.Context ref) =>
+    ctx.respond(stallion.StatusOK,
+      "Visit /stream to see a chunked streaming response.")
+
+primitive StreamHandler is hobby.Handler
+  fun apply(ctx: hobby.Context ref) =>
+    let sender = ctx.start_streaming(stallion.StatusOK)
+    ChunkProducer(sender)
+
+actor ChunkProducer
+  """Sends 5 numbered chunks and finishes the stream."""
+  let _sender: hobby.StreamSender tag
+
+  new create(sender: hobby.StreamSender tag) =>
+    _sender = sender
+    _send()
+
+  be _send() =>
+    _sender.send_chunk("chunk 1 of 5\n")
+    _sender.send_chunk("chunk 2 of 5\n")
+    _sender.send_chunk("chunk 3 of 5\n")
+    _sender.send_chunk("chunk 4 of 5\n")
+    _sender.send_chunk("chunk 5 of 5\n")
+    _sender.finish()

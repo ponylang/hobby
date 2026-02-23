@@ -108,11 +108,38 @@ The data map stores `Any val` values. Middleware authors should provide typed
 accessor primitives that use `match` to recover domain types, following the
 convention demonstrated in the middleware example.
 
+## Streaming Responses
+
+Send chunked HTTP responses by calling `ctx.start_streaming()` to get a
+`StreamSender`:
+
+```pony
+primitive StreamHandler is hobby.Handler
+  fun apply(ctx: hobby.Context ref) =>
+    let sender = ctx.start_streaming(stallion.StatusOK)
+    MyProducer(sender)
+
+actor MyProducer
+  let _sender: hobby.StreamSender tag
+
+  new create(sender: hobby.StreamSender tag) =>
+    _sender = sender
+    _send()
+
+  be _send() =>
+    _sender.send_chunk("Hello, ")
+    _sender.send_chunk("streaming world!")
+    _sender.finish()
+```
+
+If the handler errors after starting a stream, the framework automatically
+terminates the chunked response to prevent a hung connection.
+
 ## Imports
 
 Users import three packages:
 
-- **`hobby`**: Application, Context, Handler, Middleware, RouteGroup
+- **`hobby`**: Application, Context, Handler, Middleware, RouteGroup, StreamSender
 - **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig)
 - **`lori`**: `TCPListenAuth(env.root)` for network access
 """

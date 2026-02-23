@@ -10,7 +10,9 @@ primitive _ChainRunner
   that errors gets its `after` called.
 
   Handler: if the forward phase completes without a response, the handler
-  runs. If the handler errors without responding, a 500 is sent.
+  runs. If the handler errors without responding, a 500 is sent. If the
+  handler or middleware errors after starting a stream, the terminal chunk
+  is sent to close the abandoned stream.
 
   After phase: ALWAYS runs, in reverse order, for every middleware whose
   `before` was invoked — regardless of how the forward phase ended.
@@ -33,6 +35,8 @@ primitive _ChainRunner
           else
             if not ctx.is_handled() then
               ctx.respond(stallion.StatusInternalServerError, "Internal Server Error")
+            elseif ctx.is_streaming() then
+              ctx._finish_streaming()
             end
           end
           if ctx.is_handled() then break end
@@ -45,11 +49,11 @@ primitive _ChainRunner
 
     // Handler phase
     if not ctx.is_handled() then
-      try
-        handler(ctx)?
-      end
+      let handler_errored = try handler(ctx)?; false else true end
       if not ctx.is_handled() then
         ctx.respond(stallion.StatusInternalServerError, "Internal Server Error")
+      elseif handler_errored and ctx.is_streaming() then
+        ctx._finish_streaming()
       end
     end
 
