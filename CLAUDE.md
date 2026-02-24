@@ -39,7 +39,7 @@ Users interact with eight types:
 - **`Middleware`** (`interface val`): Two-phase processor. `before` (partial) runs before the handler; `after` (not partial) runs after, in reverse order.
 - **`Context`** (`class ref`): Request context with route params, body, data map, and respond methods. `start_streaming()` is partial and returns `(StreamSender tag | stallion.ChunkedNotSupported | BodyNotNeeded)`. For HEAD requests, response bodies are automatically suppressed while headers are preserved.
 - **`BodyNotNeeded`** (`primitive`): Returned by `Context.start_streaming()` for HEAD requests. Signals that the framework has already sent a headers-only response and the handler should not start a producer.
-- **`ServeFiles`** (`class val`): Built-in handler for serving static files from a directory. Small files served with Content-Length; large files streamed with chunked encoding. Path traversal prevented by `FilePath.from()`. Routes must use `*filepath` as the wildcard param name.
+- **`ServeFiles`** (`class val`): Built-in handler for serving static files from a directory. Small files served with Content-Length; large files streamed with chunked encoding. Includes caching headers (ETag, Last-Modified, Cache-Control) and supports conditional requests (304 Not Modified) per RFC 7232. `cache_control` constructor parameter controls the Cache-Control value (default `"public, max-age=3600"`, `None` to omit). Path traversal prevented by `FilePath.from()`. Routes must use `*filepath` as the wildcard param name.
 - **`StreamSender`** (`interface tag`): Streaming response sender. Returned by `Context.start_streaming()` on success. Receives `send_chunk()` and `finish()` behavior calls from producer actors.
 
 ### Internal layers
@@ -80,6 +80,8 @@ hobby/
   body_not_needed.pony    - BodyNotNeeded primitive for HEAD streaming (public)
   _response_mode.pony     - HEAD vs standard response strategy (internal)
   _content_type.pony      - File extension to MIME type mapping (internal)
+  _http_date.pony         - RFC 7231 HTTP-date formatting (internal)
+  _etag.pony              - Weak ETag computation and matching (internal)
   _file_streamer.pony     - Chunked file reader actor (internal)
   _flatten.pony           - Path joining + middleware concatenation (internal)
   _connection.pony        - Connection actor (internal)
@@ -93,6 +95,8 @@ hobby/
   _test_router.pony       - Router property-based + example tests
   _test_route_group.pony  - Route group unit + property tests
   _test_content_type.pony - Content type mapping property + example tests
+  _test_http_date.pony    - HTTP date formatting property + example tests
+  _test_etag.pony         - ETag computation and matching property + example tests
   _test_integration.pony  - HTTP round-trip integration tests
   _test_serve_files.pony  - ServeFiles integration tests
 ```
