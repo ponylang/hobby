@@ -50,8 +50,10 @@ class val ServeFiles is Handler
   Path traversal is prevented by Pony's `FilePath.from()`, which rejects
   any resolved path that is not a child of the base directory.
 
-  Directory requests return 404 — there is no automatic index file lookup
-  (e.g., `/dir/` does not serve `/dir/index.html`).
+  When a request resolves to a directory, `ServeFiles` looks for an
+  `index.html` file inside it. If found, the index file is served with the
+  correct `text/html` content type and caching headers. If no `index.html`
+  exists, the directory request returns 404.
   """
   let _root: FilePath
   let _chunk_threshold: USize
@@ -83,7 +85,7 @@ class val ServeFiles is Handler
     let filepath = ctx.param("filepath")?
 
     // Resolve path safely — errors on traversal attempts
-    let resolved = try
+    var resolved = try
       FilePath.from(_root, filepath)?
     else
       ctx.respond(stallion.StatusNotFound, "Not Found")
@@ -91,20 +93,36 @@ class val ServeFiles is Handler
     end
 
     // Stat the file — errors if file doesn't exist
-    let info = try
+    var info = try
       FileInfo(resolved)?
     else
       ctx.respond(stallion.StatusNotFound, "Not Found")
       return
     end
 
-    // Must be a regular file, not a directory
+    // Directory → try serving index.html
+    if info.directory then
+      resolved = try
+        FilePath.from(resolved, "index.html")?
+      else
+        ctx.respond(stallion.StatusNotFound, "Not Found")
+        return
+      end
+      info = try
+        FileInfo(resolved)?
+      else
+        ctx.respond(stallion.StatusNotFound, "Not Found")
+        return
+      end
+    end
+
+    // After index fallback, non-file entries (e.g., symlinks) still 404
     if not info.file then
       ctx.respond(stallion.StatusNotFound, "Not Found")
       return
     end
 
-    let content_type = _ContentType(Path.ext(filepath))
+    let content_type = _ContentType(Path.ext(resolved.path))
 
     // Compute cache identifiers from file metadata
     (let mod_secs, _) = info.modified_time

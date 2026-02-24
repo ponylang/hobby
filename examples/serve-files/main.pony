@@ -11,6 +11,8 @@ actor Main
 
   Starts an HTTP server on 0.0.0.0:8080 that serves files from a directory
   given as a command-line argument, under the `/static/` URL prefix.
+  Directory requests automatically serve `index.html` if present (e.g.,
+  `/static/docs/` serves `public/docs/index.html`).
 
   Usage:
     serve-files /path/to/public
@@ -20,6 +22,7 @@ actor Main
     curl http://localhost:8080/
     curl http://localhost:8080/static/index.html
     curl http://localhost:8080/static/style.css
+    curl http://localhost:8080/static/docs/
   """
   new create(env: Env) =>
     try

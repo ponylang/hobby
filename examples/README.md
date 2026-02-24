@@ -16,7 +16,7 @@ Starts an HTTP server with grouped routes sharing prefixes and middleware. Demon
 
 ## [serve-files](serve-files/)
 
-Serves static files from a `public/` directory using the built-in `ServeFiles` handler. Demonstrates mounting a file-serving route with a `*filepath` wildcard parameter and creating the root `FilePath` from `FileAuth`. Includes sample HTML and CSS files. Responses include caching headers (ETag, Last-Modified, Cache-Control) and support conditional requests (304 Not Modified).
+Serves static files from a `public/` directory using the built-in `ServeFiles` handler. Demonstrates mounting a file-serving route with a `*filepath` wildcard parameter and creating the root `FilePath` from `FileAuth`. Includes sample HTML and CSS files plus a `docs/` subdirectory with an `index.html` that is served automatically when visiting `/static/docs/`. Responses include caching headers (ETag, Last-Modified, Cache-Control) and support conditional requests (304 Not Modified).
 
 ## [streaming](streaming/)
 

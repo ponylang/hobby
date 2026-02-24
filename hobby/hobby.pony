@@ -171,11 +171,11 @@ actor Main
 ```
 
 Routes must use `*filepath` as the wildcard parameter name. `ServeFiles`
-detects content types from file extensions. Directory requests return 404
-— there is no automatic index file lookup (e.g., `/dir/` does not serve
-`/dir/index.html`). For HTTP/1.0 clients requesting files above the chunk
-threshold, it responds with 505 rather than loading the entire file into
-memory.
+detects content types from file extensions. When a request resolves to a
+directory, `ServeFiles` automatically serves `index.html` from that
+directory if it exists; otherwise the request returns 404. For HTTP/1.0
+clients requesting files above the chunk threshold, it responds with 505
+rather than loading the entire file into memory.
 
 The `chunk_threshold` parameter (in kilobytes) controls the cutoff between
 serving a file in one response vs chunked streaming. Default is 1024 (1 MB):

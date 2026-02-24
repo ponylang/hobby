@@ -25,6 +25,11 @@ primitive \nodoc\ _TestServeFilesList
     test(_TestServeFilesLargeFileCacheHeaders)
     test(_TestServeFilesLargeFileETag304)
     test(_TestServeFilesETagPrecedence)
+    test(_TestServeFilesDirectoryIndex)
+    test(_TestServeFilesDirectoryIndexContentType)
+    test(_TestServeFilesDirectoryIndexCacheHeaders)
+    test(_TestServeFilesDirectoryIndexHead)
+    test(_TestServeFilesDirectoryIndex304)
 
 // --- Test setup ---
 
@@ -57,6 +62,10 @@ primitive \nodoc\ _ServeFilesTestSetup
 
     // Subdirectory for directory test
     FilePath.from(root, "subdir")?.mkdir()
+
+    // Subdirectory with index.html for directory index test
+    FilePath.from(root, "indexed")?.mkdir()
+    _write_file(root, "indexed/index.html", "<h1>Index</h1>")?
 
     root
 
@@ -166,7 +175,7 @@ class \nodoc\ iso _TestServeFilesTraversal404 is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesDirectory404 is UnitTest
-  """Requesting a directory returns 404."""
+  """Requesting a directory without index.html returns 404."""
   fun name(): String => "integration/serve-files/directory 404"
 
   fun label(): String => "integration"
@@ -562,6 +571,106 @@ class \nodoc\ iso _TestServeFilesETagPrecedence is UnitTest
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n" +
           "If-None-Match: " + etag + "\r\n" +
           "If-Modified-Since: Thu, 01 Jan 1970 00:00:00 GMT\r\n\r\n",
+        "304 Not Modified")
+    else
+      h.fail("test setup failed")
+    end
+
+// --- Directory index tests ---
+
+class \nodoc\ iso _TestServeFilesDirectoryIndex is UnitTest
+  """Directory with index.html serves the index file content."""
+  fun name(): String => "integration/serve-files/directory index"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    try
+      let root = _ServeFilesTestSetup(h.env)?
+      let router = _IntegrationHelpers.build_router(recover val
+        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+      end)
+      _IntegrationHelpers.run_test(h, router,
+        "GET /static/indexed HTTP/1.1\r\nHost: localhost\r\n\r\n",
+        "<h1>Index</h1>")
+    else
+      h.fail("test setup failed")
+    end
+
+class \nodoc\ iso _TestServeFilesDirectoryIndexContentType is UnitTest
+  """Directory index response has text/html Content-Type."""
+  fun name(): String => "integration/serve-files/directory index content type"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    try
+      let root = _ServeFilesTestSetup(h.env)?
+      let router = _IntegrationHelpers.build_router(recover val
+        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+      end)
+      _IntegrationHelpers.run_test(h, router,
+        "GET /static/indexed HTTP/1.1\r\nHost: localhost\r\n\r\n",
+        "text/html")
+    else
+      h.fail("test setup failed")
+    end
+
+class \nodoc\ iso _TestServeFilesDirectoryIndexCacheHeaders is UnitTest
+  """Directory index response has ETag based on index.html metadata."""
+  fun name(): String => "integration/serve-files/directory index cache headers"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    try
+      let root = _ServeFilesTestSetup(h.env)?
+      let etag = _ServeFilesTestETag(root, "indexed/index.html")?
+      let router = _IntegrationHelpers.build_router(recover val
+        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+      end)
+      _IntegrationHelpers.run_test(h, router,
+        "GET /static/indexed HTTP/1.1\r\nHost: localhost\r\n\r\n",
+        "etag: " + etag)
+    else
+      h.fail("test setup failed")
+    end
+
+class \nodoc\ iso _TestServeFilesDirectoryIndexHead is UnitTest
+  """HEAD for directory index: Content-Length present, body absent."""
+  fun name(): String => "integration/serve-files/HEAD directory index"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    try
+      let root = _ServeFilesTestSetup(h.env)?
+      let router = _IntegrationHelpers.build_router(recover val
+        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+      end)
+      _HeadIntegrationHelpers.run_head_test(h, router,
+        "HEAD /static/indexed HTTP/1.1\r\nHost: localhost\r\n\r\n",
+        "content-length:", "<h1>Index</h1>")
+    else
+      h.fail("test setup failed")
+    end
+
+class \nodoc\ iso _TestServeFilesDirectoryIndex304 is UnitTest
+  """Directory index with matching If-None-Match returns 304."""
+  fun name(): String => "integration/serve-files/directory index 304"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    try
+      let root = _ServeFilesTestSetup(h.env)?
+      let etag = _ServeFilesTestETag(root, "indexed/index.html")?
+      let router = _IntegrationHelpers.build_router(recover val
+        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+      end)
+      _IntegrationHelpers.run_test(h, router,
+        "GET /static/indexed HTTP/1.1\r\nHost: localhost\r\n" +
+          "If-None-Match: " + etag + "\r\n\r\n",
         "304 Not Modified")
     else
       h.fail("test setup failed")

@@ -24,7 +24,7 @@ Small files are served as a single response with `Content-Length`. Large files (
 hobby.ServeFiles(root where chunk_threshold = 256)
 ```
 
-Content-Type is detected from file extensions. Path traversal is prevented by Pony's `FilePath.from()` capability system. HTTP/1.0 clients requesting files above the chunk threshold receive 505 HTTP Version Not Supported rather than having the entire file loaded into memory. Directory requests return 404 — there is no automatic index file lookup (e.g., requesting `/static/` does not serve `/static/index.html`).
+Content-Type is detected from file extensions. Path traversal is prevented by Pony's `FilePath.from()` capability system. HTTP/1.0 clients requesting files above the chunk threshold receive 505 HTTP Version Not Supported rather than having the entire file loaded into memory. When a request resolves to a directory, `ServeFiles` automatically serves `index.html` from that directory if it exists; otherwise the request returns 404.
 
 ## Add automatic HEAD request support
 
@@ -96,3 +96,14 @@ hobby.ServeFiles(root where cache_control = "private, max-age=600")
 hobby.ServeFiles(root where cache_control = None)
 ```
 
+## Add automatic index file serving for directories
+
+When a request to `ServeFiles` resolves to a directory, it now automatically serves `index.html` from that directory if the file exists. If no `index.html` is present, the request returns 404 as before.
+
+```pony
+// Given public/docs/index.html exists:
+// GET /static/docs/ → serves public/docs/index.html with text/html Content-Type
+// GET /static/docs  → same (trailing slash normalization)
+```
+
+The index file gets the same treatment as any other served file — correct Content-Type (`text/html`), caching headers (ETag, Last-Modified, Cache-Control), conditional request support, and HEAD optimization.
