@@ -11,16 +11,20 @@ primitive _ETag
   """
   fun apply(inode: U64, size: USize, mtime: I64): String =>
     """Compute a weak ETag from file metadata."""
+    let inode_str: String val = inode.string()
+    let size_str: String val = size.string()
+    let mtime_str: String val = mtime.string()
+    // W/"<inode>-<size>-<mtime>"
+    let len = 4 + inode_str.size() + size_str.size() + mtime_str.size()
     recover val
-      let s = String
-      s.append("W/\"")
-      s.append(inode.string())
-      s.push('-')
-      s.append(size.string())
-      s.push('-')
-      s.append(mtime.string())
-      s.push('"')
-      s
+      String(len)
+        .>append("W/\"")
+        .>append(inode_str)
+        .>push('-')
+        .>append(size_str)
+        .>push('-')
+        .>append(mtime_str)
+        .>push('"')
     end
 
   fun matches(if_none_match: String, server_etag: String): Bool =>
