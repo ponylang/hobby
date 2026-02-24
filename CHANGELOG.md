@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file. This projec
 ### Added
 
 - Add built-in static file serving handler ([PR #19](https://github.com/ponylang/hobby/pull/19))
+- Add caching headers for ServeFiles ([PR #23](https://github.com/ponylang/hobby/pull/23))
 
 ### Changed
 
