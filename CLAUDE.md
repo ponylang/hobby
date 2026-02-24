@@ -31,20 +31,21 @@ The `ssl` option is required — Stallion transitively depends on the `ssl` pack
 
 ### Public API
 
-Users interact with seven types:
+Users interact with eight types:
 
 - **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_middleware()` for app-level middleware. `serve()` consumes the Application, freezes routes into an immutable router, and starts listening.
 - **`RouteGroup`** (`class iso`): Groups routes under a shared prefix and optional middleware. Supports nesting via `group()`. Consumed by `Application.group()` or outer `RouteGroup.group()`.
 - **`Handler`** (`interface val`): Request handler. Receives `Context ref`, calls `ctx.respond()` to send a response. Partial (`?`) — errors without responding produce 500.
 - **`Middleware`** (`interface val`): Two-phase processor. `before` (partial) runs before the handler; `after` (not partial) runs after, in reverse order.
-- **`Context`** (`class ref`): Request context with route params, body, data map, and respond methods. `start_streaming()` is partial and returns `(StreamSender tag | stallion.ChunkedNotSupported)`.
+- **`Context`** (`class ref`): Request context with route params, body, data map, and respond methods. `start_streaming()` is partial and returns `(StreamSender tag | stallion.ChunkedNotSupported | BodyNotNeeded)`. For HEAD requests, response bodies are automatically suppressed while headers are preserved.
+- **`BodyNotNeeded`** (`primitive`): Returned by `Context.start_streaming()` for HEAD requests. Signals that the framework has already sent a headers-only response and the handler should not start a producer.
 - **`ServeFiles`** (`class val`): Built-in handler for serving static files from a directory. Small files served with Content-Length; large files streamed with chunked encoding. Path traversal prevented by `FilePath.from()`. Routes must use `*filepath` as the wildcard param name.
 - **`StreamSender`** (`interface tag`): Streaming response sender. Returned by `Context.start_streaming()` on success. Receives `send_chunk()` and `finish()` behavior calls from producer actors.
 
 ### Internal layers
 
 - **`_Listener`** (`actor`): Implements `lori.TCPListenerActor`. Accepts TCP connections and spawns `_Connection` actors.
-- **`_Connection`** (`actor`): Implements `stallion.HTTPServerActor`. Accumulates body chunks, runs route lookup, executes middleware chain + handler via `_ChainRunner`. Sends 404 for unmatched routes. Buffers pipelined requests during streaming responses and drains the buffer when the stream finishes.
+- **`_Connection`** (`actor`): Implements `stallion.HTTPServerActor`. Accumulates body chunks, runs route lookup, executes middleware chain + handler via `_ChainRunner`. Sends 404 for unmatched routes. HEAD requests fall back to GET handlers when no explicit HEAD route exists. Buffers pipelined requests during streaming responses and drains the buffer when the stream finishes.
 - **`_Router`** (`class val`): Immutable radix tree router. One tree per HTTP method. Built from `_RouterBuilder` (mutable `_BuildNode ref` trees frozen into `_TreeNode val` trees).
 - **`_ChainRunner`** (`primitive`): Executes middleware `before` phases, then handler, then middleware `after` phases in reverse. Tracks invocation count so `after` runs for every middleware whose `before` was called.
 
@@ -59,6 +60,8 @@ Users interact with seven types:
 - **StreamSender is _Connection**: `_Connection` structurally matches `StreamSender` by having `send_chunk` and `finish` behaviors. No wrapper actor. Users interact through `StreamSender tag`; `_Connection` is package-private.
 - **Streaming error cleanup**: `_ChainRunner` detects handler error + streaming mode and calls `_finish_streaming()` to terminate abandoned streams.
 - **Pipelined request buffering**: Requests arriving during an active streaming response are buffered and drained after the stream finishes, rather than using a wrapper actor per stream. The buffering approach has zero overhead for the common case (no pipelining during streaming) and avoids adding a message hop per chunk.
+- **HEAD via response mode strategy**: HEAD request handling uses a `_ResponseMode` strategy interface with two implementations (`_StandardResponseMode` and `_HeadResponseMode`). Context delegates response building to the mode, which keeps HEAD/standard logic separated without conditionals in every respond method. HEAD mode suppresses bodies while preserving headers; for streaming, it bypasses `start_chunked_response()` (which would inject `Transfer-Encoding: chunked`) and returns `BodyNotNeeded` instead. Not setting `_streaming` for HEAD is critical — otherwise `_Connection` would buffer pipelined requests waiting for a `finish()` that never arrives.
+- **HEAD→GET fallback**: When no explicit HEAD route is registered, `_Connection` retries the lookup with GET. This happens at the connection level, not the router level, so the router stays method-exact and the fallback is visible in one place.
 
 ## File Layout
 
@@ -74,6 +77,8 @@ hobby/
   application.pony        - Application class (public)
   route_group.pony        - RouteGroup class (public)
   serve_files.pony        - ServeFiles handler (public)
+  body_not_needed.pony    - BodyNotNeeded primitive for HEAD streaming (public)
+  _response_mode.pony     - HEAD vs standard response strategy (internal)
   _content_type.pony      - File extension to MIME type mapping (internal)
   _file_streamer.pony     - Chunked file reader actor (internal)
   _flatten.pony           - Path joining + middleware concatenation (internal)

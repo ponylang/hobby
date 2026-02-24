@@ -121,6 +121,7 @@ primitive StreamHandler is hobby.Handler
       MyProducer(sender)
     | stallion.ChunkedNotSupported =>
       ctx.respond(stallion.StatusOK, "Chunked encoding not supported.")
+    | hobby.BodyNotNeeded => None
     end
 
 actor MyProducer
@@ -137,9 +138,12 @@ actor MyProducer
 ```
 
 `start_streaming()` is partial — it errors if a response has already been
-sent. It returns `(StreamSender tag | ChunkedNotSupported)` so handlers can
-fall back to a non-streaming response when the client doesn't support chunked
-encoding (e.g., HTTP/1.0). If the handler errors after a successful
+sent. It returns `(StreamSender tag | ChunkedNotSupported | BodyNotNeeded)`
+so handlers can fall back to a non-streaming response when the client doesn't
+support chunked encoding (e.g., HTTP/1.0), or skip streaming entirely for
+HEAD requests (`BodyNotNeeded`). Existing handlers that don't match on
+`BodyNotNeeded` work correctly — in a statement-position match, unmatched
+cases silently fall through. If the handler errors after a successful
 `start_streaming()`, the framework automatically terminates the chunked
 response to prevent a hung connection.
 
@@ -147,6 +151,8 @@ response to prevent a hung connection.
 
 Serve files from a directory using the built-in `ServeFiles` handler. Small
 files are served with `Content-Length`; large files use chunked streaming.
+HEAD requests are optimized — `ServeFiles` responds with `Content-Type` and
+`Content-Length` headers without reading the file, regardless of file size.
 Path traversal is prevented by Pony's `FilePath` capability system.
 
 ```pony
@@ -183,8 +189,8 @@ hobby.ServeFiles(root where chunk_threshold = 256)
 
 Users import three packages:
 
-- **`hobby`**: Application, Context, Handler, Middleware, RouteGroup,
-  ServeFiles, StreamSender
+- **`hobby`**: Application, BodyNotNeeded, Context, Handler, Middleware,
+  RouteGroup, ServeFiles, StreamSender
 - **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig,
   ChunkedNotSupported)
 - **`lori`**: `TCPListenAuth(env.root)` for network access

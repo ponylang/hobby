@@ -12,9 +12,13 @@ actor Main
   - GET /        -> static page explaining the /stream endpoint
   - GET /stream  -> chunked streaming response with 5 numbered chunks
 
+  HEAD requests are handled automatically — `start_streaming()` returns
+  `BodyNotNeeded` and the handler skips starting a producer.
+
   Try it:
     curl http://localhost:8080/
     curl http://localhost:8080/stream
+    curl --head http://localhost:8080/stream
   """
   new create(env: Env) =>
     let auth = lori.TCPListenAuth(env.root)
@@ -36,6 +40,7 @@ primitive StreamHandler is hobby.Handler
     | stallion.ChunkedNotSupported =>
       ctx.respond(stallion.StatusOK,
         "Chunked encoding not supported — upgrade to HTTP/1.1.")
+    | hobby.BodyNotNeeded => None
     end
 
 actor ChunkProducer

@@ -71,7 +71,16 @@ actor _Connection is stallion.HTTPServerActor
     responder: stallion.Responder, body: Array[U8] val)
   =>
     let path = request'.uri.path
-    match _router.lookup(request'.method, path)
+    let route_match = match _router.lookup(request'.method, path)
+    | let m: _RouteMatch => m
+    else
+      // HEAD falls back to GET handler when no explicit HEAD route exists
+      if request'.method is stallion.HEAD then
+        _router.lookup(stallion.GET, path)
+      end
+    end
+
+    match route_match
     | let m: _RouteMatch =>
       let ctx = Context(request', responder, m.params, body, this)
       _ChainRunner(ctx, m.handler, m.middleware)
@@ -79,12 +88,20 @@ actor _Connection is stallion.HTTPServerActor
         _streaming_responder = responder
       end
     else
-      let response = stallion.ResponseBuilder(stallion.StatusNotFound)
-        .add_header("Content-Length", "9")
-        .finish_headers()
-        .add_chunk("Not Found")
-        .build()
-      responder.respond(response)
+      if request'.method is stallion.HEAD then
+        let response = stallion.ResponseBuilder(stallion.StatusNotFound)
+          .add_header("Content-Length", "9")
+          .finish_headers()
+          .build()
+        responder.respond(response)
+      else
+        let response = stallion.ResponseBuilder(stallion.StatusNotFound)
+          .add_header("Content-Length", "9")
+          .finish_headers()
+          .add_chunk("Not Found")
+          .build()
+        responder.respond(response)
+      end
     end
 
   fun ref _drain_pending() =>

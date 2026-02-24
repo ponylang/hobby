@@ -26,3 +26,52 @@ hobby.ServeFiles(root where chunk_threshold = 256)
 
 Content-Type is detected from file extensions. Path traversal is prevented by Pony's `FilePath.from()` capability system. HTTP/1.0 clients requesting files above the chunk threshold receive 505 HTTP Version Not Supported rather than having the entire file loaded into memory. Directory requests return 404 — there is no automatic index file lookup (e.g., requesting `/static/` does not serve `/static/index.html`).
 
+## Add automatic HEAD request support
+
+HEAD requests are handled automatically per RFC 7231 §4.3.2. The framework suppresses response bodies while preserving headers (including `Content-Length`). No changes are needed in handlers for non-streaming responses.
+
+When no explicit HEAD route is registered, HEAD requests automatically fall back to the matching GET handler. Explicit HEAD routes (registered via `Application.head()`) take precedence.
+
+For streaming handlers, `start_streaming()` returns `BodyNotNeeded` instead of starting a stream:
+
+```pony
+match ctx.start_streaming(stallion.StatusOK)?
+| let sender: hobby.StreamSender tag =>
+  MyProducer(sender)
+| stallion.ChunkedNotSupported =>
+  ctx.respond(stallion.StatusOK, "Upgrade to HTTP/1.1.")
+| hobby.BodyNotNeeded => None
+end
+```
+
+Existing handlers that don't match on `BodyNotNeeded` work correctly — in a statement-position match, unmatched cases silently fall through. Only handlers that assign the match result need updating.
+
+`ServeFiles` is optimized for HEAD: it responds with `Content-Type` and `Content-Length` headers (from file stat) without reading the file, regardless of file size.
+
+## Change `start_streaming()` return type
+
+`Context.start_streaming()` now returns `(StreamSender tag | ChunkedNotSupported | BodyNotNeeded)` instead of `(StreamSender tag | ChunkedNotSupported)`.
+
+Before:
+
+```pony
+match ctx.start_streaming(stallion.StatusOK)?
+| let sender: hobby.StreamSender tag =>
+  MyProducer(sender)
+| stallion.ChunkedNotSupported =>
+  ctx.respond(stallion.StatusOK, "Fallback response.")
+end
+```
+
+After:
+
+```pony
+match ctx.start_streaming(stallion.StatusOK)?
+| let sender: hobby.StreamSender tag =>
+  MyProducer(sender)
+| stallion.ChunkedNotSupported =>
+  ctx.respond(stallion.StatusOK, "Fallback response.")
+| hobby.BodyNotNeeded => None
+end
+```
+

@@ -10,6 +10,12 @@ class ref Context
   `respond()` or `respond_with_headers()` to send a complete HTTP response,
   or `start_streaming()` to begin a chunked streaming response.
 
+  For HEAD requests, the framework automatically suppresses response bodies
+  while preserving headers (including `Content-Length`). Handlers do not need
+  special HEAD logic — `respond()` and `respond_with_headers()` send
+  headers only, and `start_streaming()` returns `BodyNotNeeded` instead of
+  starting a stream.
+
   Mutation methods (`respond`, `respond_with_headers`, `start_streaming`, `set`)
   require `ref` access. Read-only methods (`param`, `body`, `get`, `is_handled`,
   `is_streaming`) require only `box` access. This split supports the typed accessor convention: middleware
@@ -21,6 +27,7 @@ class ref Context
   let _params: Map[String, String] val
   let _body: Array[U8] val
   let _conn: _Connection tag
+  let _response_mode: _ResponseMode val
   embed _data: Map[String, Any val]
   var _handled: Bool = false
   var _streaming: Bool = false
@@ -37,6 +44,10 @@ class ref Context
     _params = params'
     _body = body'
     _conn = conn'
+    _response_mode =
+      if request'.method is stallion.HEAD then _HeadResponseMode
+      else _StandardResponseMode
+      end
     _data = Map[String, Any val]
 
   fun ref respond(status: stallion.Status, body': ByteSeq) =>
@@ -44,7 +55,8 @@ class ref Context
     Send a complete response with the given status and body.
 
     Sets `Content-Length` automatically. If a response has already been sent,
-    this call is silently ignored (the first response wins).
+    this call is silently ignored (the first response wins). For HEAD requests,
+    the body is suppressed but `Content-Length` is preserved.
     """
     if not _handled then
       _handled = true
@@ -52,12 +64,7 @@ class ref Context
       | let s: String val => s.size()
       | let a: Array[U8] val => a.size()
       end
-      let response = stallion.ResponseBuilder(status)
-        .add_header("Content-Length", body_size.string())
-        .finish_headers()
-        .add_chunk(body')
-        .build()
-      _responder.respond(response)
+      _response_mode.respond(_responder, status, body', body_size)
     end
 
   fun ref respond_with_headers(status: stallion.Status,
@@ -68,19 +75,13 @@ class ref Context
 
     The caller is responsible for including `Content-Length` or any other
     required headers in `headers`. If a response has already been sent, this
-    call is silently ignored.
+    call is silently ignored. For HEAD requests, the body is suppressed but
+    all headers are preserved.
     """
     if not _handled then
       _handled = true
-      let builder = stallion.ResponseBuilder(status)
-      for (name, value) in headers.values() do
-        builder.add_header(name, value)
-      end
-      let response = builder
-        .finish_headers()
-        .add_chunk(body')
-        .build()
-      _responder.respond(response)
+      _response_mode.respond_with_headers(
+        _responder, status, headers, body')
     end
 
   fun box is_handled(): Bool =>
@@ -89,17 +90,25 @@ class ref Context
 
   fun ref start_streaming(status: stallion.Status,
     headers: (stallion.Headers val | None) = None)
-    : (StreamSender tag | stallion.ChunkedNotSupported) ?
+    : (StreamSender tag | stallion.ChunkedNotSupported | BodyNotNeeded) ?
   =>
     """
     Begin a streaming response using chunked transfer encoding.
 
-    Returns `StreamSender tag` on success or `ChunkedNotSupported` if the
-    client does not support chunked encoding (e.g., HTTP/1.0). Errors if
-    a response has already been sent (programmer error).
+    Returns `StreamSender tag` on success, `ChunkedNotSupported` if the
+    client does not support chunked encoding (e.g., HTTP/1.0), or
+    `BodyNotNeeded` for HEAD requests (the framework has already sent a
+    headers-only response). Errors if a response has already been sent
+    (programmer error).
 
     When `ChunkedNotSupported` is returned, `is_handled()` remains `false` and
     the handler can fall back to `ctx.respond()` for a non-streaming response.
+
+    When `BodyNotNeeded` is returned, `is_handled()` is `true` — the handler
+    should not start a producer. Existing handlers that don't match on
+    `BodyNotNeeded` work correctly: in a statement-position match, unmatched
+    cases silently fall through, so the handler does nothing (which is correct
+    for HEAD).
 
     On success, sets `is_handled()` to `true` — no further `respond()` calls
     will take effect. Pass the returned sender to a producer actor. The
@@ -110,15 +119,17 @@ class ref Context
     automatically sends the terminal chunk to prevent a hung connection.
     """
     if _handled then error end
-    match _responder.start_chunked_response(status, headers)
-    | stallion.StreamingStarted =>
+    match _response_mode.start_streaming(
+      _responder, status, headers, _conn)?
+    | let sender: StreamSender tag =>
       _handled = true
       _streaming = true
-      _conn
+      sender
+    | BodyNotNeeded =>
+      _handled = true
+      BodyNotNeeded
     | stallion.ChunkedNotSupported =>
       stallion.ChunkedNotSupported
-    | stallion.AlreadyResponded =>
-      error
     end
 
   fun box is_streaming(): Bool =>

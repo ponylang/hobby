@@ -9,9 +9,9 @@ interface val Handler
   Call `ctx.respond()` or `ctx.respond_with_headers()` to send a complete
   response, or `ctx.start_streaming()` to begin a chunked streaming response.
   `start_streaming()` is partial — it errors if a response has already been
-  sent, and returns `(StreamSender tag | ChunkedNotSupported)` so handlers
-  can fall back to a non-streaming response when the client doesn't support
-  chunked encoding.
+  sent, and returns `(StreamSender tag | ChunkedNotSupported | BodyNotNeeded)`
+  so handlers can fall back to a non-streaming response when the client doesn't
+  support chunked encoding, or skip streaming entirely for HEAD requests.
 
   If the handler returns without responding, the framework sends 500 Internal
   Server Error. The `?` allows genuine errors to propagate — if the handler
