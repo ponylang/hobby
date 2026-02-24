@@ -20,4 +20,4 @@ Serves static files from a `public/` directory using the built-in `ServeFiles` h
 
 ## [streaming](streaming/)
 
-Streaming responses with chunked transfer encoding. A handler starts a stream and passes the sender to a producer actor that sends chunks asynchronously. Also demonstrates falling back to a non-streaming response when the client doesn't support chunked encoding (`ChunkedNotSupported`).
+Streaming responses with chunked transfer encoding. A handler starts a stream and passes the sender to a producer actor that sends chunks asynchronously. Also demonstrates falling back to a non-streaming response when the client doesn't support chunked encoding (`ChunkedNotSupported`) and handling HEAD requests via `BodyNotNeeded`.

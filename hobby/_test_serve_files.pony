@@ -12,6 +12,8 @@ primitive \nodoc\ _TestServeFilesList
     test(_TestServeFilesTraversal404)
     test(_TestServeFilesDirectory404)
     test(_TestServeFilesLargeFileHTTP10)
+    test(_TestServeFilesHeadSmallFile)
+    test(_TestServeFilesHeadLargeFile)
 
 // --- Test setup ---
 
@@ -187,6 +189,47 @@ class \nodoc\ iso _TestServeFilesLargeFileHTTP10 is UnitTest
       _IntegrationHelpers.run_test(h, router,
         "GET /static/large.txt HTTP/1.0\r\nHost: localhost\r\n\r\n",
         "HTTP Version Not Supported")
+    else
+      h.fail("test setup failed")
+    end
+
+class \nodoc\ iso _TestServeFilesHeadSmallFile is UnitTest
+  """HEAD for small file: Content-Length header present, body absent."""
+  fun name(): String => "integration/serve-files/HEAD small file"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    try
+      let root = _ServeFilesTestSetup(h.env)?
+      let router = _IntegrationHelpers.build_router(recover val
+        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+      end)
+      // Headers go through stallion.Headers which lowercases names.
+      _HeadIntegrationHelpers.run_head_test(h, router,
+        "HEAD /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
+        "content-length: 20", "Hello from test file")
+    else
+      h.fail("test setup failed")
+    end
+
+class \nodoc\ iso _TestServeFilesHeadLargeFile is UnitTest
+  """HEAD for large file: Content-Length from stat, body absent."""
+  fun name(): String => "integration/serve-files/HEAD large file"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    try
+      let root = _ServeFilesTestSetup(h.env)?
+      let handler = ServeFiles(root where chunk_threshold = 1)
+      let router = _IntegrationHelpers.build_router(recover val
+        [(stallion.GET, "/static/*filepath", handler, None)]
+      end)
+      // Headers go through stallion.Headers which lowercases names.
+      _HeadIntegrationHelpers.run_head_test(h, router,
+        "HEAD /static/large.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
+        "content-length: 2048", "LARGE_FILE_MARKER:")
     else
       h.fail("test setup failed")
     end

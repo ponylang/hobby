@@ -24,6 +24,13 @@ primitive \nodoc\ _TestIntegrationList
     test(_TestPipelinedStreaming)
     test(_TestStreamingAlreadyResponded)
     test(_TestStreamingChunkedNotSupported)
+    test(_TestHeadFallbackToGet)
+    test(_TestHeadExplicitRoute)
+    test(_TestHead404)
+    test(_TestHeadWithMiddleware)
+    test(_TestHeadStreamingHandler)
+    test(_TestHeadPostOnlyRoute)
+    test(_TestHeadStreamingPipelinedGet)
 
 // --- Test helpers ---
 
@@ -555,3 +562,191 @@ class \nodoc\ iso _TestStreamingChunkedNotSupported is UnitTest
     _IntegrationHelpers.run_test(h, router,
       "GET / HTTP/1.0\r\nHost: localhost\r\n\r\n",
       "chunked-fallback")
+
+// --- HEAD test helpers ---
+
+actor \nodoc\ _TestHeadClient is (lori.TCPConnectionActor & lori.ClientLifecycleEventReceiver)
+  """
+  TCP client for HEAD tests: checks that an expected header is present AND
+  a forbidden body string is absent.
+
+  For correct HEAD responses (headers only), the full response arrives in one
+  TCP segment, so the forbidden-body check is reliable.
+  """
+  var _tcp_connection: lori.TCPConnection = lori.TCPConnection.none()
+  let _h: TestHelper
+  let _request: String
+  let _expect_header: String
+  let _forbid_body: String
+  let _listener: _TestIntegrationListener
+  var _response: String iso = recover iso String end
+
+  new create(auth: lori.TCPConnectAuth, host: String, port: String,
+    h: TestHelper, request: String, expect_header: String,
+    forbid_body: String, listener: _TestIntegrationListener)
+  =>
+    _h = h
+    _request = request
+    _expect_header = expect_header
+    _forbid_body = forbid_body
+    _listener = listener
+    _tcp_connection = lori.TCPConnection.client(auth, host, port, "", this, this)
+
+  fun ref _connection(): lori.TCPConnection => _tcp_connection
+
+  fun ref _on_connected() =>
+    _tcp_connection.send(_request)
+
+  fun ref _on_received(data: Array[U8] iso) =>
+    _response.append(consume data)
+    let response_str: String val = _response.clone()
+    if response_str.contains(_expect_header) then
+      _h.assert_false(response_str.contains(_forbid_body),
+        "HEAD response must not contain body: " + _forbid_body)
+      _tcp_connection.close()
+      _listener.dispose()
+      _h.complete(true)
+    end
+
+  fun ref _on_closed() => None
+
+  fun ref _on_connection_failure() =>
+    _h.fail("connection failed")
+    _listener.dispose()
+    _h.complete(false)
+
+// --- HEAD test handler ---
+
+primitive \nodoc\ _HeadOnlyHandler is Handler
+  fun apply(ctx: Context ref) =>
+    ctx.respond(stallion.StatusOK, "HEAD only response")
+
+// --- HEAD helpers ---
+
+primitive \nodoc\ _HeadIntegrationHelpers
+  fun run_head_test(h: TestHelper, router: _Router val,
+    request: String, expect_header: String, forbid_body: String)
+  =>
+    h.long_test(5_000_000_000)
+    let host = _TestHost()
+    let config = stallion.ServerConfig(host, "0")
+    let auth = lori.TCPListenAuth(h.env.root)
+    let connect_auth = lori.TCPConnectAuth(h.env.root)
+    _TestIntegrationListener(auth, config, router, h,
+      {(h': TestHelper, port: String,
+        listener: _TestIntegrationListener) =>
+        _TestHeadClient(connect_auth, host, port, h', request,
+          expect_header, forbid_body, listener)
+      })
+
+// --- HEAD integration tests ---
+
+class \nodoc\ iso _TestHeadFallbackToGet is UnitTest
+  """HEAD with no explicit HEAD route falls back to GET handler."""
+  fun name(): String => "integration/HEAD fallback to GET"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.GET, "/", _HelloHandler, None)]
+    end)
+    _HeadIntegrationHelpers.run_head_test(h, router,
+      "HEAD / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "Content-Length: 17", "Hello from Hobby!")
+
+class \nodoc\ iso _TestHeadExplicitRoute is UnitTest
+  """Explicit HEAD route takes precedence over GET fallback."""
+  fun name(): String => "integration/HEAD explicit route"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let router = _IntegrationHelpers.build_router(recover val
+      [ (stallion.HEAD, "/", _HeadOnlyHandler, None)
+        (stallion.GET, "/", _HelloHandler, None) ]
+    end)
+    _HeadIntegrationHelpers.run_head_test(h, router,
+      "HEAD / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "Content-Length: 18", "HEAD only response")
+
+class \nodoc\ iso _TestHead404 is UnitTest
+  """HEAD to nonexistent path returns 404 headers without body."""
+  fun name(): String => "integration/HEAD 404"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.GET, "/", _HelloHandler, None)]
+    end)
+    // Forbid "\r\n\r\nNot Found" (body after headers), not just "Not Found"
+    // which also appears in the status line "404 Not Found".
+    _HeadIntegrationHelpers.run_head_test(h, router,
+      "HEAD /nonexistent HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "Content-Length: 9", "\r\n\r\nNot Found")
+
+class \nodoc\ iso _TestHeadWithMiddleware is UnitTest
+  """HEAD with middleware: body suppressed, headers preserved."""
+  fun name(): String => "integration/HEAD with middleware"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let mw: Array[Middleware val] val = recover val
+      [as Middleware val: _SetDataMiddleware("test_key", "middleware_value")]
+    end
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.GET, "/data", _DataReadHandler, mw)]
+    end)
+    _HeadIntegrationHelpers.run_head_test(h, router,
+      "HEAD /data HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "Content-Length: 16", "middleware_value")
+
+class \nodoc\ iso _TestHeadStreamingHandler is UnitTest
+  """HEAD to streaming handler: returns 200 OK without chunks."""
+  fun name(): String => "integration/HEAD streaming handler"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.GET, "/", _StreamingHandler, None)]
+    end)
+    _HeadIntegrationHelpers.run_head_test(h, router,
+      "HEAD / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "200 OK", "chunk-1;")
+
+class \nodoc\ iso _TestHeadPostOnlyRoute is UnitTest
+  """HEAD to POST-only route returns 404 (HEAD only falls back to GET)."""
+  fun name(): String => "integration/HEAD on POST-only route"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.POST, "/echo", _EchoBodyHandler, None)]
+    end)
+    // Forbid "\r\n\r\nNot Found" (body after headers), not just "Not Found"
+    // which also appears in the status line "404 Not Found".
+    _HeadIntegrationHelpers.run_head_test(h, router,
+      "HEAD /echo HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "Content-Length: 9", "\r\n\r\nNot Found")
+
+class \nodoc\ iso _TestHeadStreamingPipelinedGet is UnitTest
+  """
+  HEAD to streaming handler followed by pipelined GET: HEAD completes without
+  setting streaming mode, so the GET is NOT buffered and processes immediately.
+  """
+  fun name(): String => "integration/HEAD streaming + pipelined GET"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.GET, "/", _StreamingHandler, None)]
+    end)
+    _IntegrationHelpers.run_test(h, router,
+      "HEAD / HTTP/1.1\r\nHost: localhost\r\n\r\n" +
+        "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "chunk-1;")

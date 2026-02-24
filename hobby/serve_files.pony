@@ -11,6 +11,9 @@ class val ServeFiles is Handler
   small files are still served normally, but large files are rejected
   with 505 HTTP Version Not Supported to prevent memory exhaustion.
 
+  HEAD requests are optimized: the handler responds with `Content-Type` and
+  `Content-Length` headers without reading the file, regardless of file size.
+
   Routes must use `*filepath` as the wildcard parameter name:
 
   ```pony
@@ -79,6 +82,21 @@ class val ServeFiles is Handler
     end
 
     let content_type = _ContentType(Path.ext(filepath))
+
+    // HEAD optimization: respond with headers only, skip file I/O entirely.
+    // Content-Length is always set from stat size — even for files that GET
+    // would stream with chunked encoding — since HEAD with Content-Length is
+    // more useful to clients (e.g., checking download size) and is explicitly
+    // allowed by RFC 7231 §4.3.2.
+    if ctx.request.method is stallion.HEAD then
+      let headers = recover val
+        stallion.Headers
+          .>set("Content-Type", content_type)
+          .>set("Content-Length", info.size.string())
+      end
+      ctx.respond_with_headers(stallion.StatusOK, headers, "")
+      return
+    end
 
     if info.size < _chunk_threshold then
       // Small file: read entirely and respond with Content-Length
