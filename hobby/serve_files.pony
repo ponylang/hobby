@@ -14,6 +14,22 @@ class val ServeFiles is Handler
   HEAD requests are optimized: the handler responds with `Content-Type` and
   `Content-Length` headers without reading the file, regardless of file size.
 
+  Responses include caching headers:
+
+  - **ETag**: Weak ETag computed from file metadata (`W/"<inode>-<size>-<mtime>"`).
+    On Windows, `FileInfo.inode` is always 0, reducing collision resistance
+    to size+mtime only.
+  - **Last-Modified**: RFC 7231 IMF-fixdate from the file's modification time.
+  - **Cache-Control**: Configurable via the `cache_control` constructor
+    parameter. Defaults to `"public, max-age=3600"`. Pass `None` to omit.
+
+  Conditional requests are supported per RFC 7232:
+
+  - `If-None-Match` is checked first (ETag comparison using weak matching).
+  - `If-Modified-Since` is checked only when `If-None-Match` is absent.
+  - When either matches, the handler responds with 304 Not Modified (cache
+    headers included, no body).
+
   Routes must use `*filepath` as the wildcard parameter name:
 
   ```pony
@@ -39,8 +55,11 @@ class val ServeFiles is Handler
   """
   let _root: FilePath
   let _chunk_threshold: USize
+  let _cache_control: (String | None)
 
-  new val create(root: FilePath, chunk_threshold: USize = 1024) =>
+  new val create(root: FilePath, chunk_threshold: USize = 1024,
+    cache_control: (String | None) = "public, max-age=3600")
+  =>
     """
     Create a handler that serves files under `root`.
 
@@ -49,11 +68,15 @@ class val ServeFiles is Handler
     chunked streaming is used instead of a single response. Default: 1024
     (1 MB).
 
+    `cache_control` sets the `Cache-Control` header value. Defaults to
+    `"public, max-age=3600"` (1 hour). Pass `None` to omit the header.
+
     If the route uses a wildcard name other than `*filepath`, param lookup
     will fail and the handler will return 500. Always use `*filepath`.
     """
     _root = root
     _chunk_threshold = chunk_threshold * 1024
+    _cache_control = cache_control
 
   fun apply(ctx: Context ref) ? =>
     // Extract the wildcard param — errors if not named "filepath" (500)
@@ -83,6 +106,37 @@ class val ServeFiles is Handler
 
     let content_type = _ContentType(Path.ext(filepath))
 
+    // Compute cache identifiers from file metadata
+    (let mod_secs, _) = info.modified_time
+    let etag = _ETag(info.inode, info.size, mod_secs)
+    let last_modified = _HttpDate(mod_secs)
+
+    // Conditional request validation (RFC 7232 §3):
+    // If-None-Match takes precedence over If-Modified-Since
+    let not_modified = match ctx.request.headers.get("if-none-match")
+    | let inm: String => _ETag.matches(inm, etag)
+    else
+      match ctx.request.headers.get("if-modified-since")
+      | let ims: String => ims == last_modified
+      else
+        false
+      end
+    end
+
+    if not_modified then
+      let headers = recover val
+        let h = stallion.Headers
+          .>set("ETag", etag)
+          .>set("Last-Modified", last_modified)
+        match _cache_control
+        | let cc: String => h.>set("Cache-Control", cc)
+        end
+        h
+      end
+      ctx.respond_with_headers(stallion.StatusNotModified, headers, "")
+      return
+    end
+
     // HEAD optimization: respond with headers only, skip file I/O entirely.
     // Content-Length is always set from stat size — even for files that GET
     // would stream with chunked encoding — since HEAD with Content-Length is
@@ -90,9 +144,15 @@ class val ServeFiles is Handler
     // allowed by RFC 7231 §4.3.2.
     if ctx.request.method is stallion.HEAD then
       let headers = recover val
-        stallion.Headers
+        let h = stallion.Headers
           .>set("Content-Type", content_type)
           .>set("Content-Length", info.size.string())
+          .>set("ETag", etag)
+          .>set("Last-Modified", last_modified)
+        match _cache_control
+        | let cc: String => h.>set("Cache-Control", cc)
+        end
+        h
       end
       ctx.respond_with_headers(stallion.StatusOK, headers, "")
       return
@@ -106,9 +166,15 @@ class val ServeFiles is Handler
       file.dispose()
       let body_size = body.size()
       let headers = recover val
-        stallion.Headers
+        let h = stallion.Headers
           .>set("Content-Type", content_type)
           .>set("Content-Length", body_size.string())
+          .>set("ETag", etag)
+          .>set("Last-Modified", last_modified)
+        match _cache_control
+        | let cc: String => h.>set("Cache-Control", cc)
+        end
+        h
       end
       ctx.respond_with_headers(stallion.StatusOK, headers, consume body)
     else
@@ -120,8 +186,14 @@ class val ServeFiles is Handler
       end
 
       let headers = recover val
-        stallion.Headers
+        let h = stallion.Headers
           .>set("Content-Type", content_type)
+          .>set("ETag", etag)
+          .>set("Last-Modified", last_modified)
+        match _cache_control
+        | let cc: String => h.>set("Cache-Control", cc)
+        end
+        h
       end
       match ctx.start_streaming(stallion.StatusOK, headers)?
       | let sender: StreamSender tag =>
