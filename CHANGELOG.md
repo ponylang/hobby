@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file. This projec
 
 - Add built-in static file serving handler ([PR #19](https://github.com/ponylang/hobby/pull/19))
 - Add caching headers for ServeFiles ([PR #23](https://github.com/ponylang/hobby/pull/23))
-- Add automatic index file serving for directories
+- Add automatic index file serving for directories ([PR #24](https://github.com/ponylang/hobby/pull/24))
 
 ### Changed
 
