@@ -30,6 +30,15 @@ class val ServeFiles is Handler
   - When either matches, the handler responds with 304 Not Modified (cache
     headers included, no body).
 
+  Custom content types can be added via the `content_types` parameter:
+
+  ```pony
+  let types = hobby.ContentTypes
+    .add("webp", "image/webp")
+    .add("avif", "image/avif")
+  hobby.ServeFiles(root where content_types = types)
+  ```
+
   Routes must use `*filepath` as the wildcard parameter name:
 
   ```pony
@@ -58,9 +67,11 @@ class val ServeFiles is Handler
   let _root: FilePath
   let _chunk_threshold: USize
   let _cache_control: (String | None)
+  let _content_types: ContentTypes
 
   new val create(root: FilePath, chunk_threshold: USize = 1024,
-    cache_control: (String | None) = "public, max-age=3600")
+    cache_control: (String | None) = "public, max-age=3600",
+    content_types: ContentTypes = ContentTypes)
   =>
     """
     Create a handler that serves files under `root`.
@@ -73,12 +84,17 @@ class val ServeFiles is Handler
     `cache_control` sets the `Cache-Control` header value. Defaults to
     `"public, max-age=3600"` (1 hour). Pass `None` to omit the header.
 
+    `content_types` controls the file extension to MIME type mapping.
+    Defaults to a `ContentTypes` with 17 common extensions. Chain
+    `.add()` calls to add custom mappings.
+
     If the route uses a wildcard name other than `*filepath`, param lookup
     will fail and the handler will return 500. Always use `*filepath`.
     """
     _root = root
     _chunk_threshold = chunk_threshold * 1024
     _cache_control = cache_control
+    _content_types = content_types
 
   fun apply(ctx: Context ref) ? =>
     // Extract the wildcard param — errors if not named "filepath" (500)
@@ -122,7 +138,7 @@ class val ServeFiles is Handler
       return
     end
 
-    let content_type = _ContentType(Path.ext(resolved.path))
+    let content_type = _content_types(Path.ext(resolved.path))
 
     // Compute cache identifiers from file metadata
     (let mod_secs, _) = info.modified_time

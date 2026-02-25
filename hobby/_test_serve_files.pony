@@ -30,6 +30,7 @@ primitive \nodoc\ _TestServeFilesList
     test(_TestServeFilesDirectoryIndexCacheHeaders)
     test(_TestServeFilesDirectoryIndexHead)
     test(_TestServeFilesDirectoryIndex304)
+    test(_TestServeFilesCustomContentType)
 
 // --- Test setup ---
 
@@ -66,6 +67,9 @@ primitive \nodoc\ _ServeFilesTestSetup
     // Subdirectory with index.html for directory index test
     FilePath.from(root, "indexed")?.mkdir()
     _write_file(root, "indexed/index.html", "<h1>Index</h1>")?
+
+    // File with custom extension for content-type override testing
+    _write_file(root, "image.custom", "custom-content")?
 
     root
 
@@ -672,6 +676,29 @@ class \nodoc\ iso _TestServeFilesDirectoryIndex304 is UnitTest
         "GET /static/indexed HTTP/1.1\r\nHost: localhost\r\n" +
           "If-None-Match: " + etag + "\r\n\r\n",
         "304 Not Modified")
+    else
+      h.fail("test setup failed")
+    end
+
+// --- Custom content types ---
+
+class \nodoc\ iso _TestServeFilesCustomContentType is UnitTest
+  """Custom content type mapping is used for file responses."""
+  fun name(): String => "integration/serve-files/custom content type"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    try
+      let root = _ServeFilesTestSetup(h.env)?
+      let types = ContentTypes.add("custom", "application/x-custom")
+      let handler = ServeFiles(root where content_types = types)
+      let router = _IntegrationHelpers.build_router(recover val
+        [(stallion.GET, "/static/*filepath", handler, None)]
+      end)
+      _IntegrationHelpers.run_test(h, router,
+        "GET /static/image.custom HTTP/1.1\r\nHost: localhost\r\n\r\n",
+        "application/x-custom")
     else
       h.fail("test setup failed")
     end

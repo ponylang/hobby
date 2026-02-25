@@ -185,12 +185,21 @@ serving a file in one response vs chunked streaming. Default is 1024 (1 MB):
 hobby.ServeFiles(root where chunk_threshold = 256)
 ```
 
+Custom content types can be added or defaults overridden via `ContentTypes`:
+
+```pony
+let types = hobby.ContentTypes
+  .add("webp", "image/webp")
+  .add("avif", "image/avif")
+hobby.ServeFiles(root where content_types = types)
+```
+
 ## Imports
 
 Users import three packages:
 
-- **`hobby`**: Application, BodyNotNeeded, Context, Handler, Middleware,
-  RouteGroup, ServeFiles, StreamSender
+- **`hobby`**: Application, BodyNotNeeded, ContentTypes, Context, Handler,
+  Middleware, RouteGroup, ServeFiles, StreamSender
 - **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig,
   ChunkedNotSupported)
 - **`lori`**: `TCPListenAuth(env.root)` for network access
