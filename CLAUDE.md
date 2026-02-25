@@ -31,7 +31,7 @@ The `ssl` option is required — Stallion transitively depends on the `ssl` pack
 
 ### Public API
 
-Users interact with eight types:
+Users interact with nine types:
 
 - **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_middleware()` for app-level middleware. `serve()` consumes the Application, freezes routes into an immutable router, and starts listening.
 - **`RouteGroup`** (`class iso`): Groups routes under a shared prefix and optional middleware. Supports nesting via `group()`. Consumed by `Application.group()` or outer `RouteGroup.group()`.
@@ -39,7 +39,8 @@ Users interact with eight types:
 - **`Middleware`** (`interface val`): Two-phase processor. `before` (partial) runs before the handler; `after` (not partial) runs after, in reverse order.
 - **`Context`** (`class ref`): Request context with route params, body, data map, and respond methods. `start_streaming()` is partial and returns `(StreamSender tag | stallion.ChunkedNotSupported | BodyNotNeeded)`. For HEAD requests, response bodies are automatically suppressed while headers are preserved.
 - **`BodyNotNeeded`** (`primitive`): Returned by `Context.start_streaming()` for HEAD requests. Signals that the framework has already sent a headers-only response and the handler should not start a producer.
-- **`ServeFiles`** (`class val`): Built-in handler for serving static files from a directory. Small files served with Content-Length; large files streamed with chunked encoding. Directory requests automatically serve `index.html` if present; otherwise 404. Includes caching headers (ETag, Last-Modified, Cache-Control) and supports conditional requests (304 Not Modified) per RFC 7232. `cache_control` constructor parameter controls the Cache-Control value (default `"public, max-age=3600"`, `None` to omit). Path traversal prevented by `FilePath.from()`. Routes must use `*filepath` as the wildcard param name.
+- **`ContentTypes`** (`class val`): File extension to MIME content type mapping. Ships with 17 common defaults. Chain `.add()` calls to add or override mappings — each returns a new `ContentTypes val`. Lookups are case-insensitive. Unknown extensions return `application/octet-stream`. Passed to `ServeFiles` via the `content_types` parameter.
+- **`ServeFiles`** (`class val`): Built-in handler for serving static files from a directory. Small files served with Content-Length; large files streamed with chunked encoding. Directory requests automatically serve `index.html` if present; otherwise 404. Includes caching headers (ETag, Last-Modified, Cache-Control) and supports conditional requests (304 Not Modified) per RFC 7232. `cache_control` constructor parameter controls the Cache-Control value (default `"public, max-age=3600"`, `None` to omit). `content_types` parameter controls extension-to-MIME mapping (default `ContentTypes` with standard mappings). Path traversal prevented by `FilePath.from()`. Routes must use `*filepath` as the wildcard param name.
 - **`StreamSender`** (`interface tag`): Streaming response sender. Returned by `Context.start_streaming()` on success. Receives `send_chunk()` and `finish()` behavior calls from producer actors.
 
 ### Internal layers
@@ -80,7 +81,7 @@ hobby/
   serve_files.pony        - ServeFiles handler (public)
   body_not_needed.pony    - BodyNotNeeded primitive for HEAD streaming (public)
   _response_mode.pony     - HEAD vs standard response strategy (internal)
-  _content_type.pony      - File extension to MIME type mapping (internal)
+  content_types.pony      - ContentTypes class + defaults (public)
   _http_date.pony         - RFC 7231 HTTP-date formatting (internal)
   _etag.pony              - Weak ETag computation and matching (internal)
   _file_streamer.pony     - Chunked file reader actor (internal)

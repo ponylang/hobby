@@ -18,6 +18,10 @@ Starts an HTTP server with grouped routes sharing prefixes and middleware. Demon
 
 Serves static files from a `public/` directory using the built-in `ServeFiles` handler. Demonstrates mounting a file-serving route with a `*filepath` wildcard parameter and creating the root `FilePath` from `FileAuth`. Includes sample HTML and CSS files plus a `docs/` subdirectory with an `index.html` that is served automatically when visiting `/static/docs/`. Responses include caching headers (ETag, Last-Modified, Cache-Control) and support conditional requests (304 Not Modified).
 
+## [custom-content-types](custom-content-types/)
+
+Serves static files with custom MIME type mappings for `.webp` and `.avif` image formats using `ContentTypes.with_overrides`. These extensions are not in the default set, so without overrides they would be served as `application/octet-stream`. Demonstrates how to extend the built-in content type mapping and pass it to `ServeFiles`.
+
 ## [streaming](streaming/)
 
 Streaming responses with chunked transfer encoding. A handler starts a stream and passes the sender to a producer actor that sends chunks asynchronously. Also demonstrates falling back to a non-streaming response when the client doesn't support chunked encoding (`ChunkedNotSupported`) and handling HEAD requests via `BodyNotNeeded`.
