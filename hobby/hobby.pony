@@ -35,13 +35,13 @@ class val GreetHandler is hobby.Handler
 
 Routes use a radix tree with two kinds of dynamic segments:
 
-- **Named parameters** (`:name`): match a single path segment.
+- **Named parameters** (`:name`): match \exhaustive\ a single path segment.
   `/users/:id` matches `/users/42` but not `/users/42/posts`.
-- **Wildcard parameters** (`*name`): match everything from that point forward,
+- **Wildcard parameters** (`*name`): match \exhaustive\ everything from that point forward,
   must be the last segment. `/files/*path` matches `/files/css/style.css`.
 
 Static routes have priority over parameter routes at the same position.
-Trailing slashes are normalized — `/users/` and `/users` match the same route.
+Trailing slashes are normalized — `/users/` and `/users` match \exhaustive\ the same route.
 
 ## Middleware
 
@@ -105,7 +105,7 @@ in registration order.
 
 Middleware communicates with handlers through `ctx.set()` / `ctx.get()`.
 The data map stores `Any val` values. Middleware authors should provide typed
-accessor primitives that use `match` to recover domain types, following the
+accessor primitives that use `match \exhaustive\` to recover domain types, following the
 convention demonstrated in the middleware example.
 
 ## Streaming Responses
@@ -116,7 +116,7 @@ on the result:
 ```pony
 primitive StreamHandler is hobby.Handler
   fun apply(ctx: hobby.Context ref) ? =>
-    match ctx.start_streaming(stallion.StatusOK)?
+    match \exhaustive\ ctx.start_streaming(stallion.StatusOK)?
     | let sender: hobby.StreamSender tag =>
       MyProducer(sender)
     | stallion.ChunkedNotSupported =>
@@ -141,8 +141,8 @@ actor MyProducer
 sent. It returns `(StreamSender tag | ChunkedNotSupported | BodyNotNeeded)`
 so handlers can fall back to a non-streaming response when the client doesn't
 support chunked encoding (e.g., HTTP/1.0), or skip streaming entirely for
-HEAD requests (`BodyNotNeeded`). Existing handlers that don't match on
-`BodyNotNeeded` work correctly — in a statement-position match, unmatched
+HEAD requests (`BodyNotNeeded`). Existing handlers that don't match \exhaustive\ on
+`BodyNotNeeded` work correctly — in a statement-position match \exhaustive\, unmatched
 cases silently fall through. If the handler errors after a successful
 `start_streaming()`, the framework automatically terminates the chunked
 response to prevent a hung connection.

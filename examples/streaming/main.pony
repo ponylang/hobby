@@ -34,7 +34,7 @@ primitive IndexHandler is hobby.Handler
 
 primitive StreamHandler is hobby.Handler
   fun apply(ctx: hobby.Context ref) ? =>
-    match ctx.start_streaming(stallion.StatusOK)?
+    match \exhaustive\ ctx.start_streaming(stallion.StatusOK)?
     | let sender: hobby.StreamSender tag =>
       ChunkProducer(sender)
     | stallion.ChunkedNotSupported =>

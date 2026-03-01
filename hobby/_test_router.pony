@@ -111,7 +111,7 @@ class \nodoc\ iso _PropertyParamExtraction is
     let router = builder.build()
 
     let lookup_path: String val = prefix + "/testvalue"
-    match router.lookup(stallion.GET, lookup_path)
+    match \exhaustive\ router.lookup(stallion.GET, lookup_path)
     | let m: _RouteMatch =>
       try
         h.assert_eq[String]("testvalue", m.params(param_name)?)

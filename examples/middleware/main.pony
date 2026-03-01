@@ -64,7 +64,7 @@ primitive AuthData
   Typed accessor for auth middleware context data.
 
   Middleware authors provide accessor primitives like this to give handlers
-  type-safe access to context data via `match`, avoiding raw string-key
+  type-safe access to context data via `match \exhaustive\`, avoiding raw string-key
   lookups and `as` casts.
   """
   fun user(ctx: hobby.Context box): AuthenticatedUser ? =>
