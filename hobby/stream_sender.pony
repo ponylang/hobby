@@ -4,7 +4,7 @@ interface tag StreamSender
 
   Returned by `Context.start_streaming()` on success. `start_streaming()` may
   also return `ChunkedNotSupported` when the client doesn't support chunked
-  encoding, or `BodyNotNeeded` for HEAD requests — callers should `match \exhaustive\` on
+  encoding, or `BodyNotNeeded` for HEAD requests — callers should `match` on
   the result before using the sender.
 
   Pass this to a producer actor that sends chunks asynchronously via

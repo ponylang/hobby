@@ -1,6 +1,6 @@
 primitive _ETag
   """
-  Compute and match \exhaustive\ weak ETags from file metadata.
+  Compute and match weak ETags from file metadata.
 
   ETags use the weak format `W/"<inode>-<size>-<mtime_secs>"`, matching the
   approach used by nginx and Apache. No file content hashing — computing a

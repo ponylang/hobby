@@ -105,8 +105,8 @@ class ref Context
     the handler can fall back to `ctx.respond()` for a non-streaming response.
 
     When `BodyNotNeeded` is returned, `is_handled()` is `true` — the handler
-    should not start a producer. Existing handlers that don't match \exhaustive\ on
-    `BodyNotNeeded` work correctly: in a statement-position match \exhaustive\, unmatched
+    should not start a producer. Existing handlers that don't match on
+    `BodyNotNeeded` work correctly: in a statement-position match, unmatched
     cases silently fall through, so the handler does nothing (which is correct
     for HEAD).
 
@@ -174,7 +174,7 @@ class ref Context
     Retrieve a value from the context data map.
 
     Errors if the key does not exist. Middleware authors should provide typed
-    accessor primitives that wrap this method with `match \exhaustive\` to recover domain
+    accessor primitives that wrap this method with `match` to recover domain
     types.
     """
     _data(key)?
