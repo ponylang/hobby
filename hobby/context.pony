@@ -60,7 +60,7 @@ class ref Context
     """
     if not _handled then
       _handled = true
-      let body_size: USize = match body'
+      let body_size: USize = match \exhaustive\ body'
       | let s: String val => s.size()
       | let a: Array[U8] val => a.size()
       end
@@ -119,7 +119,7 @@ class ref Context
     automatically sends the terminal chunk to prevent a hung connection.
     """
     if _handled then error end
-    match _response_mode.start_streaming(
+    match \exhaustive\ _response_mode.start_streaming(
       _responder, status, headers, _conn)?
     | let sender: StreamSender tag =>
       _handled = true

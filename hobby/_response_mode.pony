@@ -45,7 +45,7 @@ primitive _StandardResponseMode is _ResponseMode
     headers: (stallion.Headers val | None), conn: _Connection tag)
     : (StreamSender tag | stallion.ChunkedNotSupported | BodyNotNeeded) ?
   =>
-    match responder.start_chunked_response(status, headers)
+    match \exhaustive\ responder.start_chunked_response(status, headers)
     | stallion.StreamingStarted => conn
     | stallion.ChunkedNotSupported => stallion.ChunkedNotSupported
     | stallion.AlreadyResponded => error
