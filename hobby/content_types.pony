@@ -2,7 +2,8 @@ use "collections"
 
 primitive _ContentTypeDefaults
   """
-  Build the default content-type map with 17 common file extensions.
+  Build the default content-type map with 17 common file
+  extensions.
   """
   fun apply(): Map[String, String] ref^ =>
     let m = Map[String, String](24)
@@ -29,20 +30,22 @@ class val ContentTypes
   """
   Map file extensions to MIME content types.
 
-  Ships with 17 common defaults (html, css, js, json, xml, txt, png, jpg,
-  jpeg, gif, svg, ico, woff, woff2, pdf, wasm, htm). Chain `add` calls to
-  add custom mappings or override defaults — each call returns a new
-  `ContentTypes` with the entry added:
+  Ships with 17 common defaults (html, css, js, json, xml, txt,
+  png, jpg, jpeg, gif, svg, ico, woff, woff2, pdf, wasm, htm).
+  Chain `add` calls to add custom mappings or override defaults --
+  each call returns a new `ContentTypes` with the entry added:
 
   ```pony
   let types = hobby.ContentTypes
     .add("webp", "image/webp")
     .add("avif", "image/avif")
-  hobby.ServeFiles(root where content_types = types)
+  hobby.ServeFiles(
+    root where content_types = types)
   ```
 
-  Lookups are case-insensitive — both the default keys and user-provided keys
-  are lowercased. Unknown extensions return `application/octet-stream`.
+  Lookups are case-insensitive -- both the default keys and
+  user-provided keys are lowercased. Unknown extensions return
+  `application/octet-stream`.
   """
   let _map: Map[String, String] val
 
@@ -58,14 +61,19 @@ class val ContentTypes
     """
     _map = map
 
-  fun val add(ext: String, mime: String): ContentTypes val =>
+  fun val add(
+    ext: String,
+    mime: String)
+    : ContentTypes val
+  =>
     """
-    Return a new `ContentTypes` with the given mapping added. If `ext`
-    already exists, the new MIME type replaces the previous one. The
-    extension is lowercased before insertion so lookups are always
-    case-insensitive.
+    Return a new `ContentTypes` with the given mapping added. If
+    `ext` already exists, the new MIME type replaces the previous
+    one. The extension is lowercased before insertion so lookups
+    are always case-insensitive.
     """
-    let new_map = recover val
+    let new_map =
+      recover val
       let m = Map[String, String](_map.size() + 1)
       for (k, v) in _map.pairs() do
         m(k) = v
@@ -77,8 +85,9 @@ class val ContentTypes
 
   fun apply(ext: String): String =>
     """
-    Look up the MIME type for `ext`. Returns `application/octet-stream` when
-    the extension is not in the map.
+    Look up the MIME type for `ext`. Returns
+    `application/octet-stream` when the extension is not in the
+    map.
     """
     try
       _map(ext.lower())?

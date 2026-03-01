@@ -7,10 +7,12 @@ primitive \nodoc\ _TestRouterList
   fun tests(test: PonyTest) =>
     test(Property1UnitTest[String](_PropertyStaticRouteMatches))
     test(Property1UnitTest[String](_PropertyUnregisteredReturnsNone))
-    test(Property1UnitTest[
-      (String, String)](_PropertyParamExtraction))
-    test(Property1UnitTest[
-      (String, String, String)](_PropertyMultipleParams))
+    test(
+      Property1UnitTest[(String, String)](
+        _PropertyParamExtraction))
+    test(
+      Property1UnitTest[(String, String, String)](
+        _PropertyMultipleParams))
     test(Property1UnitTest[stallion.Method](_PropertyMethodIsolation))
     test(Property1UnitTest[String](_PropertyWildcardCapture))
     test(_TestStaticPriorityOverParam)
@@ -20,51 +22,58 @@ primitive \nodoc\ _TestRouterList
     test(_TestTrailingSlashNormalization)
 
 // --- Generators ---
-
 primitive \nodoc\ _GenPathSegment
-  """Generate a single path segment: lowercase letters, length 1-10."""
+  """
+  Generate a single path segment: lowercase letters, length 1-10.
+  """
   fun apply(): Generator[String] =>
     Generators.ascii(1, 10 where range = ASCIILetters)
 
 primitive \nodoc\ _GenStaticPath
-  """Generate a static path like `/foo/bar/baz` with 1-3 segments."""
+  """
+  Generate a static path like `/foo/bar/baz` with 1-3 segments.
+  """
   fun apply(): Generator[String] =>
     Generators.map2[String, String, String](
       _GenPathSegment(),
       _GenPathSegment(),
       {(a: String, b: String): String =>
         recover val
-          let s = String
-          s.append("/")
-          s.append(a)
-          s.append("/")
-          s.append(b)
-          s
+          String
+            .> append("/")
+            .> append(a)
+            .> append("/")
+            .> append(b)
         end
       })
 
 primitive \nodoc\ _GenParamName
-  """Generate a parameter name: alphabetic, length 1-10."""
+  """
+  Generate a parameter name: alphabetic, length 1-10.
+  """
   fun apply(): Generator[String] =>
     Generators.ascii(1, 10 where range = ASCIILetters)
 
 primitive \nodoc\ _GenMethod
-  """Generate a random HTTP method."""
+  """
+  Generate a random HTTP method.
+  """
   fun apply(): Generator[stallion.Method] =>
-    Generators.one_of[stallion.Method]([
-      stallion.GET; stallion.POST; stallion.PUT; stallion.DELETE
-      stallion.PATCH; stallion.HEAD; stallion.OPTIONS
-    ])
+    Generators.one_of[stallion.Method](
+      [ stallion.GET; stallion.POST
+        stallion.PUT; stallion.DELETE
+        stallion.PATCH; stallion.HEAD
+        stallion.OPTIONS ])
 
 // --- Test handler ---
-
 primitive \nodoc\ _NoOpHandler is Handler
   fun apply(ctx: Context ref) => ctx.respond(stallion.StatusOK, "ok")
 
 // --- Property tests ---
-
 class \nodoc\ iso _PropertyStaticRouteMatches is Property1[String]
-  """A registered static route always matches."""
+  """
+  A registered static route always matches.
+  """
   fun name(): String => "router/property/static route matches"
 
   fun gen(): Generator[String] => _GenStaticPath()
@@ -81,7 +90,9 @@ class \nodoc\ iso _PropertyStaticRouteMatches is Property1[String]
     end
 
 class \nodoc\ iso _PropertyUnregisteredReturnsNone is Property1[String]
-  """An unregistered path returns None."""
+  """
+  An unregistered path returns None.
+  """
   fun name(): String => "router/property/unregistered returns None"
 
   fun gen(): Generator[String] => _GenStaticPath()
@@ -95,7 +106,9 @@ class \nodoc\ iso _PropertyUnregisteredReturnsNone is Property1[String]
 
 class \nodoc\ iso _PropertyParamExtraction is
   Property1[(String, String)]
-  """`:name` segments are captured correctly."""
+  """
+  `:name` segments are captured correctly.
+  """
   fun name(): String => "router/property/param extraction"
 
   fun gen(): Generator[(String, String)] =>
@@ -124,7 +137,9 @@ class \nodoc\ iso _PropertyParamExtraction is
 
 class \nodoc\ iso _PropertyMultipleParams is
   Property1[(String, String, String)]
-  """Multiple `:name` segments are all extracted."""
+  """
+  Multiple `:name` segments are all extracted.
+  """
   fun name(): String => "router/property/multiple params"
 
   fun gen(): Generator[(String, String, String)] =>
@@ -161,7 +176,9 @@ class \nodoc\ iso _PropertyMultipleParams is
 
 class \nodoc\ iso _PropertyMethodIsolation is
   Property1[stallion.Method]
-  """A route registered for one method does not match another."""
+  """
+  A route registered for one method does not match another.
+  """
   fun name(): String => "router/property/method isolation"
 
   fun gen(): Generator[stallion.Method] => _GenMethod()
@@ -179,18 +196,21 @@ class \nodoc\ iso _PropertyMethodIsolation is
     end
 
     // Should NOT match a different method
-    let other: stallion.Method = if method is stallion.GET then
-      stallion.POST
-    else
-      stallion.GET
-    end
+    let other: stallion.Method =
+      if method is stallion.GET then
+        stallion.POST
+      else
+        stallion.GET
+      end
     match router.lookup(other, "/test")
     | let _: _RouteMatch =>
       h.fail("should not match different method")
     end
 
 class \nodoc\ iso _PropertyWildcardCapture is Property1[String]
-  """`*name` captures the remainder of the path."""
+  """
+  `*name` captures the remainder of the path.
+  """
   fun name(): String => "router/property/wildcard capture"
 
   fun gen(): Generator[String] => _GenPathSegment()
@@ -214,9 +234,10 @@ class \nodoc\ iso _PropertyWildcardCapture is Property1[String]
     end
 
 // --- Example-based tests ---
-
 class \nodoc\ iso _TestStaticPriorityOverParam is UnitTest
-  """`/users/new` matches static before `/users/:id`."""
+  """
+  `/users/new` matches static before `/users/:id`.
+  """
   fun name(): String => "router/static priority over param"
 
   fun apply(h: TestHelper) =>
@@ -248,11 +269,15 @@ class \nodoc\ iso _TestStaticPriorityOverParam is UnitTest
 
 class \nodoc\ val _TestMarkerHandler is Handler
   let _label: String
+
   new val create(label: String) => _label = label
+
   fun apply(ctx: Context ref) => ctx.respond(stallion.StatusOK, _label)
 
 class \nodoc\ iso _TestRootPath is UnitTest
-  """Root path `/` matches."""
+  """
+  Root path `/` matches.
+  """
   fun name(): String => "router/root path"
 
   fun apply(h: TestHelper) =>
@@ -267,7 +292,9 @@ class \nodoc\ iso _TestRootPath is UnitTest
     end
 
 class \nodoc\ iso _TestOverlappingPrefixes is UnitTest
-  """Multiple routes with overlapping prefixes dispatch correctly."""
+  """
+  Multiple routes with overlapping prefixes dispatch correctly.
+  """
   fun name(): String => "router/overlapping prefixes"
 
   fun apply(h: TestHelper) =>
@@ -291,7 +318,9 @@ class \nodoc\ iso _TestOverlappingPrefixes is UnitTest
     end
 
 class \nodoc\ iso _TestWildcardSingleSegment is UnitTest
-  """Wildcard captures a single segment."""
+  """
+  Wildcard captures a single segment.
+  """
   fun name(): String => "router/wildcard single segment"
 
   fun apply(h: TestHelper) =>
@@ -313,11 +342,15 @@ class \nodoc\ iso _TestWildcardSingleSegment is UnitTest
     // /files/ normalizes to /files which has no remainder for the wildcard
     match router.lookup(stallion.GET, "/files/")
     | let _: _RouteMatch =>
-      h.fail("should not match /files/ (normalizes to /files, no wildcard content)")
+      h.fail(
+        "should not match /files/ " +
+        "(normalizes to /files, no wildcard content)")
     end
 
 class \nodoc\ iso _TestTrailingSlashNormalization is UnitTest
-  """`/users/` and `/users` match the same route."""
+  """
+  `/users/` and `/users` match the same route.
+  """
   fun name(): String => "router/trailing slash normalization"
 
   fun apply(h: TestHelper) =>

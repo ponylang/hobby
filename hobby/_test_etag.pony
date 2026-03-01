@@ -16,23 +16,28 @@ primitive \nodoc\ _TestETagList
     test(Property1UnitTest[U64](_PropertyETagWildcardMatch))
 
 // --- Example-based tests ---
-
 class \nodoc\ iso _TestETagFormat is UnitTest
-  """ETag has expected W/"inode-size-mtime" format."""
+  """
+  ETag has expected W/"inode-size-mtime" format.
+  """
   fun name(): String => "etag/format"
 
   fun apply(h: TestHelper) =>
     h.assert_eq[String]("W/\"1-2048-12345\"", _ETag(1, 2048, 12345))
 
 class \nodoc\ iso _TestETagDeterministic is UnitTest
-  """Same inputs produce the same ETag."""
+  """
+  Same inputs produce the same ETag.
+  """
   fun name(): String => "etag/deterministic"
 
   fun apply(h: TestHelper) =>
     h.assert_eq[String](_ETag(42, 1024, 99999), _ETag(42, 1024, 99999))
 
 class \nodoc\ iso _TestETagExactMatch is UnitTest
-  """Exact weak ETag match."""
+  """
+  Exact weak ETag match.
+  """
   fun name(): String => "etag/matches/exact"
 
   fun apply(h: TestHelper) =>
@@ -40,21 +45,27 @@ class \nodoc\ iso _TestETagExactMatch is UnitTest
     h.assert_true(_ETag.matches(etag, etag))
 
 class \nodoc\ iso _TestETagWildcard is UnitTest
-  """`*` matches any ETag."""
+  """
+  `*` matches any ETag.
+  """
   fun name(): String => "etag/matches/wildcard"
 
   fun apply(h: TestHelper) =>
     h.assert_true(_ETag.matches("*", _ETag(1, 20, 12345)))
 
 class \nodoc\ iso _TestETagNoMatch is UnitTest
-  """Non-matching ETag."""
+  """
+  Non-matching ETag.
+  """
   fun name(): String => "etag/matches/no match"
 
   fun apply(h: TestHelper) =>
     h.assert_false(_ETag.matches("W/\"9-9-9\"", _ETag(1, 20, 12345)))
 
 class \nodoc\ iso _TestETagCommaSeparatedMatch is UnitTest
-  """Comma-separated list with a match."""
+  """
+  Comma-separated list with a match.
+  """
   fun name(): String => "etag/matches/comma separated match"
 
   fun apply(h: TestHelper) =>
@@ -62,7 +73,9 @@ class \nodoc\ iso _TestETagCommaSeparatedMatch is UnitTest
     h.assert_true(_ETag.matches("W/\"a-b-c\", " + etag, etag))
 
 class \nodoc\ iso _TestETagCommaSeparatedNoMatch is UnitTest
-  """Comma-separated list with no match."""
+  """
+  Comma-separated list with no match.
+  """
   fun name(): String => "etag/matches/comma separated no match"
 
   fun apply(h: TestHelper) =>
@@ -70,7 +83,9 @@ class \nodoc\ iso _TestETagCommaSeparatedNoMatch is UnitTest
       _ETag.matches("W/\"a-b-c\", W/\"x-y-z\"", _ETag(1, 20, 12345)))
 
 class \nodoc\ iso _TestETagStrongMatchesWeak is UnitTest
-  """Strong ETag (no W/ prefix) matches weak via weak comparison."""
+  """
+  Strong ETag (no W/ prefix) matches weak via weak comparison.
+  """
   fun name(): String => "etag/matches/strong matches weak"
 
   fun apply(h: TestHelper) =>
@@ -80,7 +95,9 @@ class \nodoc\ iso _TestETagStrongMatchesWeak is UnitTest
     h.assert_true(_ETag.matches("\"1-20-12345\"", etag))
 
 class \nodoc\ iso _TestETagCaseInsensitivePrefix is UnitTest
-  """Lowercase `w/` prefix is treated the same as `W/`."""
+  """
+  Lowercase `w/` prefix is treated the same as `W/`.
+  """
   fun name(): String => "etag/matches/case insensitive prefix"
 
   fun apply(h: TestHelper) =>
@@ -88,9 +105,10 @@ class \nodoc\ iso _TestETagCaseInsensitivePrefix is UnitTest
     h.assert_true(_ETag.matches("w/\"1-20-12345\"", etag))
 
 // --- Property tests ---
-
 class \nodoc\ iso _PropertyETagSelfMatch is Property1[U64]
-  """An ETag always matches itself."""
+  """
+  An ETag always matches itself.
+  """
   fun name(): String => "etag/property/self match"
 
   fun gen(): Generator[U64] => Generators.u64()
@@ -100,7 +118,9 @@ class \nodoc\ iso _PropertyETagSelfMatch is Property1[U64]
     h.assert_true(_ETag.matches(etag, etag))
 
 class \nodoc\ iso _PropertyETagWildcardMatch is Property1[U64]
-  """`*` matches any generated ETag."""
+  """
+  `*` matches any generated ETag.
+  """
   fun name(): String => "etag/property/wildcard match"
 
   fun gen(): Generator[U64] => Generators.u64()

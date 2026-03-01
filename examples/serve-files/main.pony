@@ -9,16 +9,19 @@ actor Main
   """
   Static file serving example.
 
-  Starts an HTTP server on 0.0.0.0:8080 that serves files from a directory
-  given as a command-line argument, under the `/static/` URL prefix.
-  Directory requests automatically serve `index.html` if present (e.g.,
-  `/static/docs/` serves `public/docs/index.html`).
+  Starts an HTTP server on 0.0.0.0:8080 that serves
+  files from a directory given as a command-line
+  argument, under the `/static/` URL prefix. Directory
+  requests automatically serve `index.html` if present
+  (e.g., `/static/docs/` serves
+  `public/docs/index.html`).
 
   Usage:
     serve-files /path/to/public
 
   Try it:
-    ./build/release/serve-files examples/serve-files/public
+    ./build/release/serve-files \
+      examples/serve-files/public
     curl http://localhost:8080/
     curl http://localhost:8080/static/index.html
     curl http://localhost:8080/static/style.css
@@ -31,15 +34,24 @@ actor Main
       let root = FilePath(FileAuth(env.root), dir)
 
       hobby.Application
-        .>get("/", IndexHandler)
-        .>get("/static/*filepath", hobby.ServeFiles(root))
-        .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+        .> get("/", IndexHandler)
+        .> get(
+          "/static/*filepath", hobby.ServeFiles(root))
+        .serve(
+          auth,
+          stallion.ServerConfig("0.0.0.0", "8080"),
+          env.out)
     else
       env.err.print("Usage: serve-files <directory>")
       env.exitcode(1)
     end
 
 primitive IndexHandler is hobby.Handler
+  """
+  Responds with a page describing the /static/ endpoint.
+  """
+
   fun apply(ctx: hobby.Context ref) =>
-    ctx.respond(stallion.StatusOK,
+    ctx.respond(
+      stallion.StatusOK,
       "Visit /static/index.html to see a served file.")

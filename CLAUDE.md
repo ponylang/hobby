@@ -83,7 +83,7 @@ hobby/
   _response_mode.pony     - HEAD vs standard response strategy (internal)
   content_types.pony      - ContentTypes class + defaults (public)
   _http_date.pony         - RFC 7231 HTTP-date formatting (internal)
-  _etag.pony              - Weak ETag computation and matching (internal)
+  _e_tag.pony             - Weak ETag computation and matching (internal)
   _file_streamer.pony     - Chunked file reader actor (internal)
   _flatten.pony           - Path joining + middleware concatenation (internal)
   _connection.pony        - Connection actor (internal)
@@ -92,7 +92,7 @@ hobby/
   _route_match.pony       - Route match result type (internal)
   _route_definition.pony  - Route definition for building (internal)
   _chain_runner.pony      - Middleware chain execution (internal)
-  _mort.pony              - _Unreachable primitive (internal)
+  _unreachable.pony       - _Unreachable primitive (internal)
   _test.pony              - Test runner
   _test_router.pony       - Router property-based + example tests
   _test_route_group.pony  - Route group unit + property tests

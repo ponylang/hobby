@@ -6,14 +6,18 @@ use stallion = "stallion"
 primitive \nodoc\ _TestRouteGroupList
   fun tests(test: PonyTest) =>
     // Property tests
-    test(Property1UnitTest[
-      (String, String)](_PropertyGroupPrefixMatches))
-    test(Property1UnitTest[
-      (USize, USize)](_PropertyGroupMiddlewarePreserved))
-    test(Property1UnitTest[
-      (String, String, String)](_PropertyNestedGroupPrefixOrder))
-    test(Property1UnitTest[
-      (String, String)](_PropertyGroupFlattenEquivalence))
+    test(
+      Property1UnitTest[(String, String)](
+        _PropertyGroupPrefixMatches))
+    test(
+      Property1UnitTest[(USize, USize)](
+        _PropertyGroupMiddlewarePreserved))
+    test(
+      Property1UnitTest[(String, String, String)](
+        _PropertyNestedGroupPrefixOrder))
+    test(
+      Property1UnitTest[(String, String)](
+        _PropertyGroupFlattenEquivalence))
     // Example tests
     test(_TestJoinPath)
     test(_TestConcatMiddleware)
@@ -26,27 +30,30 @@ primitive \nodoc\ _TestRouteGroupList
     test(_TestMultipleGroupsOnApplication)
 
 // --- Test middleware ---
-
 primitive \nodoc\ _NoOpMiddleware is Middleware
   fun before(ctx: Context ref) => None
 
 class \nodoc\ val _MarkerMiddleware is Middleware
   let label: String
+
   new val create(label': String) => label = label'
+
   fun before(ctx: Context ref) => None
 
 // --- Generators ---
-
 primitive \nodoc\ _GenSegment
-  """Generate a single path segment: lowercase letters, length 1-10."""
+  """
+  Generate a single path segment: lowercase letters, length 1-10.
+  """
   fun apply(): Generator[String] =>
     Generators.ascii(1, 10 where range = ASCIILetters)
 
 // --- Property tests ---
-
 class \nodoc\ iso _PropertyGroupPrefixMatches is
   Property1[(String, String)]
-  """A route registered via a group matches at the joined path."""
+  """
+  A route registered via a group matches at the joined path.
+  """
   fun name(): String => "route-group/property/prefix matches"
 
   fun gen(): Generator[(String, String)] =>
@@ -69,7 +76,9 @@ class \nodoc\ iso _PropertyGroupPrefixMatches is
 
 class \nodoc\ iso _PropertyGroupMiddlewarePreserved is
   Property1[(USize, USize)]
-  """Concatenated middleware has size = sum of input sizes."""
+  """
+  Concatenated middleware has size = sum of input sizes.
+  """
   fun name(): String => "route-group/property/middleware preserved"
 
   fun gen(): Generator[(USize, USize)] =>
@@ -118,7 +127,9 @@ class \nodoc\ iso _PropertyGroupMiddlewarePreserved is
 
 class \nodoc\ iso _PropertyNestedGroupPrefixOrder is
   Property1[(String, String, String)]
-  """Nested group paths join as outer + inner + route."""
+  """
+  Nested group paths join as outer + inner + route.
+  """
   fun name(): String => "route-group/property/nested prefix order"
 
   fun gen(): Generator[(String, String, String)] =>
@@ -141,7 +152,9 @@ class \nodoc\ iso _PropertyNestedGroupPrefixOrder is
 
 class \nodoc\ iso _PropertyGroupFlattenEquivalence is
   Property1[(String, String)]
-  """Flattened group route matches the same as a manually built route."""
+  """
+  Flattened group route matches the same as a manually built route.
+  """
   fun name(): String => "route-group/property/flatten equivalence"
 
   fun gen(): Generator[(String, String)] =>
@@ -169,9 +182,10 @@ class \nodoc\ iso _PropertyGroupFlattenEquivalence is
     h.assert_eq[Bool](r1_matches, r2_matches)
 
 // --- Example-based tests ---
-
 class \nodoc\ iso _TestJoinPath is UnitTest
-  """_JoinPath handles various prefix/path combinations."""
+  """
+  _JoinPath handles various prefix/path combinations.
+  """
   fun name(): String => "route-group/join path"
 
   fun apply(h: TestHelper) =>
@@ -186,14 +200,18 @@ class \nodoc\ iso _TestJoinPath is UnitTest
     // Root group with root route
     h.assert_eq[String]("/", _JoinPath("/", "/"))
     // Multi-segment prefix
-    h.assert_eq[String]("/api/v1/users",
+    h.assert_eq[String](
+      "/api/v1/users",
       _JoinPath("/api/v1", "/users"))
     // Multi-segment prefix with trailing slash
-    h.assert_eq[String]("/api/v1/users",
+    h.assert_eq[String](
+      "/api/v1/users",
       _JoinPath("/api/v1/", "/users"))
 
 class \nodoc\ iso _TestConcatMiddleware is UnitTest
-  """_ConcatMiddleware combines middleware arrays correctly."""
+  """
+  _ConcatMiddleware combines middleware arrays correctly.
+  """
   fun name(): String => "route-group/concat middleware"
 
   fun apply(h: TestHelper) =>
@@ -241,7 +259,9 @@ class \nodoc\ iso _TestConcatMiddleware is UnitTest
     end
 
 class \nodoc\ iso _TestNestedGroups is UnitTest
-  """Two levels of nesting produce correct path and middleware order."""
+  """
+  Two levels of nesting produce correct path and middleware order.
+  """
   fun name(): String => "route-group/nested groups"
 
   fun apply(h: TestHelper) =>
@@ -287,7 +307,9 @@ class \nodoc\ iso _TestNestedGroups is UnitTest
     end
 
 class \nodoc\ iso _TestEmptyGroup is UnitTest
-  """An empty group flattens zero routes."""
+  """
+  An empty group flattens zero routes.
+  """
   fun name(): String => "route-group/empty group"
 
   fun apply(h: TestHelper) =>
@@ -298,7 +320,9 @@ class \nodoc\ iso _TestEmptyGroup is UnitTest
     h.assert_eq[USize](0, target.size())
 
 class \nodoc\ iso _TestGroupNoMiddleware is UnitTest
-  """A group with prefix only preserves route middleware unchanged."""
+  """
+  A group with prefix only preserves route middleware unchanged.
+  """
   fun name(): String => "route-group/no middleware"
 
   fun apply(h: TestHelper) =>
@@ -329,7 +353,9 @@ class \nodoc\ iso _TestGroupNoMiddleware is UnitTest
     end
 
 class \nodoc\ iso _TestAppMiddleware is UnitTest
-  """Application middleware is prepended to every route's middleware."""
+  """
+  Application middleware is prepended to every route's middleware.
+  """
   fun name(): String => "route-group/app middleware"
 
   fun apply(h: TestHelper) =>
@@ -369,7 +395,9 @@ class \nodoc\ iso _TestAppMiddleware is UnitTest
     end
 
 class \nodoc\ iso _TestAppMiddlewareAccumulation is UnitTest
-  """Multiple middleware() calls accumulate in order."""
+  """
+  Multiple middleware() calls accumulate in order.
+  """
   fun name(): String => "route-group/app middleware accumulation"
 
   fun apply(h: TestHelper) =>
@@ -401,7 +429,9 @@ class \nodoc\ iso _TestAppMiddlewareAccumulation is UnitTest
     end
 
 class \nodoc\ iso _TestAppMiddlewareWithGroups is UnitTest
-  """App middleware + group middleware + route middleware in correct order."""
+  """
+  App middleware + group middleware + route middleware in correct order.
+  """
   fun name(): String => "route-group/app middleware with groups"
 
   fun apply(h: TestHelper) =>
@@ -435,7 +465,9 @@ class \nodoc\ iso _TestAppMiddlewareWithGroups is UnitTest
     end
 
 class \nodoc\ iso _TestMultipleGroupsOnApplication is UnitTest
-  """Two separate groups flatten independently into application routes."""
+  """
+  Two separate groups flatten independently into application routes.
+  """
   fun name(): String => "route-group/multiple groups on application"
 
   fun apply(h: TestHelper) =>
