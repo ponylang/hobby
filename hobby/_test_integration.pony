@@ -74,7 +74,7 @@ actor \nodoc\ _TestClient is (lori.TCPConnectionActor & lori.ClientLifecycleEven
 
   fun ref _on_closed() => None
 
-  fun ref _on_connection_failure() =>
+  fun ref _on_connection_failure(reason: lori.ConnectionFailureReason) =>
     _h.fail("connection failed")
     _listener.dispose()
     _h.complete(false)
@@ -610,7 +610,7 @@ actor \nodoc\ _TestHeadClient is (lori.TCPConnectionActor & lori.ClientLifecycle
 
   fun ref _on_closed() => None
 
-  fun ref _on_connection_failure() =>
+  fun ref _on_connection_failure(reason: lori.ConnectionFailureReason) =>
     _h.fail("connection failed")
     _listener.dispose()
     _h.complete(false)
