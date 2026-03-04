@@ -12,7 +12,7 @@ make ssl=3.0.x          # build tests + examples (release, OpenSSL 3.x)
 make test ssl=3.0.x     # same as above
 make ssl=libressl       # use LibreSSL (CI uses this)
 make config=debug       # debug build (combine with ssl=...)
-make build-examples ssl=3.0.x  # examples only
+make examples ssl=3.0.x # examples only
 make clean              # clean build artifacts + corral cache
 ```
 
