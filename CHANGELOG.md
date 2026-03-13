@@ -2,19 +2,13 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a CHANGELOG](http://keepachangelog.com/).
 
-## [unreleased] - unreleased
-
-### Fixed
-
+## [0.2.1] - 2026-03-13
 
 ### Added
 
 - Add built-in static file serving handler ([PR #19](https://github.com/ponylang/hobby/pull/19))
 - Add caching headers for ServeFiles ([PR #23](https://github.com/ponylang/hobby/pull/23))
 - Add automatic index file serving for directories ([PR #24](https://github.com/ponylang/hobby/pull/24))
-
-### Changed
-
 
 ## [0.2.0] - 2026-02-23
 
