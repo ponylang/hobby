@@ -10,6 +10,7 @@ Static file serving design: https://github.com/ponylang/hobby/discussions/18
 ```bash
 make ssl=3.0.x          # build tests + examples (release, OpenSSL 3.x)
 make test ssl=3.0.x     # same as above
+make test-one t=TestName ssl=3.0.x  # run a single test by name
 make ssl=libressl       # use LibreSSL (CI uses this)
 make config=debug       # debug build (combine with ssl=...)
 make examples ssl=3.0.x # examples only
