@@ -2,10 +2,7 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a CHANGELOG](http://keepachangelog.com/).
 
-## [unreleased] - unreleased
-
-### Fixed
-
+## [0.3.0] - 2026-03-16
 
 ### Added
 
@@ -15,7 +12,6 @@ All notable changes to this project will be documented in this file. This projec
 ### Changed
 
 - Change `Headers.values()` to yield `Header val` ([PR #39](https://github.com/ponylang/hobby/pull/39))
-
 
 ## [0.2.1] - 2026-03-13
 
