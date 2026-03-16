@@ -32,8 +32,8 @@ primitive _StandardResponseMode is _ResponseMode
     status: stallion.Status, headers: stallion.Headers val, body': ByteSeq)
   =>
     let builder = stallion.ResponseBuilder(status)
-    for (name, value) in headers.values() do
-      builder.add_header(name, value)
+    for hdr in headers.values() do
+      builder.add_header(hdr.name, hdr.value)
     end
     let response = builder
       .finish_headers()
@@ -65,8 +65,8 @@ primitive _HeadResponseMode is _ResponseMode
     status: stallion.Status, headers: stallion.Headers val, body': ByteSeq)
   =>
     let builder = stallion.ResponseBuilder(status)
-    for (name, value) in headers.values() do
-      builder.add_header(name, value)
+    for hdr in headers.values() do
+      builder.add_header(hdr.name, hdr.value)
     end
     let response = builder
       .finish_headers()
@@ -82,8 +82,8 @@ primitive _HeadResponseMode is _ResponseMode
     let builder = stallion.ResponseBuilder(status)
     match headers
     | let h: stallion.Headers val =>
-      for (name, value) in h.values() do
-        builder.add_header(name, value)
+      for hdr in h.values() do
+        builder.add_header(hdr.name, hdr.value)
       end
     end
     let response = builder
