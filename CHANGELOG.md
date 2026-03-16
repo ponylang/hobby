@@ -9,8 +9,12 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Added
 
+- Add cookie support ([PR #39](https://github.com/ponylang/hobby/pull/39))
+- Add content negotiation ([PR #39](https://github.com/ponylang/hobby/pull/39))
 
 ### Changed
+
+- Change `Headers.values()` to yield `Header val` ([PR #39](https://github.com/ponylang/hobby/pull/39))
 
 
 ## [0.2.1] - 2026-03-13
