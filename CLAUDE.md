@@ -4,6 +4,7 @@ A simple HTTP web framework for Pony, inspired by [Jennet](https://github.com/Th
 
 Design: https://github.com/ponylang/hobby/discussions/2
 Static file serving design: https://github.com/ponylang/hobby/discussions/18
+Actor-per-request design: https://github.com/ponylang/hobby/discussions/41
 
 ## Building and Testing
 
@@ -32,76 +33,100 @@ The `ssl` option is required — Stallion transitively depends on the `ssl` pack
 
 ### Public API
 
-Users interact with nine types:
+Users interact with these types:
 
-- **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_middleware()` for app-level middleware. `serve()` consumes the Application, freezes routes into an immutable router, and starts listening.
+- **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_middleware()` for app-level middleware. `serve()` consumes the Application, freezes routes into an immutable router, and starts listening. `handler_timeout` parameter on `serve()` controls inactivity timeout (default 30 seconds, `None` to disable).
 - **`RouteGroup`** (`class iso`): Groups routes under a shared prefix and optional middleware. Supports nesting via `group()`. Consumed by `Application.group()` or outer `RouteGroup.group()`.
-- **`Handler`** (`interface val`): Request handler. Receives `Context ref`, calls `ctx.respond()` to send a response. Partial (`?`) — errors without responding produce 500.
-- **`Middleware`** (`interface val`): Two-phase processor. `before` (partial) runs before the handler; `after` (not partial) runs after, in reverse order.
-- **`Context`** (`class ref`): Request context with route params, body, data map, and respond methods. `start_streaming()` is partial and returns `(StreamSender tag | stallion.ChunkedNotSupported | BodyNotNeeded)`. For HEAD requests, response bodies are automatically suppressed while headers are preserved.
-- **`BodyNotNeeded`** (`primitive`): Returned by `Context.start_streaming()` for HEAD requests. Signals that the framework has already sent a headers-only response and the handler should not start a producer.
-- **`ContentTypes`** (`class val`): File extension to MIME content type mapping. Ships with 17 common defaults. Chain `.add()` calls to add or override mappings — each returns a new `ContentTypes val`. Lookups are case-insensitive. Unknown extensions return `application/octet-stream`. Passed to `ServeFiles` via the `content_types` parameter.
-- **`ServeFiles`** (`class val`): Built-in handler for serving static files from a directory. Small files served with Content-Length; large files streamed with chunked encoding. Directory requests automatically serve `index.html` if present; otherwise 404. Includes caching headers (ETag, Last-Modified, Cache-Control) and supports conditional requests (304 Not Modified) per RFC 7232. `cache_control` constructor parameter controls the Cache-Control value (default `"public, max-age=3600"`, `None` to omit). `content_types` parameter controls extension-to-MIME mapping (default `ContentTypes` with standard mappings). Path traversal prevented by `FilePath.from()`. Routes must use `*filepath` as the wildcard param name.
-- **`StreamSender`** (`interface tag`): Streaming response sender. Returned by `Context.start_streaming()` on success. Receives `send_chunk()` and `finish()` behavior calls from producer actors.
+- **`HandlerFactory`** (type alias): `{(HandlerContext iso): (HandlerReceiver tag | None)} val`. Route handler entry point. Returns `None` for inline handlers, or a `HandlerReceiver tag` for async handlers that need lifecycle signals.
+- **`HandlerContext`** (`class iso`): Request context consumed by the handler factory. Carries `request`, `params`, `body`, and `data` (from before-middleware). Created by `_Connection` and passed to the factory.
+- **`RequestHandler`** (`class ref`): Embedded in handler actors. Created from a consumed `HandlerContext iso`. Provides `respond()`, `respond_with_headers()`, `start_streaming()`, `send_chunk()`, `finish()`, `param()`, `body()`, `get[T]()`, `request()`, `is_head()`.
+- **`HandlerReceiver`** (`interface tag`): Lifecycle notifications from the connection to a handler actor. Behaviors: `dispose()`, `throttled()`, `unthrottled()`.
+- **`Middleware`** (`interface val`): Two-phase processor. `before(ctx: BeforeContext ref) ?` runs before the handler; `after(ctx: AfterContext ref)` runs after, in reverse order.
+- **`BeforeContext`** (`class ref`): Context for the `before` phase. Provides `respond()`, `respond_with_headers()`, `is_handled()`, `request()`, `param()`, `body()`, `set()`, `get()`.
+- **`AfterContext`** (`class ref`): Context for the `after` phase. Provides `status()`, `body()`, `set_header()`, `add_header()`, `is_streaming()`, `request()`.
+- **`StreamingStarted`** (`primitive`): Returned by `RequestHandler.start_streaming()` on success.
+- **`BodyNotNeeded`** (`primitive`): Returned by `RequestHandler.start_streaming()` for HEAD requests.
+- **`ContentTypes`** (`class val`): File extension to MIME content type mapping. Ships with 17 common defaults. Chain `.add()` calls to add or override mappings.
+- **`ServeFiles`** (`class val`): Built-in handler factory for serving static files. Structurally matches `HandlerFactory`. Small files served inline; large files streamed via `_ServeFilesHandler` actor. Includes caching headers and conditional request support per RFC 7232.
 
 ### Internal layers
 
-- **`_Listener`** (`actor`): Implements `lori.TCPListenerActor`. Accepts TCP connections and spawns `_Connection` actors.
-- **`_Connection`** (`actor`): Implements `stallion.HTTPServerActor`. Accumulates body chunks, runs route lookup, executes middleware chain + handler via `_ChainRunner`. Sends 404 for unmatched routes. HEAD requests fall back to GET handlers when no explicit HEAD route exists. Buffers pipelined requests during streaming responses and drains the buffer when the stream finishes.
-- **`_Router`** (`class val`): Immutable radix tree router. One tree per HTTP method. Built from `_RouterBuilder` (mutable `_BuildNode ref` trees frozen into `_TreeNode val` trees).
-- **`_ChainRunner`** (`primitive`): Executes middleware `before` phases, then handler, then middleware `after` phases in reverse. Tracks invocation count so `after` runs for every middleware whose `before` was called.
+- **`_Listener`** (`actor`): Implements `lori.TCPListenerActor`. Accepts TCP connections and spawns `_Connection` actors. Creates a shared `Timers` actor for handler timeout management.
+- **`_Connection`** (`actor`): Implements `stallion.HTTPServerActor` and `_ConnectionProtocol`. State machine: `_Idle` → `_HandlerInProgress` → `_Streaming`. Runs before-middleware synchronously, calls factory, receives handler responses via protocol behaviors (`_handler_respond`, `_handler_start_streaming`, `_handler_send_chunk`, `_handler_finish`). Buffers responses for after-middleware modification. Manages handler timeout via interval-based timer.
+- **`_ConnectionProtocol`** (`trait tag`): Protocol behaviors that `RequestHandler` sends to `_Connection`.
+- **`_BufferedResponse`** (`class ref`): Mutable response buffer for after-middleware. After-middleware modifies headers via `AfterContext`, then `_Connection` serializes to wire.
+- **`_RunBeforeMiddleware`** (`primitive`): Runs middleware `before` phases on `BeforeContext ref`. Returns invoked count.
+- **`_RunAfterMiddleware`** (`primitive`): Runs middleware `after` phases in reverse on `AfterContext ref`.
+- **`_HandlerTimeoutNotify`** (`class iso is TimerNotify`): Sends `_handler_timeout(token)` to `_Connection` on each interval fire.
+- **`_Router`** (`class val`): Immutable radix tree router. One tree per HTTP method.
+- **`_FileStreamer`** (`actor`): Reads files in 64 KB chunks. Sends to `_FileTarget tag`. Supports backpressure via `pause()`/`resume()`.
+- **`_ServeFilesHandler`** (`actor`): Handler actor for large file streaming. Implements `HandlerReceiver` and `_FileTarget`. Receives file chunks from `_FileStreamer` and forwards through `RequestHandler`. Forwards `throttled()`/`unthrottled()` to `_FileStreamer` as `pause()`/`resume()`.
+- **`_FileTarget`** (`trait tag`): Internal interface for `_FileStreamer` to send to.
 
 ### Key design decisions
 
-- **Context is `ref`, not `iso`**: Avoids the iso consumption problem — if middleware errors after consuming an iso Context, the Context is lost. With `ref`, it survives errors and `after` phases always have access.
+- **Actor-per-request handler model**: Each request's handler factory can spawn an actor that does async work and responds when ready. The connection waits for a response via protocol behaviors. This enables database queries, external service calls, and other async patterns without blocking the connection.
+- **Factory returns `(HandlerReceiver tag | None)`**: Inline handlers return None; async handlers return the actor's tag for dispose/throttle signals. No timing gap for lifecycle signals.
+- **Before-middleware data map → HandlerContext**: The mutable ref map is copied to a val map via `_freeze_data()`, which is sendable inside the `recover iso` block for `HandlerContext`.
+- **Response buffering for after-middleware**: Responses are buffered in `_BufferedResponse` before going to the wire. After-middleware can modify headers. For streaming, after-middleware runs after `_handler_finish` with header writes as no-ops.
 - **Route methods are `fun ref`**: Auto receiver recovery handles calling them on the `iso` Application since all arguments are `val`. `serve()` is `fun iso` and uses `consume this`.
-- **Build/lookup separation**: Mutable `_BuildNode ref` trees for construction, frozen into immutable `_TreeNode val` trees for lookup. Params built bottom-up as `val` arrays to avoid ref-to-val boundary issues in recover blocks.
+- **Build/lookup separation**: Mutable `_BuildNode ref` trees for construction, frozen into immutable `_TreeNode val` trees for lookup.
 - **Static priority**: Static children checked before param child during lookup.
 - **Trailing slash normalization**: `/users/` and `/users` match the same route.
-- **Flatten at registration time**: Route groups are flattened when consumed by `group()`. Prefixes are joined and middleware arrays are concatenated at that point, so the router sees only flat routes with fully resolved paths and middleware chains.
-- **StreamSender is _Connection**: `_Connection` structurally matches `StreamSender` by having `send_chunk` and `finish` behaviors. No wrapper actor. Users interact through `StreamSender tag`; `_Connection` is package-private.
-- **Streaming error cleanup**: `_ChainRunner` detects handler error + streaming mode and calls `_finish_streaming()` to terminate abandoned streams.
-- **Pipelined request buffering**: Requests arriving during an active streaming response are buffered and drained after the stream finishes, rather than using a wrapper actor per stream. The buffering approach has zero overhead for the common case (no pipelining during streaming) and avoids adding a message hop per chunk.
-- **HEAD via response mode strategy**: HEAD request handling uses a `_ResponseMode` strategy interface with two implementations (`_StandardResponseMode` and `_HeadResponseMode`). Context delegates response building to the mode, which keeps HEAD/standard logic separated without conditionals in every respond method. HEAD mode suppresses bodies while preserving headers; for streaming, it bypasses `start_chunked_response()` (which would inject `Transfer-Encoding: chunked`) and returns `BodyNotNeeded` instead. Not setting `_streaming` for HEAD is critical — otherwise `_Connection` would buffer pipelined requests waiting for a `finish()` that never arrives.
-- **HEAD→GET fallback**: When no explicit HEAD route is registered, `_Connection` retries the lookup with GET. This happens at the connection level, not the router level, so the router stays method-exact and the fallback is visible in one place.
-- **Directory index auto-serving**: When a request resolves to a directory, `ServeFiles` tries `FilePath.from(resolved, "index.html")` before returning 404. The index filename is hardcoded — configurability can be added later if needed ("it is easier to give than take away"). Content type is derived from the resolved filesystem path (`resolved.path`) rather than the URL param, so directory→index fallback correctly produces `text/html`.
+- **Flatten at registration time**: Route groups are flattened when consumed by `group()`.
+- **Interval-based handler timeout**: Uses a repeating timer that checks a `_last_handler_activity` timestamp rather than cancel+recreate on every chunk. Avoids per-chunk timer allocation overhead during streaming.
+- **Pipelined request buffering**: Requests arriving during `_HandlerInProgress` or `_Streaming` are buffered and drained when the handler completes.
+- **HEAD via split handling**: `RequestHandler.start_streaming()` returns `BodyNotNeeded` for HEAD (local check). `_Connection` uses `is_head` when building buffered responses for the wire (suppresses body, preserves Content-Length).
+- **HEAD→GET fallback**: When no explicit HEAD route is registered, `_Connection` retries the lookup with GET.
+- **Backpressure forwarding**: `_Connection` forwards `on_throttled()`/`on_unthrottled()` to the handler actor when one is registered.
+- **Directory index auto-serving**: When a request resolves to a directory, `ServeFiles` tries `index.html`. Content type is derived from the resolved filesystem path.
 
 ## File Layout
 
 ```
 docs/
-  middleware-guide.md     - Writing Middleware tutorial guide
+  middleware-guide.md         - Writing Middleware tutorial guide
 hobby/
-  hobby.pony              - Package docstring
-  context.pony            - Context class (public)
-  handler.pony            - Handler interface (public)
-  stream_sender.pony      - StreamSender interface (public)
-  middleware.pony          - Middleware interface (public)
-  application.pony        - Application class (public)
-  route_group.pony        - RouteGroup class (public)
-  serve_files.pony        - ServeFiles handler (public)
-  body_not_needed.pony    - BodyNotNeeded primitive for HEAD streaming (public)
-  _response_mode.pony     - HEAD vs standard response strategy (internal)
-  content_types.pony      - ContentTypes class + defaults (public)
-  _http_date.pony         - RFC 7231 HTTP-date formatting (internal)
-  _etag.pony              - Weak ETag computation and matching (internal)
-  _file_streamer.pony     - Chunked file reader actor (internal)
-  _flatten.pony           - Path joining + middleware concatenation (internal)
-  _connection.pony        - Connection actor (internal)
-  _listener.pony          - Listener actor (internal)
-  _router.pony            - Router + radix tree (internal)
-  _route_match.pony       - Route match result type (internal)
-  _route_definition.pony  - Route definition for building (internal)
-  _chain_runner.pony      - Middleware chain execution (internal)
-  _mort.pony              - _Unreachable primitive (internal)
-  _test.pony              - Test runner
-  _test_router.pony       - Router property-based + example tests
-  _test_route_group.pony  - Route group unit + property tests
-  _test_content_type.pony - Content type mapping property + example tests
-  _test_http_date.pony    - HTTP date formatting property + example tests
-  _test_etag.pony         - ETag computation and matching property + example tests
-  _test_integration.pony  - HTTP round-trip integration tests
-  _test_serve_files.pony  - ServeFiles integration tests
+  hobby.pony                  - Package docstring
+  handler_factory.pony        - HandlerFactory type alias (public)
+  handler_context.pony        - HandlerContext class (public)
+  request_handler.pony        - RequestHandler class (public)
+  handler_receiver.pony       - HandlerReceiver interface (public)
+  before_context.pony         - BeforeContext class (public)
+  after_context.pony          - AfterContext class (public)
+  streaming_started.pony      - StreamingStarted primitive (public)
+  body_not_needed.pony        - BodyNotNeeded primitive (public)
+  middleware.pony              - Middleware interface (public)
+  application.pony            - Application class (public)
+  route_group.pony            - RouteGroup class (public)
+  serve_files.pony            - ServeFiles handler factory (public)
+  content_types.pony          - ContentTypes class + defaults (public)
+  _connection_protocol.pony   - Connection protocol trait (internal)
+  _buffered_response.pony     - Response buffer for after-middleware (internal)
+  _run_before_middleware.pony  - Before-phase execution (internal)
+  _run_after_middleware.pony   - After-phase execution (internal)
+  _handler_timeout.pony       - Handler timeout timer notify (internal)
+  _connection.pony             - Connection actor (internal)
+  _listener.pony               - Listener actor (internal)
+  _router.pony                 - Router + radix tree (internal)
+  _route_match.pony            - Route match result type (internal)
+  _route_definition.pony       - Route definition for building (internal)
+  _file_streamer.pony          - Chunked file reader actor (internal)
+  _file_target.pony            - File target trait (internal)
+  _serve_files_handler.pony    - ServeFiles handler actor (internal)
+  _http_date.pony              - RFC 7231 HTTP-date formatting (internal)
+  _etag.pony                   - Weak ETag computation and matching (internal)
+  _flatten.pony                - Path joining + middleware concatenation (internal)
+  _mort.pony                   - _Unreachable primitive (internal)
+  _test.pony                   - Test runner
+  _test_router.pony            - Router property-based + example tests
+  _test_route_group.pony       - Route group unit + property tests
+  _test_content_type.pony      - Content type mapping property + example tests
+  _test_http_date.pony         - HTTP date formatting property + example tests
+  _test_etag.pony              - ETag computation and matching property + example tests
+  _test_request_handler.pony   - RequestHandler unit tests with mock connection
+  _test_integration.pony       - HTTP round-trip integration tests
+  _test_serve_files.pony       - ServeFiles integration tests
 ```
 
 ## Conventions

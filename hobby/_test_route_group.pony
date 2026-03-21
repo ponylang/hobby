@@ -28,12 +28,12 @@ primitive \nodoc\ _TestRouteGroupList
 // --- Test middleware ---
 
 primitive \nodoc\ _NoOpMiddleware is Middleware
-  fun before(ctx: Context ref) => None
+  fun before(ctx: BeforeContext ref) => None
 
 class \nodoc\ val _MarkerMiddleware is Middleware
   let label: String
   new val create(label': String) => label = label'
-  fun before(ctx: Context ref) => None
+  fun before(ctx: BeforeContext ref) => None
 
 // --- Generators ---
 
@@ -59,7 +59,7 @@ class \nodoc\ iso _PropertyGroupPrefixMatches is
     let joined = _JoinPath(prefix, path)
 
     let builder = _RouterBuilder
-    builder.add(stallion.GET, joined, _NoOpHandler, None)
+    builder.add(stallion.GET, joined, _NoOpFactory, None)
     let router = builder.build()
     match router.lookup(stallion.GET, joined)
     | let _: _RouteMatch => None
@@ -131,7 +131,7 @@ class \nodoc\ iso _PropertyNestedGroupPrefixOrder is
       "/" + outer_seg + "/" + inner_seg + "/" + route_seg
 
     let builder = _RouterBuilder
-    builder.add(stallion.GET, joined, _NoOpHandler, None)
+    builder.add(stallion.GET, joined, _NoOpFactory, None)
     let router = builder.build()
     match router.lookup(stallion.GET, joined)
     | let _: _RouteMatch => None
@@ -155,13 +155,13 @@ class \nodoc\ iso _PropertyGroupFlattenEquivalence is
 
     // Build via JoinPath + RouterBuilder
     let builder1 = _RouterBuilder
-    builder1.add(stallion.GET, joined, _NoOpHandler, None)
+    builder1.add(stallion.GET, joined, _NoOpFactory, None)
     let router1 = builder1.build()
 
     // Build via manual string concatenation
     let manual: String val = prefix + path
     let builder2 = _RouterBuilder
-    builder2.add(stallion.GET, manual, _NoOpHandler, None)
+    builder2.add(stallion.GET, manual, _NoOpFactory, None)
     let router2 = builder2.build()
 
     let r1_matches = router1.lookup(stallion.GET, joined) isnt None
@@ -258,7 +258,7 @@ class \nodoc\ iso _TestNestedGroups is UnitTest
 
     // Build inner group
     let inner = RouteGroup("/admin" where middleware = inner_mw_arr)
-    inner.get("/dashboard", _NoOpHandler where middleware = route_mw_arr)
+    inner.get("/dashboard", _NoOpFactory where middleware = route_mw_arr)
 
     // Build outer group and nest inner
     let outer = RouteGroup("/api" where middleware = outer_mw_arr)
@@ -307,7 +307,7 @@ class \nodoc\ iso _TestGroupNoMiddleware is UnitTest
       recover val [as Middleware val: route_mw] end
 
     let g = RouteGroup("/api")
-    g.get("/users", _NoOpHandler where middleware = route_mw_arr)
+    g.get("/users", _NoOpFactory where middleware = route_mw_arr)
 
     let target = Array[_RouteDefinition]
     let g_ref: RouteGroup ref = consume g
@@ -439,14 +439,18 @@ class \nodoc\ iso _TestMultipleGroupsOnApplication is UnitTest
   fun name(): String => "route-group/multiple groups on application"
 
   fun apply(h: TestHelper) =>
-    let h1 = _TestMarkerHandler("api")
-    let h2 = _TestMarkerHandler("admin")
+    let f1: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "api")
+    } val
+    let f2: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "admin")
+    } val
 
     let g1 = RouteGroup("/api")
-    g1.get("/users", h1)
+    g1.get("/users", f1)
 
     let g2 = RouteGroup("/admin")
-    g2.get("/dashboard", h2)
+    g2.get("/dashboard", f2)
 
     let target = Array[_RouteDefinition]
     let g1_ref: RouteGroup ref = consume g1
@@ -457,9 +461,9 @@ class \nodoc\ iso _TestMultipleGroupsOnApplication is UnitTest
     h.assert_eq[USize](2, target.size())
     try
       h.assert_eq[String]("/api/users", target(0)?.path)
-      h.assert_is[Handler](h1, target(0)?.handler)
+      h.assert_is[HandlerFactory](f1, target(0)?.factory)
       h.assert_eq[String]("/admin/dashboard", target(1)?.path)
-      h.assert_is[Handler](h2, target(1)?.handler)
+      h.assert_is[HandlerFactory](f2, target(1)?.factory)
     else
       h.fail("expected two routes")
     end

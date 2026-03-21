@@ -31,15 +31,13 @@ actor Main
       let root = FilePath(FileAuth(env.root), dir)
 
       hobby.Application
-        .>get("/", IndexHandler)
+        .>get("/", {(ctx) =>
+          hobby.RequestHandler(consume ctx).respond(stallion.StatusOK,
+            "Visit /static/index.html to see a served file.")
+        } val)
         .>get("/static/*filepath", hobby.ServeFiles(root))
         .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
     else
       env.err.print("Usage: serve-files <directory>")
       env.exitcode(1)
     end
-
-primitive IndexHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) =>
-    ctx.respond(stallion.StatusOK,
-      "Visit /static/index.html to see a served file.")

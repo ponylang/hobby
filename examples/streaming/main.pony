@@ -23,38 +23,37 @@ actor Main
   new create(env: Env) =>
     let auth = lori.TCPListenAuth(env.root)
     hobby.Application
-      .>get("/", IndexHandler)
-      .>get("/stream", StreamHandler)
+      .>get("/", {(ctx) =>
+        hobby.RequestHandler(consume ctx).respond(stallion.StatusOK,
+          "Visit /stream to see a chunked streaming response.")
+      } val)
+      .>get("/stream", {(ctx) =>
+        StreamHandler(consume ctx)
+      } val)
       .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
 
-primitive IndexHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) =>
-    ctx.respond(stallion.StatusOK,
-      "Visit /stream to see a chunked streaming response.")
+actor StreamHandler is hobby.HandlerReceiver
+  """Starts streaming and sends 5 numbered chunks."""
+  embed _handler: hobby.RequestHandler
 
-primitive StreamHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) ? =>
-    match \exhaustive\ ctx.start_streaming(stallion.StatusOK)?
-    | let sender: hobby.StreamSender tag =>
-      ChunkProducer(sender)
+  new create(ctx: hobby.HandlerContext iso) =>
+    _handler = hobby.RequestHandler(consume ctx)
+    match _handler.start_streaming(stallion.StatusOK)
+    | hobby.StreamingStarted => _send()
     | stallion.ChunkedNotSupported =>
-      ctx.respond(stallion.StatusOK,
+      _handler.respond(stallion.StatusOK,
         "Chunked encoding not supported — upgrade to HTTP/1.1.")
     | hobby.BodyNotNeeded => None
     end
 
-actor ChunkProducer
-  """Sends 5 numbered chunks and finishes the stream."""
-  let _sender: hobby.StreamSender tag
-
-  new create(sender: hobby.StreamSender tag) =>
-    _sender = sender
-    _send()
-
   be _send() =>
-    _sender.send_chunk("chunk 1 of 5\n")
-    _sender.send_chunk("chunk 2 of 5\n")
-    _sender.send_chunk("chunk 3 of 5\n")
-    _sender.send_chunk("chunk 4 of 5\n")
-    _sender.send_chunk("chunk 5 of 5\n")
-    _sender.finish()
+    _handler.send_chunk("chunk 1 of 5\n")
+    _handler.send_chunk("chunk 2 of 5\n")
+    _handler.send_chunk("chunk 3 of 5\n")
+    _handler.send_chunk("chunk 4 of 5\n")
+    _handler.send_chunk("chunk 5 of 5\n")
+    _handler.finish()
+
+  be dispose() => None
+  be throttled() => None
+  be unthrottled() => None

@@ -31,26 +31,25 @@ actor Main
     let auth_mw: Array[hobby.Middleware val] val =
       recover val [as hobby.Middleware val: AuthMiddleware] end
     hobby.Application
-      .>get("/", HelloHandler)
-      .>get("/dashboard", DashboardHandler where middleware = auth_mw)
-      .>get("/health", HealthHandler where middleware = log_mw)
+      .>get("/", {(ctx) =>
+        hobby.RequestHandler(consume ctx)
+          .respond(stallion.StatusOK, "Hello from Hobby!")
+      } val)
+      .>get("/dashboard", {(ctx) =>
+        let handler = hobby.RequestHandler(consume ctx)
+        try
+          let user = handler.get[AuthenticatedUser]("auth_user")?
+          handler.respond(stallion.StatusOK, "Welcome, " + user.name + "!")
+        else
+          handler.respond(stallion.StatusInternalServerError,
+            "Internal Server Error")
+        end
+      } val where middleware = auth_mw)
+      .>get("/health", {(ctx) =>
+        hobby.RequestHandler(consume ctx)
+          .respond(stallion.StatusOK, "OK")
+      } val where middleware = log_mw)
       .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
-
-// --- Handlers ---
-
-primitive HelloHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) =>
-    ctx.respond(stallion.StatusOK, "Hello from Hobby!")
-
-primitive HealthHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) =>
-    ctx.respond(stallion.StatusOK, "OK")
-
-primitive DashboardHandler is hobby.Handler
-  """Reads the authenticated user set by AuthMiddleware."""
-  fun apply(ctx: hobby.Context ref) ? =>
-    let user = AuthData.user(ctx)?
-    ctx.respond(stallion.StatusOK, "Welcome, " + user.name + "!")
 
 // --- Auth middleware ---
 
@@ -58,21 +57,6 @@ class val AuthenticatedUser
   """Domain type representing an authenticated user."""
   let name: String
   new val create(name': String) => name = name'
-
-primitive AuthData
-  """
-  Typed accessor for auth middleware context data.
-
-  Middleware authors provide accessor primitives like this to give handlers
-  type-safe access to context data via `match`, avoiding raw string-key
-  lookups and `as` casts.
-  """
-  fun user(ctx: hobby.Context box): AuthenticatedUser ? =>
-    match ctx.get("auth_user")?
-    | let u: AuthenticatedUser => u
-    else
-      error
-    end
 
 class val AuthMiddleware is hobby.Middleware
   """
@@ -82,9 +66,9 @@ class val AuthMiddleware is hobby.Middleware
   If missing, short-circuits with 401 — the handler is never invoked, but
   `after` phases of preceding middleware still run.
   """
-  fun before(ctx: hobby.Context ref) =>
+  fun before(ctx: hobby.BeforeContext ref) =>
     // In a real app, validate the token and look up the user
-    match ctx.request.headers.get("authorization")
+    match ctx.request().headers.get("authorization")
     | let _: String =>
       ctx.set("auth_user", AuthenticatedUser("admin"))
     else
@@ -103,8 +87,8 @@ class val LogMiddleware is hobby.Middleware
   let _out: OutStream
   new val create(out: OutStream) => _out = out
 
-  fun before(ctx: hobby.Context ref) => None
+  fun before(ctx: hobby.BeforeContext ref) => None
 
-  fun after(ctx: hobby.Context ref) =>
+  fun after(ctx: hobby.AfterContext ref) =>
     _out.print(
-      ctx.request.method.string() + " " + ctx.request.uri.path)
+      ctx.request().method.string() + " " + ctx.request().uri.path)

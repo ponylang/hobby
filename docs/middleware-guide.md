@@ -8,17 +8,19 @@ Hobby's `Middleware` interface has two methods:
 
 ```pony
 interface val Middleware
-  fun before(ctx: Context ref) ?
-  fun after(ctx: Context ref) => None
+  fun before(ctx: BeforeContext ref) ?
+  fun after(ctx: AfterContext ref) => None
 ```
 
-`before` runs before the handler and is partial (`?`) — it can raise errors. `after` runs after the handler, has a default no-op implementation, and is not partial. Both are `val`, meaning middleware instances are immutable and shareable across connections. Middleware holds no per-request state; use `Context` for that.
+`before` runs before the handler and is partial (`?`) — it can raise errors. `after` runs after the handler, has a default no-op implementation, and is not partial. Both are `val`, meaning middleware instances are immutable and shareable across connections. Middleware holds no per-request state; use the context for that.
+
+`BeforeContext` and `AfterContext` are separate types. `BeforeContext` provides `respond()` for short-circuiting and `set()` for storing data. `AfterContext` provides access to the response (status, body, headers) and the original request, with `set_header()` and `add_header()` for modifying response headers. Both provide `request()` to access the request.
 
 A minimal no-op middleware looks like this:
 
 ```pony
 primitive NoOpMiddleware is hobby.Middleware
-  fun before(ctx: hobby.Context ref) => None
+  fun before(ctx: hobby.BeforeContext ref) => None
 ```
 
 Since `after` has a default implementation, you only need to provide `before`. And since `before` is declared partial in the interface, your implementation can choose to be partial (`?`) or not — Pony allows non-partial implementations to satisfy partial interface methods.
@@ -28,7 +30,7 @@ Since `after` has a default implementation, you only need to provide `before`. A
 When a request hits a route with middleware, the framework runs a three-phase pipeline:
 
 1. **Forward phase**: each middleware's `before` runs in order.
-2. **Handler phase**: the handler runs.
+2. **Handler phase**: the handler factory runs.
 3. **Reverse phase**: each middleware's `after` runs in reverse order.
 
 Here's the normal flow for a chain of three middleware:
@@ -75,8 +77,8 @@ Start with the check:
 
 ```pony
 class val AuthMiddleware is hobby.Middleware
-  fun before(ctx: hobby.Context ref) =>
-    match ctx.request.headers.get("authorization")
+  fun before(ctx: hobby.BeforeContext ref) =>
+    match ctx.request().headers.get("authorization")
     | let _: String =>
       None  // token present, continue the chain
     else
@@ -90,25 +92,28 @@ A few things to note:
 
 **The current `before` runs to completion.** The chain stops *between* middleware invocations, not mid-execution. Calling `ctx.respond()` doesn't return or throw — your `before` body keeps executing until it returns normally or errors.
 
-**First response wins.** `ctx.respond()` is idempotent: the first call sends the response, and subsequent calls are silently ignored. You can check `ctx.is_handled()` if you need to know whether a response has already been sent.
+**First response wins.** `ctx.respond()` is idempotent: the first call sends the response, and subsequent calls are silently ignored.
+
+**Checking handling status.** Downstream middleware can call `ctx.is_handled()` to check whether a prior middleware already buffered a response — useful for conditionally skipping work.
 
 **Don't use `error` to reject requests.** If `before` errors without having called `ctx.respond()`, the framework treats it as an unexpected failure and sends a 500 Internal Server Error. Use `error` for genuine failures, not for intentional rejections.
 
 ## Passing Data to Handlers
 
-Middleware often needs to pass data downstream — an authenticated user, a parsed request body, a rate limit counter. Hobby provides `ctx.set()` and `ctx.get()` for this, but the raw API is loosely typed. Here's how to build up to the idiomatic pattern.
+Middleware often needs to pass data downstream — an authenticated user, a parsed request body, a rate limit counter. Hobby provides `ctx.set()` in the `before` phase for storing data, and `handler.get[]()` in the handler for retrieving it with type safety.
 
 ### Step 1: Raw set/get
 
 ```pony
-// In middleware:
+// In middleware before phase:
 ctx.set("auth_user", AuthenticatedUser("admin"))
 
 // In handler:
-let user = ctx.get("auth_user")? as AuthenticatedUser
+let handler = hobby.RequestHandler(consume ctx)
+let user = handler.get[AuthenticatedUser]("auth_user")?
 ```
 
-This works, but it's fragile. The key `"auth_user"` is a magic string duplicated between middleware and handler. The `get()` return type is `Any val`, so you need an `as` cast that can fail at runtime.
+The `set()` call stores the value under a string key. The `get[]()` call retrieves it with a type parameter, returning the typed value directly or raising an error if the key is missing or the type doesn't match.
 
 ### Step 2: Domain type
 
@@ -120,43 +125,27 @@ class val AuthenticatedUser
   new val create(name': String) => name = name'
 ```
 
-This is better — you have a named type instead of a raw string — but the lookup is still untyped.
-
-### Step 3: Typed accessor primitive
-
-The idiomatic convention is to provide a primitive that encapsulates the lookup and type recovery:
+With a named type and the typed `get[]()` accessor, the handler code reads clearly:
 
 ```pony
-primitive AuthData
-  fun user(ctx: hobby.Context box): AuthenticatedUser ? =>
-    match ctx.get("auth_user")?
-    | let u: AuthenticatedUser => u
-    else
-      error
-    end
+let handler = hobby.RequestHandler(consume ctx)
+let user = handler.get[AuthenticatedUser]("auth_user")?
+handler.respond(stallion.StatusOK, "Welcome, " + user.name + "!")
 ```
 
-Note that the accessor takes `Context box` (read-only access), not `ref`. This is deliberate — reading context data doesn't require mutation, and `box` makes that explicit in the type signature.
-
-Now handlers use `AuthData.user(ctx)?` — a single call with a clear name, type-safe return, and no magic strings at the call site. The key string and type recovery are centralized in one place.
-
-The [middleware example](../examples/middleware/main.pony) demonstrates this complete pattern with `AuthMiddleware`, `AuthenticatedUser`, and `AuthData`.
+The [middleware example](../examples/middleware/main.pony) demonstrates this complete pattern with `AuthMiddleware` and `AuthenticatedUser`.
 
 ## Error Handling
 
-The framework handles errors differently depending on where they occur and whether a response has already been sent:
+The framework handles errors in the `before` phase. Handler factories are not partial — handler actors manage their own errors.
 
 **`before` errors without responding**: the framework sends 500 Internal Server Error automatically. This is the "something genuinely went wrong" case — a database connection failed, a required header couldn't be parsed, etc.
 
-**`before` errors after responding**: the response that was already sent stands. The framework moves to the `after` phase without sending a 500, since a response is already on the wire.
+**`before` errors after responding**: the response that was already sent stands. The framework moves to the `after` phase without sending a 500, since a response is already buffered.
 
-**Handler errors without responding**: same as middleware — the framework sends 500.
-
-**`before`/handler errors after starting a stream**: the framework sends the terminal chunk to close the chunked response, preventing a hung connection. The `after` phases still run as normal. Note that `ctx.start_streaming()` is itself partial — it errors if a response has already been sent (programmer error). It also returns `(StreamSender tag | ChunkedNotSupported | BodyNotNeeded)`, so handlers can fall back to `ctx.respond()` when the client doesn't support chunked encoding, or skip streaming for HEAD requests.
+**Handler timeout**: if a handler actor fails to respond within the configured timeout (default 30 seconds), the framework sends 504 Gateway Timeout. For active streaming responses, the framework closes the connection instead. Pass `handler_timeout = None` to `Application.serve()` to disable the timeout.
 
 **`after` is not partial**: `after` cannot raise errors. If your `after` logic might fail (e.g., writing to a log file), handle the failure internally. This is a design choice — `after` is for cleanup and post-processing, and it must always complete.
-
-The general rule: if `error` happens at any point and no response has been sent yet, the framework sends 500. If a response was already sent, the error is absorbed and the chain continues to `after` phases. If a streaming response was started, the framework terminates the stream with the terminal chunk.
 
 ## Using `after` for Post-Processing
 
@@ -167,20 +156,34 @@ class val LogMiddleware is hobby.Middleware
   let _out: OutStream
   new val create(out: OutStream) => _out = out
 
-  fun before(ctx: hobby.Context ref) => None
+  fun before(ctx: hobby.BeforeContext ref) => None
 
-  fun after(ctx: hobby.Context ref) =>
+  fun after(ctx: hobby.AfterContext ref) =>
     _out.print(
-      ctx.request.method.string() + " " + ctx.request.uri.path)
+      ctx.request().method.string() + " " + ctx.request().uri.path)
+```
+
+Here's a CORS middleware that adds headers in the `after` phase:
+
+```pony
+class val CORSMiddleware is hobby.Middleware
+  let _origin: String
+  new val create(origin: String) => _origin = origin
+
+  fun before(ctx: hobby.BeforeContext ref) => None
+
+  fun after(ctx: hobby.AfterContext ref) =>
+    ctx.set_header("Access-Control-Allow-Origin", _origin)
+    ctx.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 ```
 
 A few things about `after`:
 
 **Reverse order.** If middleware is registered as `[MW-1, MW-2, MW-3]`, `after` runs as MW-3, MW-2, MW-1. The first middleware to set up context is the last to clean it up.
 
-**Always runs.** `after` runs for every middleware whose `before` was invoked, regardless of whether the chain completed normally, short-circuited, or errored.
+**Always runs (with one exception).** `after` runs for every middleware whose `before` was invoked, regardless of whether the chain completed normally, short-circuited, or errored. The exception is forced connection closures — a streaming timeout or client disconnect tears down the TCP connection without running `after`, since there is no response to post-process.
 
-**Response is always sent by the time `after` runs.** Either the handler responded, middleware short-circuited with a response, or the framework sent a 500 fallback. This means `ctx.respond()` in `after` is always a no-op (first response wins). Use `after` for reading request data, logging, or cleanup — not for sending responses.
+**Response is buffered, not yet sent.** When `after` runs, the response is buffered in memory — it hasn't been written to the wire yet. This is what allows after-middleware to modify headers via `set_header()` and `add_header()`. The exception is streaming responses: headers are already on the wire, so header modifications are silently ignored (but `after` still runs for logging and cleanup).
 
 **Holding `tag` references.** `LogMiddleware` stores `OutStream` (which is `tag`) in its constructor. This is fine — `tag` references carry no read/write capability, so they don't violate the `val` guarantee on the middleware class.
 
@@ -193,8 +196,14 @@ let auth_mw: Array[hobby.Middleware val] val =
   recover val [as hobby.Middleware val: AuthMiddleware] end
 
 hobby.Application
-  .>get("/public", PublicHandler)
-  .>get("/private", PrivateHandler where middleware = auth_mw)
+  .>get("/public", {(ctx) =>
+    hobby.RequestHandler(consume ctx)
+      .respond(stallion.StatusOK, "Public")
+  } val)
+  .>get("/private", {(ctx) =>
+    hobby.RequestHandler(consume ctx)
+      .respond(stallion.StatusOK, "Private")
+  } val where middleware = auth_mw)
   .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
 ```
 

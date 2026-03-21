@@ -12,8 +12,8 @@ primitive \nodoc\ _TestETagList
     test(_TestETagCommaSeparatedNoMatch)
     test(_TestETagStrongMatchesWeak)
     test(_TestETagCaseInsensitivePrefix)
-    test(Property1UnitTest[U64](_PropertyETagSelfMatch))
-    test(Property1UnitTest[U64](_PropertyETagWildcardMatch))
+    test(Property1UnitTest[(U64, USize, I64)](_PropertyETagSelfMatch))
+    test(Property1UnitTest[(U64, USize, I64)](_PropertyETagWildcardMatch))
 
 // --- Example-based tests ---
 
@@ -89,21 +89,27 @@ class \nodoc\ iso _TestETagCaseInsensitivePrefix is UnitTest
 
 // --- Property tests ---
 
-class \nodoc\ iso _PropertyETagSelfMatch is Property1[U64]
-  """An ETag always matches itself."""
+class \nodoc\ iso _PropertyETagSelfMatch is Property1[(U64, USize, I64)]
+  """An ETag always matches itself (all three components varied)."""
   fun name(): String => "etag/property/self match"
 
-  fun gen(): Generator[U64] => Generators.u64()
+  fun gen(): Generator[(U64, USize, I64)] =>
+    Generators.zip3[U64, USize, I64](
+      Generators.u64(), Generators.usize(), Generators.i64())
 
-  fun property(inode: U64, h: PropertyHelper) =>
-    let etag = _ETag(inode, 1024, 12345)
+  fun property(sample: (U64, USize, I64), h: PropertyHelper) =>
+    (let inode, let size, let mtime) = sample
+    let etag = _ETag(inode, size, mtime)
     h.assert_true(_ETag.matches(etag, etag))
 
-class \nodoc\ iso _PropertyETagWildcardMatch is Property1[U64]
-  """`*` matches any generated ETag."""
+class \nodoc\ iso _PropertyETagWildcardMatch is Property1[(U64, USize, I64)]
+  """`*` matches any generated ETag (all three components varied)."""
   fun name(): String => "etag/property/wildcard match"
 
-  fun gen(): Generator[U64] => Generators.u64()
+  fun gen(): Generator[(U64, USize, I64)] =>
+    Generators.zip3[U64, USize, I64](
+      Generators.u64(), Generators.usize(), Generators.i64())
 
-  fun property(inode: U64, h: PropertyHelper) =>
-    h.assert_true(_ETag.matches("*", _ETag(inode, 512, 99999)))
+  fun property(sample: (U64, USize, I64), h: PropertyHelper) =>
+    (let inode, let size, let mtime) = sample
+    h.assert_true(_ETag.matches("*", _ETag(inode, size, mtime)))

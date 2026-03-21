@@ -1,7 +1,9 @@
 primitive BodyNotNeeded
   """
-  Returned by `Context.start_streaming()` when the request is HEAD.
+  Returned by `RequestHandler.start_streaming()` when streaming cannot begin.
 
-  The framework has already sent a headers-only response. The handler should
-  not start a producer — there is no stream to write to.
+  This happens in two cases: the request is HEAD (the framework sends a
+  headers-only response automatically), or `respond()` was already called.
+  In either case, the handler should not start a producer — there is no
+  stream to write to.
   """

@@ -12,7 +12,7 @@ class ref _RouterBuilder
   new create() =>
     _trees = Map[String, _BuildNode ref]
 
-  fun ref add(method: stallion.Method, path: String, handler: Handler,
+  fun ref add(method: stallion.Method, path: String, factory: HandlerFactory,
     middleware: (Array[Middleware val] val | None))
   =>
     """Register a route. The path must start with `/`."""
@@ -25,7 +25,7 @@ class ref _RouterBuilder
       _trees(method_key) = node
       node
     end
-    tree.insert(normalized, handler, middleware)
+    tree.insert(normalized, factory, middleware)
 
   fun ref build(): _Router val =>
     """Freeze the builder into an immutable router."""
@@ -85,29 +85,29 @@ class ref _BuildNode
   `_TreeNode val` for immutable lookup.
   """
   var _prefix: String = ""
-  var _handler: (Handler | None) = None
+  var _factory: (HandlerFactory | None) = None
   var _middleware: (Array[Middleware val] val | None) = None
   var _param_name: String = ""
   embed _children: Map[U8, _BuildNode ref] = Map[U8, _BuildNode ref]
   var _param_child: (_BuildNode ref | None) = None
-  var _wildcard_handler: (Handler | None) = None
+  var _wildcard_factory: (HandlerFactory | None) = None
   var _wildcard_middleware: (Array[Middleware val] val | None) = None
   var _wildcard_name: String = ""
 
   new create(prefix: String = "") =>
     _prefix = prefix
 
-  fun ref insert(path: String, handler: Handler,
+  fun ref insert(path: String, factory: HandlerFactory,
     middleware: (Array[Middleware val] val | None))
   =>
     """Insert a route path into this subtree."""
-    _insert(path, 0, handler, middleware)
+    _insert(path, 0, factory, middleware)
 
-  fun ref _insert(path: String, offset: USize, handler: Handler,
+  fun ref _insert(path: String, offset: USize, factory: HandlerFactory,
     middleware: (Array[Middleware val] val | None))
   =>
     if offset >= path.size() then
-      _handler = handler
+      _factory = factory
       _middleware = middleware
       return
     end
@@ -115,19 +115,19 @@ class ref _BuildNode
     try
       let c = path(offset)?
       if c == ':' then
-        _insert_param(path, offset, handler, middleware)
+        _insert_param(path, offset, factory, middleware)
       elseif c == '*' then
-        _wildcard_handler = handler
+        _wildcard_factory = factory
         _wildcard_middleware = middleware
         _wildcard_name = path.trim(offset + 1)
       else
-        _insert_static(path, offset, handler, middleware)
+        _insert_static(path, offset, factory, middleware)
       end
     else
       _Unreachable()
     end
 
-  fun ref _insert_param(path: String, offset: USize, handler: Handler,
+  fun ref _insert_param(path: String, offset: USize, factory: HandlerFactory,
     middleware: (Array[Middleware val] val | None))
   =>
     let name_end = _Paths.find_char(path, '/', offset + 1)
@@ -141,13 +141,13 @@ class ref _BuildNode
     end
     child._param_name = name
     if name_end >= path.size() then
-      child._handler = handler
+      child._factory = factory
       child._middleware = middleware
     else
-      child._insert(path, name_end, handler, middleware)
+      child._insert(path, name_end, factory, middleware)
     end
 
-  fun ref _insert_static(path: String, offset: USize, handler: Handler,
+  fun ref _insert_static(path: String, offset: USize, factory: HandlerFactory,
     middleware: (Array[Middleware val] val | None))
   =>
     try
@@ -157,7 +157,7 @@ class ref _BuildNode
         let common = _Paths.common_prefix_len(child._prefix,
           path.trim(offset))
         if common == child._prefix.size() then
-          child._insert(path, offset + common, handler, middleware)
+          child._insert(path, offset + common, factory, middleware)
         else
           // Split the child node at the divergence point
           let remaining = path.trim(offset)
@@ -170,11 +170,11 @@ class ref _BuildNode
             _Unreachable()
           end
           if common == remaining.size() then
-            new_parent._handler = handler
+            new_parent._factory = factory
             new_parent._middleware = middleware
           else
             let new_child = _BuildNode(remaining.trim(common))
-            new_child._handler = handler
+            new_child._factory = factory
             new_child._middleware = middleware
             try
               new_parent._children(remaining(common)?) = new_child
@@ -190,11 +190,11 @@ class ref _BuildNode
         let special = _Paths.find_special(remaining)
         if special < remaining.size() then
           let child = _BuildNode(remaining.trim(0, special))
-          child._insert(path, offset + special, handler, middleware)
+          child._insert(path, offset + special, factory, middleware)
           _children(c) = child
         else
           let child = _BuildNode(remaining)
-          child._handler = handler
+          child._factory = factory
           child._middleware = middleware
           _children(c) = child
         end
@@ -215,8 +215,8 @@ class ref _BuildNode
     else
       None
     end
-    _TreeNode._create(_prefix, _handler, _middleware, _param_name,
-      consume frozen_children, frozen_param, _wildcard_handler,
+    _TreeNode._create(_prefix, _factory, _middleware, _param_name,
+      consume frozen_children, frozen_param, _wildcard_factory,
       _wildcard_middleware, _wildcard_name)
 
 // --- Immutable lookup node ---
@@ -229,37 +229,37 @@ class val _TreeNode
   handler, middleware, and parameters for a given path.
   """
   let _prefix: String
-  let _handler: (Handler | None)
+  let _factory: (HandlerFactory | None)
   let _middleware: (Array[Middleware val] val | None)
   let _param_name: String
   let _children: Array[(U8, _TreeNode val)] val
   let _param_child: (_TreeNode val | None)
-  let _wildcard_handler: (Handler | None)
+  let _wildcard_factory: (HandlerFactory | None)
   let _wildcard_middleware: (Array[Middleware val] val | None)
   let _wildcard_name: String
 
-  new val _create(prefix: String, handler': (Handler | None),
+  new val _create(prefix: String, factory': (HandlerFactory | None),
     middleware': (Array[Middleware val] val | None), param_name: String,
     children: Array[(U8, _TreeNode val)] iso,
     param_child: (_TreeNode val | None),
-    wildcard_handler': (Handler | None),
+    wildcard_factory': (HandlerFactory | None),
     wildcard_middleware': (Array[Middleware val] val | None),
     wildcard_name: String)
   =>
     _prefix = prefix
-    _handler = handler'
+    _factory = factory'
     _middleware = middleware'
     _param_name = param_name
     _children = consume children
     _param_child = param_child
-    _wildcard_handler = wildcard_handler'
+    _wildcard_factory = wildcard_factory'
     _wildcard_middleware = wildcard_middleware'
     _wildcard_name = wildcard_name
 
   fun lookup(path: String): (_RouteMatch | None) =>
     """Find a matching route for the given path."""
     match _lookup(path, 0)
-    | (let h: Handler, let mw: (Array[Middleware val] val | None),
+    | (let f: HandlerFactory, let mw: (Array[Middleware val] val | None),
        let p: Array[(String, String)] val) =>
       let frozen: Map[String, String] val = recover val
         let m = Map[String, String]
@@ -268,17 +268,17 @@ class val _TreeNode
         end
         m
       end
-      _RouteMatch(h, mw, frozen)
+      _RouteMatch(f, mw, frozen)
     else
       None
     end
 
   fun _lookup(path: String, offset: USize):
-    ((Handler, (Array[Middleware val] val | None),
+    ((HandlerFactory, (Array[Middleware val] val | None),
       Array[(String, String)] val) | None)
   =>
     """
-    Recursive lookup returning handler, middleware, and accumulated params.
+    Recursive lookup returning factory, middleware, and accumulated params.
 
     Params are built bottom-up: the leaf returns an empty val array, and each
     param level prepends its parameter to the child's val result.
@@ -287,8 +287,8 @@ class val _TreeNode
       recover val Array[(String, String)] end
 
     if offset >= path.size() then
-      match _handler
-      | let h: Handler => return (h, _middleware, empty_params)
+      match _factory
+      | let f: HandlerFactory => return (f, _middleware, empty_params)
       end
       return None
     end
@@ -300,9 +300,10 @@ class val _TreeNode
         if key == c then
           if _Paths.starts_with(path, offset, child._prefix) then
             match child._lookup(path, offset + child._prefix.size())
-            | (let h: Handler, let mw: (Array[Middleware val] val | None),
+            | (let f: HandlerFactory,
+               let mw: (Array[Middleware val] val | None),
                let p: Array[(String, String)] val) =>
-              return (h, mw, p)
+              return (f, mw, p)
             end
           end
           break
@@ -319,7 +320,8 @@ class val _TreeNode
       if value_end > offset then
         let value = path.trim(offset, value_end)
         match child._lookup(path, value_end)
-        | (let h: Handler, let mw: (Array[Middleware val] val | None),
+        | (let f: HandlerFactory,
+           let mw: (Array[Middleware val] val | None),
            let child_params: Array[(String, String)] val) =>
           let with_param: Array[(String, String)] val = recover val
             let a = Array[(String, String)]
@@ -329,21 +331,21 @@ class val _TreeNode
             end
             a
           end
-          return (h, mw, with_param)
+          return (f, mw, with_param)
         end
       end
     end
 
     // Try wildcard
-    match _wildcard_handler
-    | let h: Handler =>
+    match _wildcard_factory
+    | let f: HandlerFactory =>
       let remainder = path.trim(offset)
       let wildcard_params: Array[(String, String)] val = recover val
         let a = Array[(String, String)]
         a.push((_wildcard_name, remainder))
         a
       end
-      return (h, _wildcard_middleware, wildcard_params)
+      return (f, _wildcard_middleware, wildcard_params)
     end
 
     None

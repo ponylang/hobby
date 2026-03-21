@@ -4,11 +4,15 @@ Each subdirectory is a self-contained Pony program demonstrating a different par
 
 ## [hello](hello/)
 
-Starts an HTTP server with two routes: a static greeting at `/` and a parameterized greeting at `/greet/:name`. Demonstrates `Application` route registration with `.>` chaining, `Handler` implementations, and route parameter extraction via `ctx.param()`. Start here if you're new to the library.
+Starts an HTTP server with two routes: a static greeting at `/` and a parameterized greeting at `/greet/:name`. Demonstrates `Application` route registration with `.>` chaining, inline handler factories using `RequestHandler`, and route parameter extraction via `handler.param()`. Start here if you're new to the library.
+
+## [async-handler](async-handler/)
+
+Demonstrates actor-based handlers that do async work before responding. A `SlowService` actor simulates an async operation (e.g., a database query or external API call). The handler actor creates a `RequestHandler`, sends a query to the service, and responds when the result arrives. Shows the `HandlerReceiver` interface for lifecycle notifications.
 
 ## [middleware](middleware/)
 
-Starts an HTTP server with public and protected routes. Demonstrates two middleware patterns: an auth middleware that short-circuits with 401 in the `before` phase when a token is missing, and a logging middleware that records requests in the `after` phase. Also shows the typed accessor convention for inter-middleware communication — `AuthData.user()` extracts domain types (`AuthenticatedUser` or `NotAuthenticated`) from the context data map, avoiding raw string-key lookups.
+Starts an HTTP server with public and protected routes. Demonstrates two middleware patterns: an auth middleware that short-circuits with 401 in the `before` phase when a token is missing, and a logging middleware that records requests in the `after` phase. Also shows the typed accessor pattern for inter-middleware communication — `handler.get[AuthenticatedUser]()` extracts domain types from the data map.
 
 ## [route-groups](route-groups/)
 
@@ -16,12 +20,12 @@ Starts an HTTP server with grouped routes sharing prefixes and middleware. Demon
 
 ## [serve-files](serve-files/)
 
-Serves static files from a `public/` directory using the built-in `ServeFiles` handler. Demonstrates mounting a file-serving route with a `*filepath` wildcard parameter and creating the root `FilePath` from `FileAuth`. Includes sample HTML and CSS files plus a `docs/` subdirectory with an `index.html` that is served automatically when visiting `/static/docs/`. Responses include caching headers (ETag, Last-Modified, Cache-Control) and support conditional requests (304 Not Modified).
+Serves static files from a `public/` directory using the built-in `ServeFiles` handler factory. Demonstrates mounting a file-serving route with a `*filepath` wildcard parameter and creating the root `FilePath` from `FileAuth`. Includes sample HTML and CSS files plus a `docs/` subdirectory with an `index.html` that is served automatically when visiting `/static/docs/`. Responses include caching headers (ETag, Last-Modified, Cache-Control) and support conditional requests (304 Not Modified).
 
 ## [custom-content-types](custom-content-types/)
 
-Serves static files with custom MIME type mappings for `.webp` and `.avif` image formats using `ContentTypes.with_overrides`. These extensions are not in the default set, so without overrides they would be served as `application/octet-stream`. Demonstrates how to extend the built-in content type mapping and pass it to `ServeFiles`.
+Serves static files with custom MIME type mappings for `.webp` and `.avif` image formats using `ContentTypes.add`. These extensions are not in the default set, so without overrides they would be served as `application/octet-stream`. Demonstrates how to extend the built-in content type mapping and pass it to `ServeFiles`.
 
 ## [streaming](streaming/)
 
-Streaming responses with chunked transfer encoding. A handler starts a stream and passes the sender to a producer actor that sends chunks asynchronously. Also demonstrates falling back to a non-streaming response when the client doesn't support chunked encoding (`ChunkedNotSupported`) and handling HEAD requests via `BodyNotNeeded`.
+Streaming responses with chunked transfer encoding. A handler actor starts a stream via `RequestHandler.start_streaming()` and sends chunks with `send_chunk()`. Demonstrates the `HandlerReceiver` interface, falling back to a non-streaming response for `ChunkedNotSupported`, and handling HEAD requests via `BodyNotNeeded`.

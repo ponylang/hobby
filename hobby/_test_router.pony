@@ -22,12 +22,13 @@ primitive \nodoc\ _TestRouterList
 // --- Generators ---
 
 primitive \nodoc\ _GenPathSegment
-  """Generate a single path segment: lowercase letters, length 1-10."""
+  """Generate a single path segment: letters or digits, length 1-10."""
   fun apply(): Generator[String] =>
     Generators.ascii(1, 10 where range = ASCIILetters)
+      .union[String](Generators.ascii(1, 5 where range = ASCIIDigits))
 
 primitive \nodoc\ _GenStaticPath
-  """Generate a static path like `/foo/bar/baz` with 1-3 segments."""
+  """Generate a static path with 1 or 2 segments."""
   fun apply(): Generator[String] =>
     Generators.map2[String, String, String](
       _GenPathSegment(),
@@ -41,7 +42,8 @@ primitive \nodoc\ _GenStaticPath
           s.append(b)
           s
         end
-      })
+      }).union[String](
+    _GenPathSegment().map[String]({(a: String): String => "/" + a}))
 
 primitive \nodoc\ _GenParamName
   """Generate a parameter name: alphabetic, length 1-10."""
@@ -56,10 +58,11 @@ primitive \nodoc\ _GenMethod
       stallion.PATCH; stallion.HEAD; stallion.OPTIONS
     ])
 
-// --- Test handler ---
+// --- Test factory ---
 
-primitive \nodoc\ _NoOpHandler is Handler
-  fun apply(ctx: Context ref) => ctx.respond(stallion.StatusOK, "ok")
+primitive \nodoc\ _NoOpFactory
+  fun apply(ctx: HandlerContext iso): (HandlerReceiver tag | None) =>
+    RequestHandler(consume ctx).respond(stallion.StatusOK, "ok")
 
 // --- Property tests ---
 
@@ -71,7 +74,7 @@ class \nodoc\ iso _PropertyStaticRouteMatches is Property1[String]
 
   fun property(path: String, h: PropertyHelper) =>
     let builder = _RouterBuilder
-    builder.add(stallion.GET, path, _NoOpHandler, None)
+    builder.add(stallion.GET, path, _NoOpFactory, None)
     let router = builder.build()
     match router.lookup(stallion.GET, path)
     | let m: _RouteMatch =>
@@ -107,7 +110,7 @@ class \nodoc\ iso _PropertyParamExtraction is
     (let prefix, let param_name) = sample
     let pattern: String val = prefix + "/:" + param_name
     let builder = _RouterBuilder
-    builder.add(stallion.GET, pattern, _NoOpHandler, None)
+    builder.add(stallion.GET, pattern, _NoOpFactory, None)
     let router = builder.build()
 
     let lookup_path: String val = prefix + "/testvalue"
@@ -139,7 +142,7 @@ class \nodoc\ iso _PropertyMultipleParams is
     let param2: String val = if p1 == p2 then p2 + "2" else p2 end
     let pattern: String val = "/" + seg + "/:" + p1 + "/:" + param2
     let builder = _RouterBuilder
-    builder.add(stallion.GET, pattern, _NoOpHandler, None)
+    builder.add(stallion.GET, pattern, _NoOpFactory, None)
     let router = builder.build()
 
     let lookup_path: String val = "/" + seg + "/val1/val2"
@@ -168,7 +171,7 @@ class \nodoc\ iso _PropertyMethodIsolation is
 
   fun property(method: stallion.Method, h: PropertyHelper) =>
     let builder = _RouterBuilder
-    builder.add(method, "/test", _NoOpHandler, None)
+    builder.add(method, "/test", _NoOpFactory, None)
     let router = builder.build()
 
     // Should match the registered method
@@ -197,7 +200,7 @@ class \nodoc\ iso _PropertyWildcardCapture is Property1[String]
 
   fun property(seg: String, h: PropertyHelper) =>
     let builder = _RouterBuilder
-    builder.add(stallion.GET, "/files/*path", _NoOpHandler, None)
+    builder.add(stallion.GET, "/files/*path", _NoOpFactory, None)
     let router = builder.build()
 
     let lookup_path: String val = "/files/" + seg + "/extra"
@@ -220,23 +223,27 @@ class \nodoc\ iso _TestStaticPriorityOverParam is UnitTest
   fun name(): String => "router/static priority over param"
 
   fun apply(h: TestHelper) =>
-    let static_handler = _TestMarkerHandler("static")
-    let param_handler = _TestMarkerHandler("param")
+    let static_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "static")
+    } val
+    let param_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "param")
+    } val
     let builder = _RouterBuilder
-    builder.add(stallion.GET, "/users/:id", param_handler, None)
-    builder.add(stallion.GET, "/users/new", static_handler, None)
+    builder.add(stallion.GET, "/users/:id", param_factory, None)
+    builder.add(stallion.GET, "/users/new", static_factory, None)
     let router = builder.build()
 
     match router.lookup(stallion.GET, "/users/new")
     | let m: _RouteMatch =>
-      h.assert_is[Handler](static_handler, m.handler)
+      h.assert_is[HandlerFactory](static_factory, m.factory)
     else
       h.fail("expected match for /users/new")
     end
 
     match router.lookup(stallion.GET, "/users/42")
     | let m: _RouteMatch =>
-      h.assert_is[Handler](param_handler, m.handler)
+      h.assert_is[HandlerFactory](param_factory, m.factory)
       try
         h.assert_eq[String]("42", m.params("id")?)
       else
@@ -246,18 +253,13 @@ class \nodoc\ iso _TestStaticPriorityOverParam is UnitTest
       h.fail("expected match for /users/42")
     end
 
-class \nodoc\ val _TestMarkerHandler is Handler
-  let _label: String
-  new val create(label: String) => _label = label
-  fun apply(ctx: Context ref) => ctx.respond(stallion.StatusOK, _label)
-
 class \nodoc\ iso _TestRootPath is UnitTest
   """Root path `/` matches."""
   fun name(): String => "router/root path"
 
   fun apply(h: TestHelper) =>
     let builder = _RouterBuilder
-    builder.add(stallion.GET, "/", _NoOpHandler, None)
+    builder.add(stallion.GET, "/", _NoOpFactory, None)
     let router = builder.build()
 
     match router.lookup(stallion.GET, "/")
@@ -271,21 +273,25 @@ class \nodoc\ iso _TestOverlappingPrefixes is UnitTest
   fun name(): String => "router/overlapping prefixes"
 
   fun apply(h: TestHelper) =>
-    let h1 = _TestMarkerHandler("v1")
-    let h2 = _TestMarkerHandler("v2")
+    let f1: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "v1")
+    } val
+    let f2: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "v2")
+    } val
     let builder = _RouterBuilder
-    builder.add(stallion.GET, "/api/v1/users", h1, None)
-    builder.add(stallion.GET, "/api/v2/users", h2, None)
+    builder.add(stallion.GET, "/api/v1/users", f1, None)
+    builder.add(stallion.GET, "/api/v2/users", f2, None)
     let router = builder.build()
 
     match router.lookup(stallion.GET, "/api/v1/users")
-    | let m: _RouteMatch => h.assert_is[Handler](h1, m.handler)
+    | let m: _RouteMatch => h.assert_is[HandlerFactory](f1, m.factory)
     else
       h.fail("expected match for /api/v1/users")
     end
 
     match router.lookup(stallion.GET, "/api/v2/users")
-    | let m: _RouteMatch => h.assert_is[Handler](h2, m.handler)
+    | let m: _RouteMatch => h.assert_is[HandlerFactory](f2, m.factory)
     else
       h.fail("expected match for /api/v2/users")
     end
@@ -296,7 +302,7 @@ class \nodoc\ iso _TestWildcardSingleSegment is UnitTest
 
   fun apply(h: TestHelper) =>
     let builder = _RouterBuilder
-    builder.add(stallion.GET, "/files/*path", _NoOpHandler, None)
+    builder.add(stallion.GET, "/files/*path", _NoOpFactory, None)
     let router = builder.build()
 
     match router.lookup(stallion.GET, "/files/readme.txt")
@@ -322,7 +328,7 @@ class \nodoc\ iso _TestTrailingSlashNormalization is UnitTest
 
   fun apply(h: TestHelper) =>
     let builder = _RouterBuilder
-    builder.add(stallion.GET, "/users", _NoOpHandler, None)
+    builder.add(stallion.GET, "/users", _NoOpFactory, None)
     let router = builder.build()
 
     match router.lookup(stallion.GET, "/users")

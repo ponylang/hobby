@@ -18,18 +18,58 @@ actor Main
   new create(env: Env) =>
     let auth = lori.TCPListenAuth(env.root)
     hobby.Application
-      .>get("/", HelloHandler)
-      .>get("/greet/:name", GreetHandler)
+      .>get("/", {(ctx) =>
+        hobby.RequestHandler(consume ctx)
+          .respond(stallion.StatusOK, "Hello!")
+      } val)
+      .>get("/greet/:name", {(ctx) =>
+        let handler = hobby.RequestHandler(consume ctx)
+        try
+          handler.respond(stallion.StatusOK,
+            "Hello, " + handler.param("name")? + "!")
+        else
+          handler.respond(stallion.StatusBadRequest, "Bad Request")
+        end
+      } val)
       .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
-
-primitive HelloHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) =>
-    ctx.respond(stallion.StatusOK, "Hello!")
-
-class val GreetHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) ? =>
-    ctx.respond(stallion.StatusOK, "Hello, " + ctx.param("name")? + "!")
 ```
+
+## Handler Factories
+
+Routes are registered with a `HandlerFactory` — a `val` lambda that receives
+an iso `HandlerContext` and returns an optional `HandlerReceiver tag`.
+
+**Inline handlers** consume the context into a `RequestHandler`, respond
+immediately, and return `None`:
+
+```pony
+{(ctx) =>
+  hobby.RequestHandler(consume ctx)
+    .respond(stallion.StatusOK, "Hello!")
+} val
+```
+
+**Async handlers** create an actor that holds the `RequestHandler` and
+responds later (e.g., after a database query). The actor implements
+`HandlerReceiver` for lifecycle signals:
+
+```pony
+actor MyHandler is hobby.HandlerReceiver
+  embed _handler: hobby.RequestHandler
+
+  new create(ctx: hobby.HandlerContext iso, db: Database tag) =>
+    _handler = hobby.RequestHandler(consume ctx)
+    db.query(this)
+
+  be result(data: String) =>
+    _handler.respond(stallion.StatusOK, data)
+
+  be dispose() => None
+  be throttled() => None
+  be unthrottled() => None
+```
+
+Register the factory: `.>get("/data", {(ctx)(db) => MyHandler(consume ctx, db)} val)`
 
 ## Routing
 
@@ -50,15 +90,18 @@ Attach middleware to individual routes via the `middleware` parameter:
 ```pony
 let mw: Array[hobby.Middleware val] val =
   recover val [as hobby.Middleware val: AuthMiddleware] end
-app.>get("/private", PrivateHandler where middleware = mw)
+app.>get("/private", private_factory where middleware = mw)
 ```
 
 Middleware has two phases:
 
-- **`before`**: runs before the handler. Short-circuit a request by calling
-  `ctx.respond()` — the handler is skipped, but `after` phases still run.
-- **`after`**: runs after the handler in reverse order. Always runs for every
-  middleware whose `before` was invoked, regardless of how the chain ended.
+- **`before`**: runs before the handler factory, receiving a `BeforeContext`.
+  Short-circuit a request by calling `ctx.respond()` — the handler is
+  skipped, but `after` phases still run. Write to the data map with
+  `ctx.set()` for downstream middleware and handlers.
+- **`after`**: runs after the handler responds, receiving an `AfterContext`.
+  Runs in reverse order. Can modify response headers via `set_header()` and
+  `add_header()`. Always runs for every middleware whose `before` was invoked.
 
 ## Route Groups
 
@@ -68,20 +111,13 @@ Group related routes under a shared prefix and middleware with `RouteGroup`:
 let auth_mw: Array[hobby.Middleware val] val =
   recover val [as hobby.Middleware val: AuthMiddleware] end
 let api = hobby.RouteGroup("/api" where middleware = auth_mw)
-api.>get("/users", UsersHandler)
-api.>get("/users/:id", UserHandler)
+api.>get("/users", users_factory)
+api.>get("/users/:id", user_factory)
 app.>group(consume api)
 ```
 
 Groups can be nested — inner groups inherit the outer group's prefix and
-middleware, with outer middleware running first:
-
-```pony
-let admin = hobby.RouteGroup("/admin" where middleware = admin_mw)
-admin.get("/dashboard", DashboardHandler)
-api.>group(consume admin)
-// Registers /api/admin/dashboard with [auth_mw, admin_mw]
-```
+middleware, with outer middleware running first.
 
 ## Application Middleware
 
@@ -92,7 +128,7 @@ let log_mw: Array[hobby.Middleware val] val =
   recover val [as hobby.Middleware val: LogMiddleware(env.out)] end
 hobby.Application
   .>add_middleware(log_mw)
-  .>get("/", HelloHandler)
+  .>get("/", hello_factory)
   .>group(consume api)
   .serve(auth, config, env.out)
 ```
@@ -101,58 +137,51 @@ Application middleware runs before group middleware, which runs before
 per-route middleware. Can be called multiple times — middleware accumulates
 in registration order.
 
-## Context Data
-
-Middleware communicates with handlers through `ctx.set()` / `ctx.get()`.
-The data map stores `Any val` values. Middleware authors should provide typed
-accessor primitives that use `match` to recover domain types, following the
-convention demonstrated in the middleware example.
-
 ## Streaming Responses
 
-Send chunked HTTP responses by calling `ctx.start_streaming()` and matching
-on the result:
+Send chunked HTTP responses using `RequestHandler.start_streaming()`:
 
 ```pony
-primitive StreamHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) ? =>
-    match ctx.start_streaming(stallion.StatusOK)?
-    | let sender: hobby.StreamSender tag =>
-      MyProducer(sender)
+actor StreamHandler is hobby.HandlerReceiver
+  embed _handler: hobby.RequestHandler
+
+  new create(ctx: hobby.HandlerContext iso) =>
+    _handler = hobby.RequestHandler(consume ctx)
+    match _handler.start_streaming(stallion.StatusOK)
+    | hobby.StreamingStarted => _send()
     | stallion.ChunkedNotSupported =>
-      ctx.respond(stallion.StatusOK, "Chunked encoding not supported.")
+      _handler.respond(stallion.StatusOK, "Chunked not supported.")
     | hobby.BodyNotNeeded => None
     end
 
-actor MyProducer
-  let _sender: hobby.StreamSender tag
-
-  new create(sender: hobby.StreamSender tag) =>
-    _sender = sender
-    _send()
-
   be _send() =>
-    _sender.send_chunk("Hello, ")
-    _sender.send_chunk("streaming world!")
-    _sender.finish()
+    _handler.send_chunk("Hello, ")
+    _handler.send_chunk("streaming world!")
+    _handler.finish()
+
+  be dispose() => None
+  be throttled() => None
+  be unthrottled() => None
 ```
 
-`start_streaming()` is partial — it errors if a response has already been
-sent. It returns `(StreamSender tag | ChunkedNotSupported | BodyNotNeeded)`
-so handlers can fall back to a non-streaming response when the client doesn't
-support chunked encoding (e.g., HTTP/1.0), or skip streaming entirely for
-HEAD requests (`BodyNotNeeded`). Existing handlers that don't match on
-`BodyNotNeeded` work correctly — in a statement-position match, unmatched
-cases silently fall through. If the handler errors after a successful
-`start_streaming()`, the framework automatically terminates the chunked
-response to prevent a hung connection.
+`start_streaming()` returns `StreamingStarted` on success,
+`ChunkedNotSupported` for HTTP/1.0 clients, or `BodyNotNeeded` for HEAD
+requests. After `StreamingStarted`, call `send_chunk()` to send data and
+`finish()` to complete the stream.
+
+## Handler Timeout
+
+`Application.serve()` accepts an optional `handler_timeout` parameter
+(in milliseconds, default 30 seconds). When a handler fails to respond
+within the timeout, the framework sends 504 Gateway Timeout. Pass `None`
+to disable the timeout.
 
 ## Static File Serving
 
-Serve files from a directory using the built-in `ServeFiles` handler. Small
-files are served with `Content-Length`; large files use chunked streaming.
-HEAD requests are optimized — `ServeFiles` responds with `Content-Type` and
-`Content-Length` headers without reading the file, regardless of file size.
+Serve files from a directory using the built-in `ServeFiles` handler factory.
+Small files are served with `Content-Length`; large files use chunked
+streaming. HEAD requests are optimized — `ServeFiles` responds with
+`Content-Type` and `Content-Length` headers without reading the file.
 Path traversal is prevented by Pony's `FilePath` capability system.
 
 ```pony
@@ -170,36 +199,16 @@ actor Main
       .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
 ```
 
-Routes must use `*filepath` as the wildcard parameter name. `ServeFiles`
-detects content types from file extensions. When a request resolves to a
-directory, `ServeFiles` automatically serves `index.html` from that
-directory if it exists; otherwise the request returns 404. For HTTP/1.0
-clients requesting files above the chunk threshold, it responds with 505
-rather than loading the entire file into memory.
-
-The `chunk_threshold` parameter (in kilobytes) controls the cutoff between
-serving a file in one response vs chunked streaming. Default is 1024 (1 MB):
-
-```pony
-// Stream files at or above 256 KB instead of the default 1 MB
-hobby.ServeFiles(root where chunk_threshold = 256)
-```
-
-Custom content types can be added or defaults overridden via `ContentTypes`:
-
-```pony
-let types = hobby.ContentTypes
-  .add("webp", "image/webp")
-  .add("avif", "image/avif")
-hobby.ServeFiles(root where content_types = types)
-```
+Routes must use `*filepath` as the wildcard parameter name. When a request
+resolves to a directory, `ServeFiles` automatically serves `index.html`.
 
 ## Imports
 
-Users import three packages:
+Users import up to four packages:
 
-- **`hobby`**: Application, BodyNotNeeded, ContentTypes, Context, Handler,
-  Middleware, RouteGroup, ServeFiles, StreamSender
+- **`hobby`**: Application, AfterContext, BeforeContext, BodyNotNeeded,
+  ContentTypes, HandlerContext, HandlerFactory, HandlerReceiver, Middleware,
+  RequestHandler, RouteGroup, ServeFiles, StreamingStarted
 - **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig,
   ChunkedNotSupported)
 - **`lori`**: `TCPListenAuth(env.root)` for network access
