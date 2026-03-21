@@ -41,46 +41,43 @@ actor Main
 
     hobby.Application
       .>add_middleware(log_mw)
-      .>get("/", HelloHandler)
-      .>get("/health", HealthHandler)
+      .>get("/", {(ctx) =>
+        hobby.RequestHandler(consume ctx)
+          .respond(stallion.StatusOK, "Hello from Hobby!")
+      } val)
+      .>get("/health", {(ctx) =>
+        hobby.RequestHandler(consume ctx)
+          .respond(stallion.StatusOK, "OK")
+      } val)
       .>group(
         hobby.RouteGroup("/api" where middleware = auth_mw)
-          .>get("/users", UsersHandler)
-          .>get("/users/:id", UserHandler)
+          .>get("/users", {(ctx) =>
+            hobby.RequestHandler(consume ctx)
+              .respond(stallion.StatusOK, "User list")
+          } val)
+          .>get("/users/:id", {(ctx) =>
+            let handler = hobby.RequestHandler(consume ctx)
+            try
+              let id = handler.param("id")?
+              handler.respond(stallion.StatusOK, "User " + id)
+            else
+              handler.respond(stallion.StatusBadRequest, "Bad Request")
+            end
+          } val)
           .>group(
             hobby.RouteGroup("/admin" where middleware = admin_mw)
-              .>get("/dashboard", DashboardHandler)))
+              .>get("/dashboard", {(ctx) =>
+                hobby.RequestHandler(consume ctx)
+                  .respond(stallion.StatusOK, "Admin dashboard")
+              } val)))
       .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
-
-// --- Handlers ---
-
-primitive HelloHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) =>
-    ctx.respond(stallion.StatusOK, "Hello from Hobby!")
-
-primitive HealthHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) =>
-    ctx.respond(stallion.StatusOK, "OK")
-
-primitive UsersHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) =>
-    ctx.respond(stallion.StatusOK, "User list")
-
-class val UserHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) ? =>
-    let id = ctx.param("id")?
-    ctx.respond(stallion.StatusOK, "User " + id)
-
-primitive DashboardHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) =>
-    ctx.respond(stallion.StatusOK, "Admin dashboard")
 
 // --- Middleware ---
 
 class val AuthMiddleware is hobby.Middleware
   """Rejects requests without an Authorization header."""
-  fun before(ctx: hobby.Context ref) =>
-    match ctx.request.headers.get("authorization")
+  fun before(ctx: hobby.BeforeContext ref) =>
+    match ctx.request().headers.get("authorization")
     | let _: String => None
     else
       ctx.respond(stallion.StatusUnauthorized, "Unauthorized")
@@ -88,15 +85,15 @@ class val AuthMiddleware is hobby.Middleware
 
 primitive AdminMiddleware is hobby.Middleware
   """Placeholder admin check — always passes."""
-  fun before(ctx: hobby.Context ref) => None
+  fun before(ctx: hobby.BeforeContext ref) => None
 
 class val LogMiddleware is hobby.Middleware
   """Logs the request method and path after handling."""
   let _out: OutStream
   new val create(out: OutStream) => _out = out
 
-  fun before(ctx: hobby.Context ref) => None
+  fun before(ctx: hobby.BeforeContext ref) => None
 
-  fun after(ctx: hobby.Context ref) =>
+  fun after(ctx: hobby.AfterContext ref) =>
     _out.print(
-      ctx.request.method.string() + " " + ctx.request.uri.path)
+      ctx.request().method.string() + " " + ctx.request().uri.path)

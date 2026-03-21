@@ -1,5 +1,6 @@
 use "pony_test"
 use "files"
+use "time"
 use stallion = "stallion"
 use lori = "lori"
 
@@ -31,6 +32,8 @@ primitive \nodoc\ _TestServeFilesList
     test(_TestServeFilesDirectoryIndexHead)
     test(_TestServeFilesDirectoryIndex304)
     test(_TestServeFilesCustomContentType)
+    test(_TestFileStreamerPauseResume)
+    test(_TestServeFilesHandlerBackpressure)
 
 // --- Test setup ---
 
@@ -702,3 +705,187 @@ class \nodoc\ iso _TestServeFilesCustomContentType is UnitTest
     else
       h.fail("test setup failed")
     end
+
+// --- FileStreamer pause/resume test ---
+
+class \nodoc\ iso _TestFileStreamerPauseResume is UnitTest
+  """Pause stops the read loop; resume restarts it through to completion."""
+  fun name(): String => "integration/serve-files/file streamer pause resume"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    h.long_test(5_000_000_000)
+    let file_auth = FileAuth(h.env.root)
+    let path = FilePath(file_auth, "/tmp/hobby-test-pause-resume.bin")
+    // 256 KB — enough for multiple 64 KB chunks
+    let file = File(path)
+    file.set_length(0)
+    let chunk = recover val Array[U8].init('x', 65536) end
+    file.write(chunk)
+    file.write(chunk)
+    file.write(chunk)
+    file.write(chunk)
+    file.dispose()
+
+    let read_file: File iso = recover iso
+      File.open(FilePath(file_auth, "/tmp/hobby-test-pause-resume.bin"))
+    end
+    _PauseResumeTarget(h, consume read_file, path)
+
+actor \nodoc\ _PauseResumeTarget is _FileTarget
+  """
+  On first chunk, pauses the streamer. A short timer resumes it.
+  Verifies that _file_done arrives after the pause/resume cycle.
+  """
+  let _h: TestHelper
+  var _streamer: (_FileStreamer | None) = None
+  let _timers: Timers
+  let _path: FilePath
+  var _chunks_received: USize = 0
+  var _paused: Bool = false
+
+  new create(h: TestHelper, file: File iso, path: FilePath) =>
+    _h = h
+    _timers = Timers
+    _path = path
+    let streamer = _FileStreamer(consume file, this)
+    _streamer = streamer
+
+  be _file_chunk(data: Array[U8] val) =>
+    _chunks_received = _chunks_received + 1
+    if (_chunks_received == 1) and (not _paused) then
+      _paused = true
+      match _streamer
+      | let s: _FileStreamer => s.pause()
+      end
+      // Resume after 100ms
+      let resume_target: _PauseResumeTarget tag = this
+      let timer = Timer(
+        _PauseResumeNotify(resume_target), 100_000_000, 0)
+      _timers(consume timer)
+    end
+
+  be _resume_streamer() =>
+    match _streamer
+    | let s: _FileStreamer => s.resume()
+    end
+
+  be _file_done() =>
+    _h.assert_true(_chunks_received >= 2,
+      "expected multiple chunks, got " + _chunks_received.string())
+    _h.assert_true(_paused, "pause should have been triggered")
+    _timers.dispose()
+    // Clean up temp file
+    _path.remove()
+    _h.complete(true)
+
+class \nodoc\ iso _PauseResumeNotify is TimerNotify
+  let _target: _PauseResumeTarget tag
+
+  new iso create(target: _PauseResumeTarget tag) =>
+    _target = target
+
+  fun ref apply(timer: Timer, count: U64): Bool =>
+    _target._resume_streamer()
+    false
+
+// --- ServeFilesHandler backpressure test ---
+
+class \nodoc\ iso _TestServeFilesHandlerBackpressure is UnitTest
+  """throttled()/unthrottled() on _ServeFilesHandler pauses/resumes the streamer."""
+  fun name(): String =>
+    "integration/serve-files/handler backpressure"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    h.long_test(5_000_000_000)
+    let file_auth = FileAuth(h.env.root)
+    let path = FilePath(file_auth, "/tmp/hobby-test-bp-handler.bin")
+    // 256 KB — enough for multiple 64 KB chunks
+    let file = File(path)
+    file.set_length(0)
+    let chunk = recover val Array[U8].init('y', 65536) end
+    file.write(chunk)
+    file.write(chunk)
+    file.write(chunk)
+    file.write(chunk)
+    file.dispose()
+
+    let read_file: File iso = recover iso
+      File.open(FilePath(file_auth, "/tmp/hobby-test-bp-handler.bin"))
+    end
+    let mock = _BackpressureMockConnection(h, path)
+    let headers: stallion.Headers val =
+      recover val stallion.Headers end
+    let handler = _ServeFilesHandler(_MockHandlerContext(mock),
+      consume read_file, stallion.StatusOK, headers)
+    mock.set_handler(handler)
+
+actor \nodoc\ _BackpressureMockConnection is _ConnectionProtocol
+  """
+  Mock connection that throttles on first chunk and unthrottles after a timer.
+  Verifies that chunks continue to arrive after unthrottling.
+  """
+  let _h: TestHelper
+  let _path: FilePath
+  let _timers: Timers
+  var _handler: (_ServeFilesHandler | None) = None
+  var _chunks_received: USize = 0
+  var _paused: Bool = false
+
+  new create(h: TestHelper, path: FilePath) =>
+    _h = h
+    _path = path
+    _timers = Timers
+
+  be set_handler(handler: _ServeFilesHandler) =>
+    _handler = handler
+
+  be _handler_respond(token: U64, status: stallion.Status,
+    headers: (stallion.Headers val | None), body: ByteSeq)
+  =>
+    None
+
+  be _handler_start_streaming(token: U64, status: stallion.Status,
+    headers: (stallion.Headers val | None))
+  =>
+    None
+
+  be _handler_send_chunk(token: U64, data: ByteSeq) =>
+    _chunks_received = _chunks_received + 1
+    if (_chunks_received == 1) and (not _paused) then
+      _paused = true
+      match _handler
+      | let h: _ServeFilesHandler => h.throttled()
+      end
+      // Resume after 100ms
+      let self: _BackpressureMockConnection tag = this
+      let timer = Timer(
+        _BackpressureResumeNotify(self), 100_000_000, 0)
+      _timers(consume timer)
+    end
+
+  be _resume_handler() =>
+    match _handler
+    | let h: _ServeFilesHandler => h.unthrottled()
+    end
+
+  be _handler_finish(token: U64) =>
+    _h.assert_true(_chunks_received >= 2,
+      "expected multiple chunks, got " + _chunks_received.string())
+    _h.assert_true(_paused, "pause should have been triggered")
+    _timers.dispose()
+    _path.remove()
+    _h.complete(true)
+
+class \nodoc\ iso _BackpressureResumeNotify is TimerNotify
+  let _target: _BackpressureMockConnection tag
+
+  new iso create(target: _BackpressureMockConnection tag) =>
+    _target = target
+
+  fun ref apply(timer: Timer, count: U64): Bool =>
+    _target._resume_handler()
+    false

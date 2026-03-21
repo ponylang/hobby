@@ -19,15 +19,17 @@ actor Main
   new create(env: Env) =>
     let auth = lori.TCPListenAuth(env.root)
     hobby.Application
-      .>get("/", HelloHandler)
-      .>get("/greet/:name", GreetHandler)
+      .>get("/", {(ctx) =>
+        hobby.RequestHandler(consume ctx)
+          .respond(stallion.StatusOK, "Hello from Hobby!")
+      } val)
+      .>get("/greet/:name", {(ctx) =>
+        let handler = hobby.RequestHandler(consume ctx)
+        try
+          let name = handler.param("name")?
+          handler.respond(stallion.StatusOK, "Hello, " + name + "!")
+        else
+          handler.respond(stallion.StatusBadRequest, "Bad Request")
+        end
+      } val)
       .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
-
-primitive HelloHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) =>
-    ctx.respond(stallion.StatusOK, "Hello from Hobby!")
-
-class val GreetHandler is hobby.Handler
-  fun apply(ctx: hobby.Context ref) ? =>
-    let name = ctx.param("name")?
-    ctx.respond(stallion.StatusOK, "Hello, " + name + "!")

@@ -11,8 +11,8 @@ class iso RouteGroup
 
   ```pony
   let api = hobby.RouteGroup("/api" where middleware = auth_mw)
-  api.>get("/users", UsersHandler)
-  api.>get("/users/:id", UserHandler)
+  api.>get("/users", users_factory)
+  api.>get("/users/:id", user_factory)
   app.>group(consume api)
   ```
 
@@ -39,53 +39,56 @@ class iso RouteGroup
     _middleware = middleware
     _routes = Array[_RouteDefinition]
 
-  fun ref get(path: String, handler: Handler,
+  fun ref get(path: String, factory: HandlerFactory,
     middleware: (Array[Middleware val] val | None) = None)
   =>
     """Register a GET route."""
-    _routes.push(_RouteDefinition(stallion.GET, path, handler, middleware))
+    _routes.push(_RouteDefinition(stallion.GET, path, factory, middleware))
 
-  fun ref post(path: String, handler: Handler,
+  fun ref post(path: String, factory: HandlerFactory,
     middleware: (Array[Middleware val] val | None) = None)
   =>
     """Register a POST route."""
-    _routes.push(_RouteDefinition(stallion.POST, path, handler, middleware))
+    _routes.push(_RouteDefinition(stallion.POST, path, factory, middleware))
 
-  fun ref put(path: String, handler: Handler,
+  fun ref put(path: String, factory: HandlerFactory,
     middleware: (Array[Middleware val] val | None) = None)
   =>
     """Register a PUT route."""
-    _routes.push(_RouteDefinition(stallion.PUT, path, handler, middleware))
+    _routes.push(_RouteDefinition(stallion.PUT, path, factory, middleware))
 
-  fun ref delete(path: String, handler: Handler,
+  fun ref delete(path: String, factory: HandlerFactory,
     middleware: (Array[Middleware val] val | None) = None)
   =>
     """Register a DELETE route."""
-    _routes.push(_RouteDefinition(stallion.DELETE, path, handler, middleware))
+    _routes.push(
+      _RouteDefinition(stallion.DELETE, path, factory, middleware))
 
-  fun ref patch(path: String, handler: Handler,
+  fun ref patch(path: String, factory: HandlerFactory,
     middleware: (Array[Middleware val] val | None) = None)
   =>
     """Register a PATCH route."""
-    _routes.push(_RouteDefinition(stallion.PATCH, path, handler, middleware))
+    _routes.push(_RouteDefinition(stallion.PATCH, path, factory, middleware))
 
-  fun ref head(path: String, handler: Handler,
+  fun ref head(path: String, factory: HandlerFactory,
     middleware: (Array[Middleware val] val | None) = None)
   =>
     """Register a HEAD route."""
-    _routes.push(_RouteDefinition(stallion.HEAD, path, handler, middleware))
+    _routes.push(_RouteDefinition(stallion.HEAD, path, factory, middleware))
 
-  fun ref options(path: String, handler: Handler,
+  fun ref options(path: String, factory: HandlerFactory,
     middleware: (Array[Middleware val] val | None) = None)
   =>
     """Register an OPTIONS route."""
-    _routes.push(_RouteDefinition(stallion.OPTIONS, path, handler, middleware))
+    _routes.push(
+      _RouteDefinition(stallion.OPTIONS, path, factory, middleware))
 
-  fun ref route(method: stallion.Method, path: String, handler: Handler,
+  fun ref route(method: stallion.Method, path: String,
+    factory: HandlerFactory,
     middleware: (Array[Middleware val] val | None) = None)
   =>
     """Register a route with an arbitrary HTTP method."""
-    _routes.push(_RouteDefinition(method, path, handler, middleware))
+    _routes.push(_RouteDefinition(method, path, factory, middleware))
 
   fun ref group(inner: RouteGroup iso) =>
     """
@@ -102,6 +105,6 @@ class iso RouteGroup
     for r in _routes.values() do
       let joined_path = _JoinPath(_prefix, r.path)
       let combined_mw = _ConcatMiddleware(_middleware, r.middleware)
-      target.push(_RouteDefinition(r.method, joined_path, r.handler,
+      target.push(_RouteDefinition(r.method, joined_path, r.factory,
         combined_mw))
     end

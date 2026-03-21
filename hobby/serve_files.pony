@@ -1,9 +1,15 @@
 use "files"
+use "collections"
 use stallion = "stallion"
 
-class val ServeFiles is Handler
+class val ServeFiles
   """
   Serve files from a directory on disk.
+
+  Structurally matches `HandlerFactory` — pass directly to route methods.
+  For small files, conditional requests, and HEAD, responds inline via
+  `RequestHandler` and returns `None`. For large files, creates a
+  `_ServeFilesHandler` actor that streams the file.
 
   Small files (below the chunk threshold) are served as a single response
   with `Content-Length`. Large files are streamed using chunked transfer
@@ -74,7 +80,7 @@ class val ServeFiles is Handler
     content_types: ContentTypes = ContentTypes)
   =>
     """
-    Create a handler that serves files under `root`.
+    Create a handler factory that serves files under `root`.
 
     `root` must have `FileLookup`, `FileStat`, and `FileRead` capabilities.
     `chunk_threshold` is the file size in kilobytes at or above which
@@ -96,24 +102,79 @@ class val ServeFiles is Handler
     _cache_control = cache_control
     _content_types = content_types
 
-  fun apply(ctx: Context ref) ? =>
-    // Extract the wildcard param — errors if not named "filepath" (500)
-    let filepath = ctx.param("filepath")?
+  fun apply(ctx: HandlerContext iso): (HandlerReceiver tag | None) =>
+    // Read from ctx before consuming (iso->val viewpoint adaptation).
+    // All checks happen before the single consume point at the end.
+    let request = ctx.request
+    let params = ctx.params
 
-    // Resolve path safely — errors on traversal attempts
+    // Resolve the file action without consuming ctx
+    match _resolve(request, params)
+    | let r: _ServeInline =>
+      _do_inline(consume ctx, r)
+    | let r: _ServeStream =>
+      _do_stream(consume ctx, r)
+    end
+
+  fun _do_inline(ctx: HandlerContext iso, r: _ServeInline)
+    : (HandlerReceiver tag | None)
+  =>
+    let handler = RequestHandler(consume ctx)
+    match r.headers
+    | let h: stallion.Headers val =>
+      handler.respond_with_headers(r.status, h, r.body)
+    else
+      handler.respond(r.status, r.body)
+    end
+    None
+
+  fun _do_stream(ctx: HandlerContext iso, r: _ServeStream)
+    : (HandlerReceiver tag | None)
+  =>
+    let file_result: (File iso | None) = try
+      recover iso
+        let f = File.open(r.resolved)
+        if f.errno() isnt FileOK then error end
+        f
+      end
+    else
+      None
+    end
+    match consume file_result
+    | let file: File iso =>
+      _ServeFilesHandler(consume ctx, consume file, r.status, r.headers)
+    else
+      RequestHandler(consume ctx).respond(
+        stallion.StatusInternalServerError, "Internal Server Error")
+      None
+    end
+
+  fun _resolve(request: stallion.Request val,
+    params: Map[String, String] val)
+    : (_ServeInline | _ServeStream)
+  =>
+    let is_head = request.method is stallion.HEAD
+
+    // Extract wildcard param
+    let filepath = try
+      params("filepath")?
+    else
+      return _ServeInline._error(stallion.StatusInternalServerError,
+        "Internal Server Error")
+    end
+
+    // Resolve path safely
     var resolved = try
       FilePath.from(_root, filepath)?
     else
-      ctx.respond(stallion.StatusNotFound, "Not Found")
-      return
+      return _ServeInline._error(stallion.StatusNotFound, "Not Found")
     end
 
-    // Stat the file — errors if file doesn't exist
+    // Stat the file
     var info = try
       FileInfo(resolved)?
     else
-      ctx.respond(stallion.StatusNotFound, "Not Found")
-      return
+      return _ServeInline._error(stallion.StatusNotFound, "Not Found")
     end
 
     // Directory → try serving index.html
@@ -121,36 +182,32 @@ class val ServeFiles is Handler
       resolved = try
         FilePath.from(resolved, "index.html")?
       else
-        ctx.respond(stallion.StatusNotFound, "Not Found")
-        return
+        return _ServeInline._error(stallion.StatusNotFound, "Not Found")
       end
       info = try
         FileInfo(resolved)?
       else
-        ctx.respond(stallion.StatusNotFound, "Not Found")
-        return
+        return _ServeInline._error(stallion.StatusNotFound, "Not Found")
       end
     end
 
-    // After index fallback, non-file entries (e.g., symlinks) still 404
+    // After index fallback, non-file entries still 404
     if not info.file then
-      ctx.respond(stallion.StatusNotFound, "Not Found")
-      return
+      return _ServeInline._error(stallion.StatusNotFound, "Not Found")
     end
 
     let content_type = _content_types(Path.ext(resolved.path))
 
-    // Compute cache identifiers from file metadata
+    // Compute cache identifiers
     (let mod_secs, _) = info.modified_time
     let etag = _ETag(info.inode, info.size, mod_secs)
     let last_modified = _HttpDate(mod_secs)
 
-    // Conditional request validation (RFC 7232 §3):
-    // If-None-Match takes precedence over If-Modified-Since
-    let not_modified = match ctx.request.headers.get("if-none-match")
+    // Conditional request validation (RFC 7232 §3)
+    let not_modified = match request.headers.get("if-none-match")
     | let inm: String => _ETag.matches(inm, etag)
     else
-      match ctx.request.headers.get("if-modified-since")
+      match request.headers.get("if-modified-since")
       | let ims: String => ims == last_modified
       else
         false
@@ -167,16 +224,12 @@ class val ServeFiles is Handler
         end
         h
       end
-      ctx.respond_with_headers(stallion.StatusNotModified, headers, "")
-      return
+      return _ServeInline._with_headers(
+        stallion.StatusNotModified, headers, "")
     end
 
-    // HEAD optimization: respond with headers only, skip file I/O entirely.
-    // Content-Length is always set from stat size — even for files that GET
-    // would stream with chunked encoding — since HEAD with Content-Length is
-    // more useful to clients (e.g., checking download size) and is explicitly
-    // allowed by RFC 7231 §4.3.2.
-    if ctx.request.method is stallion.HEAD then
+    // HEAD optimization: headers only, skip file I/O
+    if is_head then
       let headers = recover val
         let h = stallion.Headers
           .>set("Content-Type", content_type)
@@ -188,14 +241,19 @@ class val ServeFiles is Handler
         end
         h
       end
-      ctx.respond_with_headers(stallion.StatusOK, headers, "")
-      return
+      return _ServeInline._with_headers(stallion.StatusOK, headers, "")
     end
 
     if info.size < _chunk_threshold then
-      // Small file: read entirely and respond with Content-Length
-      let file = File.open(resolved)
-      if file.errno() isnt FileOK then error end
+      // Small file: read and respond inline
+      let file = try
+        let f = File.open(resolved)
+        if f.errno() isnt FileOK then error end
+        f
+      else
+        return _ServeInline._error(stallion.StatusInternalServerError,
+          "Internal Server Error")
+      end
       let body = file.read(info.size)
       file.dispose()
       let body_size = body.size()
@@ -210,13 +268,13 @@ class val ServeFiles is Handler
         end
         h
       end
-      ctx.respond_with_headers(stallion.StatusOK, headers, consume body)
+      _ServeInline._with_headers(stallion.StatusOK, headers, consume body)
     else
-      // Large file: open before starting stream so failure produces 500
-      let file: File iso = recover iso
-        let f = File.open(resolved)
-        if f.errno() isnt FileOK then error end
-        f
+      // Large file: check HTTP version first
+      if request.version is stallion.HTTP10 then
+        return _ServeInline._error(
+          stallion.StatusHTTPVersionNotSupported,
+          "HTTP Version Not Supported")
       end
 
       let headers = recover val
@@ -229,12 +287,36 @@ class val ServeFiles is Handler
         end
         h
       end
-      match ctx.start_streaming(stallion.StatusOK, headers)?
-      | let sender: StreamSender tag =>
-        _FileStreamer(consume file, sender)
-      | stallion.ChunkedNotSupported =>
-        file.dispose()
-        ctx.respond(stallion.StatusHTTPVersionNotSupported,
-          "HTTP Version Not Supported")
-      end
+
+      _ServeStream(resolved, stallion.StatusOK, headers)
     end
+
+// Internal result types for ServeFiles._resolve()
+class val _ServeInline
+  let status: stallion.Status
+  let headers: (stallion.Headers val | None)
+  let body: ByteSeq
+
+  new val _error(status': stallion.Status, body': ByteSeq) =>
+    status = status'
+    headers = None
+    body = body'
+
+  new val _with_headers(status': stallion.Status,
+    headers': stallion.Headers val, body': ByteSeq)
+  =>
+    status = status'
+    headers = headers'
+    body = body'
+
+class val _ServeStream
+  let resolved: FilePath
+  let status: stallion.Status
+  let headers: stallion.Headers val
+
+  new val create(resolved': FilePath, status': stallion.Status,
+    headers': stallion.Headers val)
+  =>
+    resolved = resolved'
+    status = status'
+    headers = headers'
