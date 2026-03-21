@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Changed
 
+- Redesign handler model to actor-per-request ([PR #42](https://github.com/ponylang/hobby/pull/42))
 
 ## [0.3.0] - 2026-03-16
 
