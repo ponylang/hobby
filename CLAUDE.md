@@ -24,7 +24,7 @@ The `ssl` option is required — Stallion transitively depends on the `ssl` pack
 
 ## Dependencies
 
-- **Stallion** (0.5.1): HTTP/1.x server built on lori. Provides `HTTPServerActor`, `HTTPServer`, `Responder`, `ResponseBuilder`, `Request`, `ServerConfig`, `Status`, `Method`, `Headers`, `Header`, `StartChunkedResponseResult`, `StreamingStarted`, `AlreadyResponded`, `ChunkedNotSupported`. Also provides cookie support (`RequestCookie`, `RequestCookies`, `ParseCookies`, `SetCookie`, `SetCookieBuilder`, `SetCookieBuildError`, `SameSite`/`SameSiteStrict`/`SameSiteLax`/`SameSiteNone`) and content negotiation (`MediaType`, `NoAcceptableType`, `ContentNegotiationResult`, `ContentNegotiation`).
+- **Stallion** (0.5.2): HTTP/1.x server built on lori. Provides `HTTPServerActor`, `HTTPServer`, `Responder`, `ResponseBuilder`, `Request`, `ServerConfig`, `Status`, `Method`, `Headers`, `Header`, `StartChunkedResponseResult`, `StreamingStarted`, `AlreadyResponded`, `ChunkedNotSupported`. Also provides cookie support (`RequestCookie`, `RequestCookies`, `ParseCookies`, `SetCookie`, `SetCookieBuilder`, `SetCookieBuildError`, `SameSite`/`SameSiteStrict`/`SameSiteLax`/`SameSiteNone`) and content negotiation (`MediaType`, `NoAcceptableType`, `ContentNegotiationResult`, `ContentNegotiation`).
 - **lori** (transitive via Stallion): TCP layer. Provides `TCPListenerActor`, `TCPListener`, `TCPConnectionActor`, `TCPConnection`, auth types.
 - **uri** (transitive via Stallion): URI parsing. Used to read `request.uri.path`.
 - **ssl** (transitive via Stallion): SSL/TLS support. Requires an SSL version flag at build time (`ssl=3.0.x`, `ssl=1.1.x`, or `ssl=libressl`).
