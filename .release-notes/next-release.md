@@ -94,3 +94,7 @@ Streaming also changed. Instead of receiving a `StreamSender tag` from `Context.
 - `AfterContext` — context for middleware `after` phase with header modification
 - `StreamingStarted` — returned by `RequestHandler.start_streaming()` on success
 
+## Fix premature idle timeouts on SSL connections
+
+HTTPS connections with an idle timeout configured could be closed during the TLS handshake, before the connection was ready for application data. The idle timer is now deferred until the handshake completes.
+
