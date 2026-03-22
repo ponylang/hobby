@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Fixed
 
+- Fix premature idle timeouts on SSL connections ([PR #43](https://github.com/ponylang/hobby/pull/43))
 
 ### Added
 
