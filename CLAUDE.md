@@ -27,7 +27,7 @@ The `ssl` option is required — Stallion transitively depends on the `ssl` pack
 - **Stallion** (0.5.2): HTTP/1.x server built on lori. Provides `HTTPServerActor`, `HTTPServer`, `Responder`, `ResponseBuilder`, `Request`, `ServerConfig`, `Status`, `Method`, `Headers`, `Header`, `StartChunkedResponseResult`, `StreamingStarted`, `AlreadyResponded`, `ChunkedNotSupported`. Also provides cookie support (`RequestCookie`, `RequestCookies`, `ParseCookies`, `SetCookie`, `SetCookieBuilder`, `SetCookieBuildError`, `SameSite`/`SameSiteStrict`/`SameSiteLax`/`SameSiteNone`) and content negotiation (`MediaType`, `NoAcceptableType`, `ContentNegotiationResult`, `ContentNegotiation`).
 - **lori** (transitive via Stallion): TCP layer. Provides `TCPListenerActor`, `TCPListener`, `TCPConnectionActor`, `TCPConnection`, auth types.
 - **uri** (transitive via Stallion): URI parsing. Used to read `request.uri.path`.
-- **ssl** (transitive via Stallion): SSL/TLS support. Requires an SSL version flag at build time (`ssl=3.0.x`, `ssl=1.1.x`, or `ssl=libressl`).
+- **ssl** (2.0.1): SSL/TLS and cryptography. Also available transitively via Stallion. Direct dependency for signed cookie code — provides `ssl/crypto` subpackage (`HmacSha256`, `ConstantTimeCompare`, `RandBytes`). Requires an SSL version flag at build time (`ssl=3.0.x`, `ssl=1.1.x`, or `ssl=libressl`).
 
 ## Architecture
 
@@ -48,6 +48,11 @@ Users interact with these types:
 - **`BodyNotNeeded`** (`primitive`): Returned by `RequestHandler.start_streaming()` for HEAD requests.
 - **`ContentTypes`** (`class val`): File extension to MIME content type mapping. Ships with 17 common defaults. Chain `.add()` calls to add or override mappings.
 - **`ServeFiles`** (`class val`): Built-in handler factory for serving static files. Structurally matches `HandlerFactory`. Small files served inline; large files streamed via `_ServeFilesHandler` actor. Includes caching headers and conditional request support per RFC 7232.
+- **`CookieSigningKey`** (`class val`): HMAC-SHA256 signing key for use with `SignedCookie`. 32-byte minimum. `create` wraps existing key bytes, `generate` creates a random key. `_bytes()` is package-private.
+- **`SignedCookie`** (`primitive`): Signs and verifies cookie values using HMAC-SHA256. `sign` produces `value.base64url(hmac)` format. `verify` returns the original value or a `SignedCookieError`.
+- **`SignedCookieError`** (type alias): `(MalformedSignedValue | InvalidSignature)`. Error union for `SignedCookie.verify`.
+- **`MalformedSignedValue`** (`primitive`): Structurally invalid signed value (missing separator or invalid base64).
+- **`InvalidSignature`** (`primitive`): Signature did not match (tampered or wrong key).
 
 ### Internal layers
 
@@ -101,6 +106,9 @@ hobby/
   route_group.pony            - RouteGroup class (public)
   serve_files.pony            - ServeFiles handler factory (public)
   content_types.pony          - ContentTypes class + defaults (public)
+  cookie_signing_key.pony     - CookieSigningKey class (public)
+  signed_cookie.pony          - SignedCookie primitive (public)
+  signed_cookie_error.pony    - SignedCookieError union type (public)
   _connection_protocol.pony   - Connection protocol trait (internal)
   _buffered_response.pony     - Response buffer for after-middleware (internal)
   _run_before_middleware.pony  - Before-phase execution (internal)
@@ -127,6 +135,7 @@ hobby/
   _test_request_handler.pony   - RequestHandler unit tests with mock connection
   _test_integration.pony       - HTTP round-trip integration tests
   _test_serve_files.pony       - ServeFiles integration tests
+  _test_signed_cookie.pony     - Signed cookie unit + property tests
 ```
 
 ## Conventions

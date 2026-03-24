@@ -13,3 +13,4 @@ actor \nodoc\ Main is TestList
     _TestRequestHandlerList.tests(test)
     _TestIntegrationList.tests(test)
     _TestServeFilesList.tests(test)
+    _TestSignedCookieList.tests(test)

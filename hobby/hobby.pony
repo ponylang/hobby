@@ -207,8 +207,10 @@ resolves to a directory, `ServeFiles` automatically serves `index.html`.
 Users import up to four packages:
 
 - **`hobby`**: Application, AfterContext, BeforeContext, BodyNotNeeded,
-  ContentTypes, HandlerContext, HandlerFactory, HandlerReceiver, Middleware,
-  RequestHandler, RouteGroup, ServeFiles, StreamingStarted
+  ContentTypes, CookieSigningKey, HandlerContext, HandlerFactory,
+  HandlerReceiver, InvalidSignature, MalformedSignedValue, Middleware,
+  RequestHandler, RouteGroup, ServeFiles, SignedCookie, SignedCookieError,
+  StreamingStarted
 - **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig,
   ChunkedNotSupported)
 - **`lori`**: `TCPListenAuth(env.root)` for network access
