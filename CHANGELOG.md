@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Added
 
+- Add signed cookie support ([PR #47](https://github.com/ponylang/hobby/pull/47))
 
 ### Changed
 
