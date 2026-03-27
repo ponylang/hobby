@@ -160,7 +160,6 @@ class ref _BuildNode
           child._insert(path, offset + common, factory, middleware)
         else
           // Split the child node at the divergence point
-          let remaining = path.trim(offset)
           let new_parent = _BuildNode(child._prefix.trim(0, common))
           let old_suffix = child._prefix.trim(common)
           child._prefix = old_suffix
@@ -169,19 +168,9 @@ class ref _BuildNode
           else
             _Unreachable()
           end
-          if common == remaining.size() then
-            new_parent._factory = factory
-            new_parent._middleware = middleware
-          else
-            let new_child = _BuildNode(remaining.trim(common))
-            new_child._factory = factory
-            new_child._middleware = middleware
-            try
-              new_parent._children(remaining(common)?) = new_child
-            else
-              _Unreachable()
-            end
-          end
+          // Route through _insert so special characters (`:`, `*`) in the
+          // remaining suffix are parsed instead of stored as literal prefix.
+          new_parent._insert(path, offset + common, factory, middleware)
           _children(c) = new_parent
         end
       else
