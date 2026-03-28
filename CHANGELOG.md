@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a CHANGELOG](http://keepachangelog.com/).
 
-## [unreleased] - unreleased
+## [0.4.1] - 2026-03-28
 
 ### Fixed
 
@@ -12,9 +12,6 @@ All notable changes to this project will be documented in this file. This projec
 ### Added
 
 - Add signed cookie support ([PR #47](https://github.com/ponylang/hobby/pull/47))
-
-### Changed
-
 
 ## [0.4.0] - 2026-03-22
 
