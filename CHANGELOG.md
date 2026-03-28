@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Fixed
 
+- Fix param and wildcard routes failing when a static route shares a long prefix ([PR #53](https://github.com/ponylang/hobby/pull/53))
 
 ### Added
 
