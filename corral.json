@@ -13,7 +13,7 @@
   "deps": [
     {
       "locator": "github.com/ponylang/stallion.git",
-      "version": "0.5.2"
+      "version": "0.5.3"
     },
     {
       "locator": "github.com/ponylang/ssl.git",
