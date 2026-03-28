@@ -18,6 +18,16 @@ primitive \nodoc\ _TestRouterList
     test(_TestOverlappingPrefixes)
     test(_TestWildcardSingleSegment)
     test(_TestTrailingSlashNormalization)
+    test(_TestSplitThenParam)
+    test(_TestSplitThenWildcard)
+    test(_TestSplitThenMultipleParams)
+    test(_TestSplitParamThenStatic)
+    test(_TestSplitAtSegmentBoundary)
+    test(_TestSplitMidSegmentParam)
+    test(_TestDeepNestedParamSharedPrefix)
+    test(Property1UnitTest[
+      (Array[USize] val, Array[USize] val)](
+      _PropertyInsertionOrderInvariance))
 
 // --- Generators ---
 
@@ -342,3 +352,373 @@ class \nodoc\ iso _TestTrailingSlashNormalization is UnitTest
     else
       h.fail("expected match for /users/ (trailing slash)")
     end
+
+class \nodoc\ iso _TestSplitThenParam is UnitTest
+  """
+  Param route added after a static route with shared prefix is parsed.
+
+  Regression: _insert_static stored the remaining suffix as a literal prefix
+  instead of routing through _insert, so `:id` was never parsed as a param.
+  """
+  fun name(): String => "router/split then param"
+
+  fun apply(h: TestHelper) =>
+    let login_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "login")
+    } val
+    let user_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "user")
+    } val
+    let builder = _RouterBuilder
+    // Static route first — creates a single node with long prefix
+    builder.add(stallion.POST, "/a/b/c/login", login_factory, None)
+    // Param route second — triggers split; remaining suffix contains `:id`
+    builder.add(stallion.POST, "/a/b/c/user/:id/filter", user_factory, None)
+    let router = builder.build()
+
+    // The static route still works
+    match router.lookup(stallion.POST, "/a/b/c/login")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](login_factory, m.factory)
+    else
+      h.fail("expected match for /a/b/c/login")
+    end
+
+    // The param route works and extracts the parameter
+    match router.lookup(stallion.POST, "/a/b/c/user/42/filter")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](user_factory, m.factory)
+      try
+        h.assert_eq[String]("42", m.params("id")?)
+      else
+        h.fail("param 'id' not found")
+      end
+    else
+      h.fail("expected match for /a/b/c/user/42/filter")
+    end
+
+class \nodoc\ iso _TestSplitThenWildcard is UnitTest
+  """Wildcard route added after a static route with shared prefix is parsed."""
+  fun name(): String => "router/split then wildcard"
+
+  fun apply(h: TestHelper) =>
+    let exact_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "exact")
+    } val
+    let catch_all_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "catch-all")
+    } val
+    let builder = _RouterBuilder
+    // Static route first
+    builder.add(stallion.GET, "/static/page", exact_factory, None)
+    // Wildcard route second — triggers split; remaining suffix contains `*`
+    builder.add(stallion.GET, "/static/*rest", catch_all_factory, None)
+    let router = builder.build()
+
+    match router.lookup(stallion.GET, "/static/page")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](exact_factory, m.factory)
+    else
+      h.fail("expected match for /static/page")
+    end
+
+    match router.lookup(stallion.GET, "/static/other/deep/path")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](catch_all_factory, m.factory)
+      try
+        h.assert_eq[String]("other/deep/path", m.params("rest")?)
+      else
+        h.fail("wildcard param 'rest' not found")
+      end
+    else
+      h.fail("expected match for /static/other/deep/path")
+    end
+
+class \nodoc\ iso _TestSplitThenMultipleParams is UnitTest
+  """Multiple params in the suffix after a split are all parsed correctly."""
+  fun name(): String => "router/split then multiple params"
+
+  fun apply(h: TestHelper) =>
+    let static_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "static")
+    } val
+    let param_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "params")
+    } val
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/api/v1/health", static_factory, None)
+    builder.add(stallion.GET, "/api/v1/:resource/:id", param_factory, None)
+    let router = builder.build()
+
+    match router.lookup(stallion.GET, "/api/v1/health")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](static_factory, m.factory)
+    else
+      h.fail("expected match for /api/v1/health")
+    end
+
+    match router.lookup(stallion.GET, "/api/v1/users/99")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](param_factory, m.factory)
+      try
+        h.assert_eq[String]("users", m.params("resource")?)
+      else
+        h.fail("param 'resource' not found")
+      end
+      try
+        h.assert_eq[String]("99", m.params("id")?)
+      else
+        h.fail("param 'id' not found")
+      end
+    else
+      h.fail("expected match for /api/v1/users/99")
+    end
+
+class \nodoc\ iso _TestSplitParamThenStatic is UnitTest
+  """Param route first, then static with shared prefix — both resolve."""
+  fun name(): String => "router/split param then static"
+
+  fun apply(h: TestHelper) =>
+    let param_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "param")
+    } val
+    let static_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "static")
+    } val
+    let builder = _RouterBuilder
+    // Param route first
+    builder.add(stallion.POST, "/a/b/c/user/:id/filter", param_factory, None)
+    // Static route second — triggers split from the other direction
+    builder.add(stallion.POST, "/a/b/c/login", static_factory, None)
+    let router = builder.build()
+
+    match router.lookup(stallion.POST, "/a/b/c/login")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](static_factory, m.factory)
+    else
+      h.fail("expected match for /a/b/c/login")
+    end
+
+    match router.lookup(stallion.POST, "/a/b/c/user/42/filter")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](param_factory, m.factory)
+      try
+        h.assert_eq[String]("42", m.params("id")?)
+      else
+        h.fail("param 'id' not found")
+      end
+    else
+      h.fail("expected match for /a/b/c/user/42/filter")
+    end
+
+class \nodoc\ iso _TestSplitAtSegmentBoundary is UnitTest
+  """Split where common prefix ends exactly at a `/` boundary."""
+  fun name(): String => "router/split at segment boundary"
+
+  fun apply(h: TestHelper) =>
+    let list_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "list")
+    } val
+    let detail_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "detail")
+    } val
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/items/list", list_factory, None)
+    builder.add(stallion.GET, "/items/:id", detail_factory, None)
+    let router = builder.build()
+
+    match router.lookup(stallion.GET, "/items/list")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](list_factory, m.factory)
+    else
+      h.fail("expected match for /items/list")
+    end
+
+    match router.lookup(stallion.GET, "/items/42")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](detail_factory, m.factory)
+      try
+        h.assert_eq[String]("42", m.params("id")?)
+      else
+        h.fail("param 'id' not found")
+      end
+    else
+      h.fail("expected match for /items/42")
+    end
+
+class \nodoc\ iso _TestSplitMidSegmentParam is UnitTest
+  """
+  Split where divergence is mid-segment, and the new suffix starts with
+  static text before reaching a param.
+  """
+  fun name(): String => "router/split mid-segment param"
+
+  fun apply(h: TestHelper) =>
+    let index_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "index")
+    } val
+    let item_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "item")
+    } val
+    let builder = _RouterBuilder
+    // "index" and "item" share "i" then diverge mid-segment
+    builder.add(stallion.GET, "/prefix/index", index_factory, None)
+    builder.add(stallion.GET, "/prefix/item/:id", item_factory, None)
+    let router = builder.build()
+
+    match router.lookup(stallion.GET, "/prefix/index")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](index_factory, m.factory)
+    else
+      h.fail("expected match for /prefix/index")
+    end
+
+    match router.lookup(stallion.GET, "/prefix/item/7")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](item_factory, m.factory)
+      try
+        h.assert_eq[String]("7", m.params("id")?)
+      else
+        h.fail("param 'id' not found")
+      end
+    else
+      h.fail("expected match for /prefix/item/7")
+    end
+
+class \nodoc\ iso _TestDeepNestedParamSharedPrefix is UnitTest
+  """Deeply nested param routes sharing a long common prefix all resolve."""
+  fun name(): String => "router/deep nested param shared prefix"
+
+  fun apply(h: TestHelper) =>
+    let fa: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "a")
+    } val
+    let fb: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "b")
+    } val
+    let fc: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "c")
+    } val
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/x/y/z/alpha", fa, None)
+    builder.add(stallion.GET, "/x/y/z/a/:id", fb, None)
+    builder.add(stallion.GET, "/x/y/z/a/:id/sub/:sid", fc, None)
+    let router = builder.build()
+
+    match router.lookup(stallion.GET, "/x/y/z/alpha")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](fa, m.factory)
+    else
+      h.fail("expected match for /x/y/z/alpha")
+    end
+
+    match router.lookup(stallion.GET, "/x/y/z/a/10")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](fb, m.factory)
+      try
+        h.assert_eq[String]("10", m.params("id")?)
+      else
+        h.fail("param 'id' not found")
+      end
+    else
+      h.fail("expected match for /x/y/z/a/10")
+    end
+
+    match router.lookup(stallion.GET, "/x/y/z/a/10/sub/20")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](fc, m.factory)
+      try
+        h.assert_eq[String]("10", m.params("id")?)
+      else
+        h.fail("param 'id' not found")
+      end
+      try
+        h.assert_eq[String]("20", m.params("sid")?)
+      else
+        h.fail("param 'sid' not found")
+      end
+    else
+      h.fail("expected match for /x/y/z/a/10/sub/20")
+    end
+
+// --- Property test: insertion order invariance ---
+
+class \nodoc\ iso _PropertyInsertionOrderInvariance is
+  Property1[(Array[USize] val, Array[USize] val)]
+  """
+  Route lookup results are independent of insertion order.
+
+  Generates two permutations of the same route set and verifies that both
+  produce identical lookup results for every registered path.
+  """
+  fun name(): String => "router/property/insertion order invariance"
+
+  fun gen(): Generator[(Array[USize] val, Array[USize] val)] =>
+    // Generate two permutations of indices 0..4 by shuffling
+    Generators.zip2[Array[USize] val, Array[USize] val](
+      _GenPermutation(5), _GenPermutation(5))
+
+  fun property(sample: (Array[USize] val, Array[USize] val),
+    h: PropertyHelper)
+  =>
+    (let perm_a, let perm_b) = sample
+
+    // Fixed route set mixing static, param, and wildcard patterns
+    let routes: Array[(String, String)] val = [
+      ("/api/v1/users", "/api/v1/users")
+      ("/api/v1/users/:id", "/api/v1/users/42")
+      ("/api/v1/items", "/api/v1/items")
+      ("/api/v1/items/:id/detail", "/api/v1/items/7/detail")
+      ("/api/v1/*rest", "/api/v1/anything/here")
+    ]
+
+    let router_a = _build_in_order(routes, perm_a)
+    let router_b = _build_in_order(routes, perm_b)
+
+    // Both routers must agree on every lookup path
+    for (_, lookup_path) in routes.values() do
+      let result_a = router_a.lookup(stallion.GET, lookup_path)
+      let result_b = router_b.lookup(stallion.GET, lookup_path)
+      match (result_a, result_b)
+      | (let _: _RouteMatch, let _: _RouteMatch) => None
+      | (None, None) => None
+      else
+        h.fail("insertion order changed result for " + lookup_path)
+      end
+    end
+
+  fun _build_in_order(
+    routes: Array[(String, String)] val,
+    order: Array[USize] val)
+    : _Router val
+  =>
+    let builder = _RouterBuilder
+    for idx in order.values() do
+      try
+        (let pattern, _) = routes(idx)?
+        builder.add(stallion.GET, pattern, _NoOpFactory, None)
+      else
+        _Unreachable()
+      end
+    end
+    builder.build()
+
+primitive \nodoc\ _GenPermutation
+  """Generate a random permutation of indices 0..n-1 as val array."""
+  fun apply(n: USize): Generator[Array[USize] val] =>
+    Generator[Array[USize] val](
+      object is GenObj[Array[USize] val]
+        let _n: USize = n
+        fun generate(r: Randomness): Array[USize] val^ =>
+          let a = Array[USize](_n)
+          for i in Range(0, _n) do
+            a.push(i)
+          end
+          r.shuffle[USize](a)
+          let result = recover iso Array[USize](_n) end
+          for v in a.values() do
+            result.push(v)
+          end
+          consume result
+      end)
+
