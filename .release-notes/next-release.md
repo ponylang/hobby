@@ -26,3 +26,7 @@ Routes with `:param` or `*wildcard` segments returned 404 when another static ro
 
 The router's radix tree splits nodes when routes diverge mid-prefix. The split path was storing the remaining suffix as literal text instead of parsing `:` and `*` markers, so param and wildcard segments after the split point were silently ignored. Route registration order should never affect whether a route matches, and now it doesn't.
 
+## Fix crash when dispose() arrives before connection initialization
+
+Fixed a crash that could occur when a connection was closed before its internal initialization completed. This timing-dependent issue was rare but was observed on macOS arm64.
+
