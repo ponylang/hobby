@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Added
 
+- Add request interceptors for synchronous request short-circuiting ([PR #55](https://github.com/ponylang/hobby/pull/55))
 
 ### Changed
 
