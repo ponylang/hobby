@@ -18,13 +18,15 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
 
   Implements Stallion's `HTTPServerActor` to receive HTTP events and
   `_ConnectionProtocol` for handler→connection communication. Each request
-  runs through: before-middleware (synchronous) → handler factory →
-  handler actor (async) → after-middleware (synchronous) → wire.
+  runs through: request interceptors (synchronous) → handler factory →
+  handler actor (async) → response interceptors (synchronous) → wire.
   """
   var _http: stallion.HTTPServer = stallion.HTTPServer.none()
   let _router: _Router val
   let _timers: Timers tag
   let _timeout_ns: U64
+  let _app_response_interceptors:
+    (Array[ResponseInterceptor val] val | None)
   var _body: Array[U8] iso = recover iso Array[U8] end
   var _has_body: Bool = false
 
@@ -33,10 +35,10 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
   var _handler: (HandlerReceiver tag | None) = None
   var _handler_timer: (Timer tag | None) = None
   var _state: (_Idle | _HandlerInProgress | _Streaming) = _Idle
-  var _current_middleware: (Array[Middleware val] val | None) = None
   var _current_request: (stallion.Request val | None) = None
   var _current_responder: (stallion.Responder | None) = None
-  var _before_invoked: USize = 0
+  var _current_response_interceptors:
+    (Array[ResponseInterceptor val] val | None) = None
   var _last_handler_activity: U64 = 0
   var _streaming_status: (stallion.Status | None) = None
   var _is_head: Bool = false
@@ -44,11 +46,13 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
 
   new create(auth: lori.TCPServerAuth, fd: U32,
     config: stallion.ServerConfig, router: _Router val,
-    timers: Timers tag, timeout_ns: U64)
+    timers: Timers tag, timeout_ns: U64,
+    response_interceptors: (Array[ResponseInterceptor val] val | None))
   =>
     _router = router
     _timers = timers
     _timeout_ns = timeout_ns
+    _app_response_interceptors = response_interceptors
     _pending_requests = Array[_PendingRequest]
     _http = stallion.HTTPServer(auth, fd, this, config)
 
@@ -91,11 +95,10 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
       _handler = None
     end
     // Reset state
-    _current_middleware = None
     _current_request = None
     _current_responder = None
+    _current_response_interceptors = None
     _streaming_status = None
-    _before_invoked = 0
     _is_head = false
     _state = _Idle
     _pending_requests.clear()
@@ -131,102 +134,55 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
     | let m: _RouteMatch =>
       _dispatch(request', responder, body, m, is_head)
     else
-      // No route match — send 404 directly (no middleware)
-      if is_head then
-        let response = stallion.ResponseBuilder(stallion.StatusNotFound)
-          .add_header("Content-Length", "9")
-          .finish_headers()
-          .build()
-        responder.respond(response)
-      else
-        let response = stallion.ResponseBuilder(stallion.StatusNotFound)
-          .add_header("Content-Length", "9")
-          .finish_headers()
-          .add_chunk("Not Found")
-          .build()
-        responder.respond(response)
-      end
+      // No route match — send 404 with app-level response interceptors
+      let buf = _BufferedResponse._standard(
+        stallion.StatusNotFound, "Not Found", is_head)
+      let ctx = ResponseContext._create(buf, request')
+      _RunResponseInterceptors(ctx, _app_response_interceptors)
+      responder.respond(buf._build())
     end
 
   fun ref _dispatch(request': stallion.Request val,
     responder: stallion.Responder, body: Array[U8] val,
     m: _RouteMatch, is_head: Bool)
   =>
-    // Run interceptors — short-circuit before creating middleware or handler state
+    // Run request interceptors — short-circuit before creating handler state
     match _RunRequestInterceptors(request', m.interceptors)
     | let respond: InterceptRespond =>
       let buf = _BufferedResponse._from_intercept_respond(respond, is_head)
+      let ctx = ResponseContext._create(buf, request')
+      _RunResponseInterceptors(ctx, m.response_interceptors)
       responder.respond(buf._build())
       return
     end
 
-    // Run before-middleware synchronously
-    let before_ctx = BeforeContext._create(request', m.params, body)
-    let invoked = _RunBeforeMiddleware(before_ctx, m.middleware)
+    // Create HandlerContext and call factory
+    _current_token = _current_token + 1
+    let token = _current_token
+    _current_request = request'
+    _current_responder = responder
+    _current_response_interceptors = m.response_interceptors
+    _is_head = is_head
 
-    if before_ctx.is_handled() then
-      // Before-middleware responded — buffer, run after, send to wire
-      let buf = match before_ctx._response_headers()
-      | let h: stallion.Headers val =>
-        match before_ctx._get_response_body()
-        | let b: ByteSeq =>
-          _BufferedResponse._with_headers(
-            _status_or_500(before_ctx._response_status()), h, b, is_head)
-        else
-          _BufferedResponse._with_headers(
-            _status_or_500(before_ctx._response_status()), h, "", is_head)
-        end
-      else
-        match before_ctx._get_response_body()
-        | let b: ByteSeq =>
-          _BufferedResponse._standard(
-            _status_or_500(before_ctx._response_status()), b, is_head)
-        else
-          _BufferedResponse._standard(
-            _status_or_500(before_ctx._response_status()), "", is_head)
-        end
-      end
-      let after_ctx = AfterContext._create(buf, request')
-      _RunAfterMiddleware(after_ctx, m.middleware, invoked)
-      responder.respond(buf._build())
-    else
-      // Not handled — create HandlerContext and call factory
-      _current_token = _current_token + 1
-      let token = _current_token
-      _current_middleware = m.middleware
-      _current_request = request'
-      _current_responder = responder
-      _before_invoked = invoked
-      _is_head = is_head
+    let conn_tag: _ConnectionProtocol tag = this
 
-      let data_val = before_ctx._freeze_data()
-      let conn_tag: _ConnectionProtocol tag = this
-
-      let handler_ctx: HandlerContext iso = recover iso
-        HandlerContext._create(request', m.params, body, data_val,
-          conn_tag, token, is_head)
-      end
-
-      let handler_receiver = m.factory(consume handler_ctx)
-      _handler = handler_receiver
-      _state = _HandlerInProgress
-      _last_handler_activity = Time.nanos()
-
-      // Start timeout timer (if timeouts enabled)
-      if _timeout_ns > 0 then
-        let timer = Timer(
-          _HandlerTimeoutNotify(this, token), _timeout_ns, _timeout_ns)
-        let timer_tag: Timer tag = timer
-        _handler_timer = timer_tag
-        _timers(consume timer)
-      end
+    let handler_ctx: HandlerContext iso = recover iso
+      HandlerContext._create(request', m.params, body,
+        conn_tag, token, is_head)
     end
 
-  fun _status_or_500(s: (stallion.Status | None)): stallion.Status =>
-    match s
-    | let status: stallion.Status => status
-    else
-      stallion.StatusInternalServerError
+    let handler_receiver = m.factory(consume handler_ctx)
+    _handler = handler_receiver
+    _state = _HandlerInProgress
+    _last_handler_activity = Time.nanos()
+
+    // Start timeout timer (if timeouts enabled)
+    if _timeout_ns > 0 then
+      let timer = Timer(
+        _HandlerTimeoutNotify(this, token), _timeout_ns, _timeout_ns)
+      let timer_tag: Timer tag = timer
+      _handler_timer = timer_tag
+      _timers(consume timer)
     end
 
   // --- Handler protocol behaviors ---
@@ -325,11 +281,10 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
       _handler = None
       _http.close()
       _cancel_timer()
-      _current_middleware = None
       _current_request = None
       _current_responder = None
+      _current_response_interceptors = None
       _streaming_status = None
-      _before_invoked = 0
       _is_head = false
       _state = _Idle
       _pending_requests.clear()
@@ -338,11 +293,14 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
   // --- Helpers ---
 
   fun ref _run_after_and_send(buf: _BufferedResponse ref) =>
-    """Run after-middleware on the buffered response, send to wire, clean up."""
+    """
+    Run response interceptors on the buffered response, send to wire,
+    clean up.
+    """
     match _current_request
     | let req: stallion.Request val =>
-      let after_ctx = AfterContext._create(buf, req)
-      _RunAfterMiddleware(after_ctx, _current_middleware, _before_invoked)
+      let ctx = ResponseContext._create(buf, req)
+      _RunResponseInterceptors(ctx, _current_response_interceptors)
     end
     if not buf.is_streaming then
       match _current_responder
@@ -352,11 +310,10 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
     end
     _cancel_timer()
     _handler = None
-    _current_middleware = None
     _current_request = None
     _current_responder = None
+    _current_response_interceptors = None
     _streaming_status = None
-    _before_invoked = 0
     _is_head = false
     _state = _Idle
     _drain_pending()

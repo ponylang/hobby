@@ -1,16 +1,17 @@
 use stallion = "stallion"
 
-class ref AfterContext
+class ref ResponseContext
   """
-  Context for the middleware `after` phase.
+  Context for response interceptors.
 
-  Runs synchronously in `_Connection` on the buffered response. Provides
-  read access to the response status and body, and write access to response
-  headers via `set_header()` and `add_header()`.
+  Provides read access to the response status, body, streaming state, and the
+  original request. Write access to response headers, status, and body is
+  available via `set_status()`, `set_header()`, `add_header()`, and
+  `set_body()`.
 
-  For streaming responses (`is_streaming()` is `true`), headers are already
-  on the wire, so header modifications are silently ignored. The `after`
-  phase is still useful for logging, cleanup, and session persistence.
+  For streaming responses (`is_streaming()` is `true`), all mutations are
+  silently ignored — headers and status are already on the wire, and body
+  chunks have already been sent.
   """
   let _buf: _BufferedResponse ref
   let _request: stallion.Request val
@@ -27,13 +28,31 @@ class ref AfterContext
     """Return the response body, or `None` for streaming responses."""
     _buf.body
 
+  fun box is_streaming(): Bool =>
+    """Return `true` if this was a streaming response."""
+    _buf.is_streaming
+
+  fun box request(): stallion.Request val =>
+    """Return the original HTTP request."""
+    _request
+
+  fun ref set_status(status': stallion.Status) =>
+    """
+    Replace the response status.
+
+    No-op for streaming responses (status already on wire).
+    """
+    if not _buf.is_streaming then
+      _buf.status = status'
+    end
+
   fun ref set_header(name: String, value: String) =>
     """
     Set or replace a response header.
 
     Removes any existing entries with the same name (case-insensitive per
-    RFC 7230 §3.2) and adds a new one with the name lowercased. No-op for
-    streaming responses (headers already on wire).
+    RFC 7230 section 3.2) and adds a new one with the name lowercased.
+    No-op for streaming responses (headers already on wire).
     """
     if not _buf.is_streaming then
       let lower_name: String val = name.lower()
@@ -63,10 +82,13 @@ class ref AfterContext
       _buf.headers.push((name.lower(), value))
     end
 
-  fun box is_streaming(): Bool =>
-    """Return `true` if this was a streaming response."""
-    _buf.is_streaming
+  fun ref set_body(body': ByteSeq) =>
+    """
+    Replace the response body.
 
-  fun box request(): stallion.Request val =>
-    """Return the original HTTP request."""
-    _request
+    Content-Length is recalculated automatically at serialization time.
+    No-op for streaming responses (chunks already sent).
+    """
+    if not _buf.is_streaming then
+      _buf.body = body'
+    end

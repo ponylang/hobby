@@ -10,13 +10,13 @@ Starts an HTTP server with two routes: a static greeting at `/` and a parameteri
 
 Demonstrates actor-based handlers that do async work before responding. A `SlowService` actor simulates an async operation (e.g., a database query or external API call). The handler actor creates a `RequestHandler`, sends a query to the service, and responds when the result arrives. Shows the `HandlerReceiver` interface for lifecycle notifications.
 
-## [interceptors](interceptors/)
+## [request-interceptors](request-interceptors/)
 
-Demonstrates request interceptors for synchronous request short-circuiting. Includes four interceptor implementations: auth header presence check, content type validation, request body size limit, and required headers. Shows per-route interceptor registration and combining multiple interceptors on a single route.
+Demonstrates request interceptors for synchronous request short-circuiting. Includes four interceptor implementations: auth header presence check, content type validation, request body size limit, and required headers. Shows per-route interceptor registration and combining multiple interceptors on a single route. These are request interceptors — they run before the handler is created and can reject a request outright.
 
-## [middleware](middleware/)
+## [response-interceptors](response-interceptors/)
 
-Starts an HTTP server with public and protected routes. Demonstrates two middleware patterns: an auth middleware that short-circuits with 401 in the `before` phase when a token is missing, and a logging middleware that records requests in the `after` phase. Also shows the typed accessor pattern for inter-middleware communication — `handler.get[AuthenticatedUser]()` extracts domain types from the data map.
+Demonstrates response interceptors for post-handler response modification. Shows how `ResponseInterceptor` and `ResponseContext` allow inspecting and modifying outgoing responses — adding headers, rewriting status codes, or augmenting the body — after the handler has run but before the response reaches the client.
 
 ## [signed-cookie](signed-cookie/)
 
@@ -24,7 +24,7 @@ Signs and verifies cookie values using HMAC-SHA256 to prevent tampering. A visit
 
 ## [route-groups](route-groups/)
 
-Starts an HTTP server with grouped routes sharing prefixes and middleware. Demonstrates application-level middleware (logging on every route), a `/api` group with auth middleware, and a nested `/api/admin` group that adds admin middleware on top. Shows the complete middleware composition order: application middleware runs first, then group middleware, then per-route middleware.
+Starts an HTTP server with grouped routes sharing a common prefix. Demonstrates a `/api` group with an auth request interceptor applied to every route in the group, and a nested `/api/admin` group that inherits the auth interceptor from the parent group. Shows how route groups compose prefixes and interceptors.
 
 ## [serve-files](serve-files/)
 

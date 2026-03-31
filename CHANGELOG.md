@@ -10,8 +10,11 @@ All notable changes to this project will be documented in this file. This projec
 ### Added
 
 - Add request interceptors for synchronous request short-circuiting ([PR #55](https://github.com/ponylang/hobby/pull/55))
+- Add response interceptors for synchronous response modification ([PR #57](https://github.com/ponylang/hobby/pull/57))
 
 ### Changed
+
+- Remove middleware in favor of interceptors ([PR #57](https://github.com/ponylang/hobby/pull/57))
 
 
 ## [0.4.1] - 2026-03-28

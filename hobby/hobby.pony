@@ -61,8 +61,8 @@ actor MyHandler is hobby.HandlerReceiver
     _handler = hobby.RequestHandler(consume ctx)
     db.query(this)
 
-  be result(data: String) =>
-    _handler.respond(stallion.StatusOK, data)
+  be result(value: String) =>
+    _handler.respond(stallion.StatusOK, value)
 
   be dispose() => None
   be throttled() => None
@@ -83,59 +83,64 @@ Routes use a radix tree with two kinds of dynamic segments:
 Static routes have priority over parameter routes at the same position.
 Trailing slashes are normalized — `/users/` and `/users` match the same route.
 
-## Middleware
+## Request Interceptors
 
-Attach middleware to individual routes via the `middleware` parameter:
+Request interceptors short-circuit requests before the handler is created.
+An interceptor returns `InterceptPass` to let the request through or
+`InterceptRespond` to reject it — the compiler forces an explicit decision.
 
 ```pony
-let mw: Array[hobby.Middleware val] val =
-  recover val [as hobby.Middleware val: AuthMiddleware] end
-app.>get("/private", private_factory where middleware = mw)
+let auth: Array[hobby.RequestInterceptor val] val =
+  recover val [as hobby.RequestInterceptor val: AuthInterceptor] end
+app.>get("/private", private_factory where interceptors = auth)
 ```
 
-Middleware has two phases:
+Application-level interceptors run on every route:
 
-- **`before`**: runs before the handler factory, receiving a `BeforeContext`.
-  Short-circuit a request by calling `ctx.respond()` — the handler is
-  skipped, but `after` phases still run. Write to the data map with
-  `ctx.set()` for downstream middleware and handlers.
-- **`after`**: runs after the handler responds, receiving an `AfterContext`.
-  Runs in reverse order. Can modify response headers via `set_header()` and
-  `add_header()`. Always runs for every middleware whose `before` was invoked.
+```pony
+app.>add_request_interceptor(RequiredHeadersInterceptor(
+  recover val ["accept"] end))
+```
+
+## Response Interceptors
+
+Response interceptors run after the handler responds, before the response
+goes to the wire. They can modify status, headers, and body — or perform
+read-only side effects like logging. All registered interceptors run in
+registration order; there is no short-circuiting.
+
+```pony
+class val CorsInterceptor is hobby.ResponseInterceptor
+  fun apply(ctx: hobby.ResponseContext ref) =>
+    ctx.set_header("access-control-allow-origin", "*")
+```
+
+Register at the application, group, or route level:
+
+```pony
+app.>add_response_interceptor(CorsInterceptor)
+app.>get("/cached", handler
+  where response_interceptors = cache_interceptors)
+```
+
+For streaming responses, mutations are silently ignored (headers and status
+are already on the wire), but the interceptor still runs for logging.
 
 ## Route Groups
 
-Group related routes under a shared prefix and middleware with `RouteGroup`:
+Group related routes under a shared prefix and interceptors with `RouteGroup`:
 
 ```pony
-let auth_mw: Array[hobby.Middleware val] val =
-  recover val [as hobby.Middleware val: AuthMiddleware] end
-let api = hobby.RouteGroup("/api" where middleware = auth_mw)
+let auth: Array[hobby.RequestInterceptor val] val =
+  recover val [as hobby.RequestInterceptor val: AuthInterceptor] end
+let api = hobby.RouteGroup("/api" where interceptors = auth)
 api.>get("/users", users_factory)
 api.>get("/users/:id", user_factory)
 app.>group(consume api)
 ```
 
 Groups can be nested — inner groups inherit the outer group's prefix and
-middleware, with outer middleware running first.
-
-## Application Middleware
-
-Apply middleware to every route with `Application.add_middleware()`:
-
-```pony
-let log_mw: Array[hobby.Middleware val] val =
-  recover val [as hobby.Middleware val: LogMiddleware(env.out)] end
-hobby.Application
-  .>add_middleware(log_mw)
-  .>get("/", hello_factory)
-  .>group(consume api)
-  .serve(auth, config, env.out)
-```
-
-Application middleware runs before group middleware, which runs before
-per-route middleware. Can be called multiple times — middleware accumulates
-in registration order.
+interceptors, with outer interceptors running first.
 
 ## Streaming Responses
 
@@ -206,11 +211,11 @@ resolves to a directory, `ServeFiles` automatically serves `index.html`.
 
 Users import up to four packages:
 
-- **`hobby`**: Application, AfterContext, BeforeContext, BodyNotNeeded,
-  ContentTypes, CookieSigningKey, HandlerContext, HandlerFactory,
-  HandlerReceiver, InvalidSignature, MalformedSignedValue, Middleware,
-  RequestHandler, RouteGroup, ServeFiles, SignedCookie, SignedCookieError,
-  StreamingStarted
+- **`hobby`**: Application, BodyNotNeeded, ContentTypes, CookieSigningKey,
+  HandlerContext, HandlerFactory, HandlerReceiver, InterceptPass,
+  InterceptRespond, InterceptResult, InvalidSignature, MalformedSignedValue,
+  RequestHandler, RequestInterceptor, ResponseContext, ResponseInterceptor,
+  RouteGroup, ServeFiles, SignedCookie, SignedCookieError, StreamingStarted
 - **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig,
   ChunkedNotSupported)
 - **`lori`**: `TCPListenAuth(env.root)` for network access

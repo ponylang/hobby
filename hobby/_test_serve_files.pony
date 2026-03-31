@@ -95,7 +95,7 @@ class \nodoc\ iso _TestServeFilesSmallFile is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -114,7 +114,7 @@ class \nodoc\ iso _TestServeFilesContentType is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/style.css HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -134,7 +134,7 @@ class \nodoc\ iso _TestServeFilesLargeFile is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let handler = ServeFiles(root where chunk_threshold = 1)
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler, None)]
+        [(stallion.GET, "/static/*filepath", handler)]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/large.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -153,7 +153,7 @@ class \nodoc\ iso _TestServeFilesMissing404 is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/nonexistent.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -172,7 +172,7 @@ class \nodoc\ iso _TestServeFilesTraversal404 is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/sub/../../etc/passwd HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -191,7 +191,7 @@ class \nodoc\ iso _TestServeFilesDirectory404 is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/subdir HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -211,7 +211,7 @@ class \nodoc\ iso _TestServeFilesLargeFileHTTP10 is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let handler = ServeFiles(root where chunk_threshold = 1)
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler, None)]
+        [(stallion.GET, "/static/*filepath", handler)]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/large.txt HTTP/1.0\r\nHost: localhost\r\n\r\n",
@@ -230,7 +230,7 @@ class \nodoc\ iso _TestServeFilesHeadSmallFile is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       // Headers go through stallion.Headers which lowercases names.
       _HeadIntegrationHelpers.run_head_test(h, router,
@@ -251,7 +251,7 @@ class \nodoc\ iso _TestServeFilesHeadLargeFile is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let handler = ServeFiles(root where chunk_threshold = 1)
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler, None)]
+        [(stallion.GET, "/static/*filepath", handler)]
       end)
       // Headers go through stallion.Headers which lowercases names.
       _HeadIntegrationHelpers.run_head_test(h, router,
@@ -290,7 +290,7 @@ class \nodoc\ iso _TestServeFilesCacheHeadersPresent is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "hello.txt")?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       // stallion.Headers lowercases header names
       _IntegrationHelpers.run_test(h, router,
@@ -311,7 +311,7 @@ class \nodoc\ iso _TestServeFilesETag304 is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "hello.txt")?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n" +
@@ -332,7 +332,7 @@ class \nodoc\ iso _TestServeFilesIfModifiedSince304 is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let last_mod = _ServeFilesTestETag.last_modified(root, "hello.txt")?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n" +
@@ -352,7 +352,7 @@ class \nodoc\ iso _TestServeFilesETagMismatch200 is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n" +
@@ -373,7 +373,7 @@ class \nodoc\ iso _TestServeFilesHeadCacheHeaders is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "hello.txt")?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _HeadIntegrationHelpers.run_head_test(h, router,
         "HEAD /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -393,7 +393,7 @@ class \nodoc\ iso _TestServeFilesHead304 is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "hello.txt")?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _IntegrationHelpers.run_test(h, router,
         "HEAD /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n" +
@@ -415,7 +415,7 @@ class \nodoc\ iso _TestServeFilesCacheControlCustom is UnitTest
       let handler = ServeFiles(root
         where cache_control = "private, max-age=600")
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler, None)]
+        [(stallion.GET, "/static/*filepath", handler)]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -435,7 +435,7 @@ class \nodoc\ iso _TestServeFilesCacheControlDisabled is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let handler = ServeFiles(root where cache_control = None)
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler, None)]
+        [(stallion.GET, "/static/*filepath", handler)]
       end)
       _ServeFilesCacheControlDisabledHelper.run_test(h, router,
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -523,7 +523,7 @@ class \nodoc\ iso _TestServeFilesLargeFileCacheHeaders is UnitTest
       let etag = _ServeFilesTestETag(root, "large.txt")?
       let handler = ServeFiles(root where chunk_threshold = 1)
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler, None)]
+        [(stallion.GET, "/static/*filepath", handler)]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/large.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -547,7 +547,7 @@ class \nodoc\ iso _TestServeFilesLargeFileETag304 is UnitTest
       let etag = _ServeFilesTestETag(root, "large.txt")?
       let handler = ServeFiles(root where chunk_threshold = 1)
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler, None)]
+        [(stallion.GET, "/static/*filepath", handler)]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/large.txt HTTP/1.1\r\nHost: localhost\r\n" +
@@ -571,7 +571,7 @@ class \nodoc\ iso _TestServeFilesETagPrecedence is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "hello.txt")?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       // Matching ETag but non-matching If-Modified-Since
       _IntegrationHelpers.run_test(h, router,
@@ -595,7 +595,7 @@ class \nodoc\ iso _TestServeFilesDirectoryIndex is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/indexed HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -614,7 +614,7 @@ class \nodoc\ iso _TestServeFilesDirectoryIndexContentType is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/indexed HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -634,7 +634,7 @@ class \nodoc\ iso _TestServeFilesDirectoryIndexCacheHeaders is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "indexed/index.html")?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/indexed HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -653,7 +653,7 @@ class \nodoc\ iso _TestServeFilesDirectoryIndexHead is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _HeadIntegrationHelpers.run_head_test(h, router,
         "HEAD /static/indexed HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -673,7 +673,7 @@ class \nodoc\ iso _TestServeFilesDirectoryIndex304 is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "indexed/index.html")?
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root), None)]
+        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/indexed HTTP/1.1\r\nHost: localhost\r\n" +
@@ -697,7 +697,7 @@ class \nodoc\ iso _TestServeFilesCustomContentType is UnitTest
       let types = ContentTypes.add("custom", "application/x-custom")
       let handler = ServeFiles(root where content_types = types)
       let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler, None)]
+        [(stallion.GET, "/static/*filepath", handler)]
       end)
       _IntegrationHelpers.run_test(h, router,
         "GET /static/image.custom HTTP/1.1\r\nHost: localhost\r\n\r\n",

@@ -40,108 +40,119 @@ class iso Application
   the routes.
   """
   embed _routes: Array[_RouteDefinition]
-  embed _app_middleware: Array[Middleware val]
   embed _app_interceptors: Array[RequestInterceptor val]
+  embed _app_response_interceptors: Array[ResponseInterceptor val]
 
   new iso create() =>
     _routes = Array[_RouteDefinition]
-    _app_middleware = Array[Middleware val]
     _app_interceptors = Array[RequestInterceptor val]
+    _app_response_interceptors = Array[ResponseInterceptor val]
 
   fun ref get(path: String, factory: HandlerFactory,
-    middleware: (Array[Middleware val] val | None) = None,
-    interceptors: (Array[RequestInterceptor val] val | None) = None)
+    interceptors: (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
   =>
     """Register a GET route."""
     _routes.push(
-      _RouteDefinition(stallion.GET, path, factory, middleware, interceptors))
+      _RouteDefinition(stallion.GET, path, factory, response_interceptors,
+        interceptors))
 
   fun ref post(path: String, factory: HandlerFactory,
-    middleware: (Array[Middleware val] val | None) = None,
-    interceptors: (Array[RequestInterceptor val] val | None) = None)
+    interceptors: (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
   =>
     """Register a POST route."""
     _routes.push(
-      _RouteDefinition(stallion.POST, path, factory, middleware, interceptors))
+      _RouteDefinition(stallion.POST, path, factory, response_interceptors,
+        interceptors))
 
   fun ref put(path: String, factory: HandlerFactory,
-    middleware: (Array[Middleware val] val | None) = None,
-    interceptors: (Array[RequestInterceptor val] val | None) = None)
+    interceptors: (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
   =>
     """Register a PUT route."""
     _routes.push(
-      _RouteDefinition(stallion.PUT, path, factory, middleware, interceptors))
+      _RouteDefinition(stallion.PUT, path, factory, response_interceptors,
+        interceptors))
 
   fun ref delete(path: String, factory: HandlerFactory,
-    middleware: (Array[Middleware val] val | None) = None,
-    interceptors: (Array[RequestInterceptor val] val | None) = None)
+    interceptors: (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
   =>
     """Register a DELETE route."""
     _routes.push(
-      _RouteDefinition(stallion.DELETE, path, factory, middleware, interceptors))
+      _RouteDefinition(stallion.DELETE, path, factory, response_interceptors,
+        interceptors))
 
   fun ref patch(path: String, factory: HandlerFactory,
-    middleware: (Array[Middleware val] val | None) = None,
-    interceptors: (Array[RequestInterceptor val] val | None) = None)
+    interceptors: (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
   =>
     """Register a PATCH route."""
     _routes.push(
-      _RouteDefinition(stallion.PATCH, path, factory, middleware, interceptors))
+      _RouteDefinition(stallion.PATCH, path, factory, response_interceptors,
+        interceptors))
 
   fun ref head(path: String, factory: HandlerFactory,
-    middleware: (Array[Middleware val] val | None) = None,
-    interceptors: (Array[RequestInterceptor val] val | None) = None)
+    interceptors: (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
   =>
     """Register a HEAD route."""
     _routes.push(
-      _RouteDefinition(stallion.HEAD, path, factory, middleware, interceptors))
+      _RouteDefinition(stallion.HEAD, path, factory, response_interceptors,
+        interceptors))
 
   fun ref options(path: String, factory: HandlerFactory,
-    middleware: (Array[Middleware val] val | None) = None,
-    interceptors: (Array[RequestInterceptor val] val | None) = None)
+    interceptors: (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
   =>
     """Register an OPTIONS route."""
     _routes.push(
-      _RouteDefinition(stallion.OPTIONS, path, factory, middleware, interceptors))
+      _RouteDefinition(stallion.OPTIONS, path, factory, response_interceptors,
+        interceptors))
 
   fun ref route(method: stallion.Method, path: String,
     factory: HandlerFactory,
-    middleware: (Array[Middleware val] val | None) = None,
-    interceptors: (Array[RequestInterceptor val] val | None) = None)
+    interceptors: (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
   =>
     """Register a route with an arbitrary HTTP method."""
     _routes.push(
-      _RouteDefinition(method, path, factory, middleware, interceptors))
+      _RouteDefinition(method, path, factory, response_interceptors,
+        interceptors))
 
-  fun ref add_middleware(middleware: Array[Middleware val] val) =>
-    """
-    Add application-level middleware that runs before every route's middleware.
-
-    Can be called multiple times — middleware accumulates in registration order.
-    Application middleware runs before group middleware, which runs before
-    per-route middleware.
-    """
-    for m in middleware.values() do
-      _app_middleware.push(m)
-    end
-
-  fun ref add_interceptor(interceptor: RequestInterceptor val) =>
+  fun ref add_request_interceptor(interceptor: RequestInterceptor val) =>
     """
     Add an application-level request interceptor.
 
-    Interceptors run before middleware on every route. Application interceptors
-    run before group interceptors, which run before per-route interceptors. The
-    first interceptor that calls `respond()` rejects the request — the handler
-    is never created.
+    Request interceptors run before the handler on every route. Application
+    interceptors run before group interceptors, which run before per-route
+    interceptors. The first interceptor that returns `InterceptRespond` rejects
+    the request — the handler is never created.
     """
     _app_interceptors.push(interceptor)
+
+  fun ref add_response_interceptor(interceptor: ResponseInterceptor val) =>
+    """
+    Add an application-level response interceptor.
+
+    Response interceptors run after the handler responds, before the response
+    goes to the wire. Application interceptors run before group interceptors,
+    which run before per-route interceptors. All interceptors run — there is
+    no short-circuiting.
+
+    App-level response interceptors also run on 404 responses where no route
+    matched.
+    """
+    _app_response_interceptors.push(interceptor)
 
   fun ref group(g: RouteGroup iso) =>
     """
     Consume a route group, flattening its routes into this application.
 
-    The group's prefix and middleware are applied to each of its routes. The
-    group is consumed — no further registration on it is possible.
+    The group's prefix, interceptors, and response interceptors are applied to
+    each of its routes. The group is consumed — no further registration on it
+    is possible.
     """
     let g_ref: RouteGroup ref = consume g
     g_ref._flatten_into(_routes)
@@ -163,20 +174,7 @@ class iso Application
     """
     let self: Application ref = consume this
 
-    // Build app-level middleware as a val array (or None if empty)
-    let app_mw: (Array[Middleware val] val | None) =
-      if self._app_middleware.size() > 0 then
-        let mw_iso: Array[Middleware val] iso =
-          recover iso Array[Middleware val] end
-        for m in self._app_middleware.values() do
-          mw_iso.push(m)
-        end
-        consume mw_iso
-      else
-        None
-      end
-
-    // Build app-level interceptors as a val array (or None if empty)
+    // Build app-level request interceptors as a val array (or None if empty)
     let app_interceptors: (Array[RequestInterceptor val] val | None) =
       if self._app_interceptors.size() > 0 then
         let gs_iso: Array[RequestInterceptor val] iso =
@@ -189,12 +187,28 @@ class iso Application
         None
       end
 
+    // Build app-level response interceptors as a val array (or None if empty)
+    let app_response_interceptors:
+      (Array[ResponseInterceptor val] val | None) =
+      if self._app_response_interceptors.size() > 0 then
+        let ri_iso: Array[ResponseInterceptor val] iso =
+          recover iso Array[ResponseInterceptor val] end
+        for ri in self._app_response_interceptors.values() do
+          ri_iso.push(ri)
+        end
+        consume ri_iso
+      else
+        None
+      end
+
     let builder = _RouterBuilder
     for r in self._routes.values() do
-      let combined_mw = _ConcatMiddleware(app_mw, r.middleware)
       let combined_interceptors =
         _ConcatInterceptors(app_interceptors, r.interceptors)
-      builder.add(r.method, r.path, r.factory, combined_mw,
+      let combined_response_interceptors =
+        _ConcatResponseInterceptors(app_response_interceptors,
+          r.response_interceptors)
+      builder.add(r.method, r.path, r.factory, combined_response_interceptors,
         combined_interceptors)
     end
     let router: _Router val = builder.build()
@@ -206,4 +220,5 @@ class iso Application
       0
     end
 
-    _Listener(auth, config, router, out, timeout_ns)
+    _Listener(auth, config, router, out, timeout_ns,
+      app_response_interceptors)
