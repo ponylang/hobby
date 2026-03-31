@@ -11,27 +11,20 @@ primitive \nodoc\ _TestIntegrationList
     test(_TestUnknownPath404)
     test(_TestNamedParams)
     test(_TestPostWithBody)
-    test(_TestMiddlewareData)
-    test(_TestMiddlewareShortCircuit)
     test(_TestMultipleRoutes)
     test(_TestGroupedRoute)
-    test(_TestGroupMiddlewareIntegration)
-    test(_TestAppMiddlewareIntegration)
     test(_TestNestedGroupIntegration)
     test(_TestStreamingResponse)
     test(_TestPipelinedStreaming)
     test(_TestHeadFallbackToGet)
     test(_TestHeadExplicitRoute)
     test(_TestHead404)
-    test(_TestHeadWithMiddleware)
     test(_TestHeadStreamingHandler)
     test(_TestHeadPostOnlyRoute)
     test(_TestHeadStreamingPipelinedGet)
     test(_TestAsyncHandler)
-    test(_TestBeforeMiddlewareError500)
     test(_TestStreamingChunkedNotSupported)
     test(_TestHandlerTimeout504)
-    test(_TestAfterMiddlewareSetHeader)
     test(_TestStreamingTimeout)
     test(_TestOnClosedDispose)
     test(_TestPipelinedHandlerInProgress)
@@ -39,9 +32,6 @@ primitive \nodoc\ _TestIntegrationList
     test(_TestPipelinedMultipleRequests)
     test(_TestNormalCompletionWithTimeout)
     test(_TestOnClosedStreamingDispose)
-    test(_TestBeforeMiddlewareRespondWithHeaders)
-    test(_TestAfterMiddlewareAddHeader)
-    test(_TestStreamingAfterMiddleware)
 
 // --- Test helpers ---
 
@@ -115,7 +105,7 @@ actor \nodoc\ _TestIntegrationListener is lori.TCPListenerActor
   fun ref _listener(): lori.TCPListener => _tcp_listener
 
   fun ref _on_accept(fd: U32): lori.TCPConnectionActor =>
-    _Connection(_server_auth, fd, _config, _router, _timers, 0)
+    _Connection(_server_auth, fd, _config, _router, _timers, 0, None)
 
   fun ref _on_listening() =>
     try
@@ -156,66 +146,18 @@ primitive \nodoc\ _EchoBodyFactory
     let handler = RequestHandler(consume ctx)
     handler.respond(stallion.StatusOK, handler.body())
 
-primitive \nodoc\ _DataReadFactory
-  fun apply(ctx: HandlerContext iso): (HandlerReceiver tag | None) =>
-    let handler = RequestHandler(consume ctx)
-    try
-      let value = handler.get[String]("test_key")?
-      handler.respond(stallion.StatusOK, value)
-    else
-      handler.respond(stallion.StatusInternalServerError, "wrong type")
-    end
-
-// --- Test middleware ---
-
-class \nodoc\ val _SetDataMiddleware is Middleware
-  let _key: String
-  let _value: String
-  new val create(key: String, value: String) =>
-    _key = key
-    _value = value
-  fun before(ctx: BeforeContext ref) =>
-    ctx.set(_key, _value)
-
-class \nodoc\ val _ShortCircuitMiddleware is Middleware
-  fun before(ctx: BeforeContext ref) =>
-    ctx.respond(stallion.StatusUnauthorized, "Unauthorized")
-
-class \nodoc\ val _RespondWithHeadersMiddleware is Middleware
-  """Before-middleware that short-circuits with explicit headers."""
-  fun before(ctx: BeforeContext ref) =>
-    let headers: stallion.Headers val = recover val
-      stallion.Headers
-        .> set("X-Middleware", "custom-value")
-        .> set("Content-Length", "9")
-    end
-    ctx.respond_with_headers(stallion.StatusForbidden, headers, "Forbidden")
-
-class \nodoc\ val _AddMultiHeaderMiddleware is Middleware
-  """After-middleware that adds multiple Set-Cookie headers."""
-  fun before(ctx: BeforeContext ref) => None
-  fun after(ctx: AfterContext ref) =>
-    ctx.add_header("Set-Cookie", "a=1")
-    ctx.add_header("Set-Cookie", "b=2")
-
-class \nodoc\ val _StreamingAfterHeaderMiddleware is Middleware
-  """After-middleware that tries to set a header — no-op for streaming."""
-  fun before(ctx: BeforeContext ref) => None
-  fun after(ctx: AfterContext ref) =>
-    ctx.set_header("x-after-stream", "should-not-appear")
-
 // --- Helpers ---
 
 primitive \nodoc\ _IntegrationHelpers
   fun build_router(
-    routes: Array[(stallion.Method, String, HandlerFactory,
-      (Array[Middleware val] val | None))] val,
-    interceptors': (Array[RequestInterceptor val] val | None) = None):
+    routes: Array[(stallion.Method, String, HandlerFactory)] val,
+    interceptors': (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors': (Array[ResponseInterceptor val] val | None) = None):
     _Router val
   =>
     let builder = _RouterBuilder
-    for (method, path, factory, middleware) in routes.values() do
-      builder.add(method, path, factory, middleware, interceptors')
+    for (method, path, factory) in routes.values() do
+      builder.add(method, path, factory, response_interceptors', interceptors')
     end
     builder.build()
 
@@ -244,7 +186,7 @@ class \nodoc\ iso _TestBasicGet is UnitTest
 
   fun apply(h: TestHelper) =>
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory, None)]
+      [(stallion.GET, "/", _HelloFactory)]
     end)
     _IntegrationHelpers.run_test(h, router,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -258,7 +200,7 @@ class \nodoc\ iso _TestUnknownPath404 is UnitTest
 
   fun apply(h: TestHelper) =>
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory, None)]
+      [(stallion.GET, "/", _HelloFactory)]
     end)
     _IntegrationHelpers.run_test(h, router,
       "GET /nonexistent HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -272,7 +214,7 @@ class \nodoc\ iso _TestNamedParams is UnitTest
 
   fun apply(h: TestHelper) =>
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/greet/:name", _GreetFactory, None)]
+      [(stallion.GET, "/greet/:name", _GreetFactory)]
     end)
     _IntegrationHelpers.run_test(h, router,
       "GET /greet/World HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -286,46 +228,12 @@ class \nodoc\ iso _TestPostWithBody is UnitTest
 
   fun apply(h: TestHelper) =>
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.POST, "/echo", _EchoBodyFactory, None)]
+      [(stallion.POST, "/echo", _EchoBodyFactory)]
     end)
     _IntegrationHelpers.run_test(h, router,
       "POST /echo HTTP/1.1\r\nHost: localhost\r\n" +
         "Content-Length: 11\r\n\r\nHello Body!",
       "Hello Body!")
-
-class \nodoc\ iso _TestMiddlewareData is UnitTest
-  """Middleware sets context data, handler reads it."""
-  fun name(): String => "integration/middleware data"
-
-  fun label(): String => "integration"
-
-  fun apply(h: TestHelper) =>
-    let mw: Array[Middleware val] val = recover val
-      [as Middleware val: _SetDataMiddleware("test_key", "middleware_value")]
-    end
-    let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/data", _DataReadFactory, mw)]
-    end)
-    _IntegrationHelpers.run_test(h, router,
-      "GET /data HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "middleware_value")
-
-class \nodoc\ iso _TestMiddlewareShortCircuit is UnitTest
-  """Middleware short-circuits with 401, handler NOT invoked."""
-  fun name(): String => "integration/middleware short-circuit"
-
-  fun label(): String => "integration"
-
-  fun apply(h: TestHelper) =>
-    let mw: Array[Middleware val] val = recover val
-      [as Middleware val: _ShortCircuitMiddleware]
-    end
-    let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/private", _HelloFactory, mw)]
-    end)
-    _IntegrationHelpers.run_test(h, router,
-      "GET /private HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "Unauthorized")
 
 class \nodoc\ iso _TestMultipleRoutes is UnitTest
   """Multiple routes dispatch correctly."""
@@ -335,8 +243,8 @@ class \nodoc\ iso _TestMultipleRoutes is UnitTest
 
   fun apply(h: TestHelper) =>
     let router = _IntegrationHelpers.build_router(recover val
-      [ (stallion.GET, "/", _HelloFactory, None)
-        (stallion.GET, "/greet/:name", _GreetFactory, None) ]
+      [ (stallion.GET, "/", _HelloFactory)
+        (stallion.GET, "/greet/:name", _GreetFactory) ]
     end)
     _IntegrationHelpers.run_test(h, router,
       "GET /greet/Pony HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -351,49 +259,11 @@ class \nodoc\ iso _TestGroupedRoute is UnitTest
   fun apply(h: TestHelper) =>
     let joined = _JoinPath("/api", "/users")
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, joined, _HelloFactory, None)]
+      [(stallion.GET, joined, _HelloFactory)]
     end)
     _IntegrationHelpers.run_test(h, router,
       "GET /api/users HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "Hello from Hobby!")
-
-class \nodoc\ iso _TestGroupMiddlewareIntegration is UnitTest
-  """Group middleware short-circuits with 401."""
-  fun name(): String => "integration/group middleware"
-
-  fun label(): String => "integration"
-
-  fun apply(h: TestHelper) =>
-    let group_mw: Array[Middleware val] val = recover val
-      [as Middleware val: _ShortCircuitMiddleware]
-    end
-    let joined = _JoinPath("/api", "/secret")
-    let combined_mw = _ConcatMiddleware(group_mw, None)
-    let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, joined, _HelloFactory, combined_mw)]
-    end)
-    _IntegrationHelpers.run_test(h, router,
-      "GET /api/secret HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "Unauthorized")
-
-class \nodoc\ iso _TestAppMiddlewareIntegration is UnitTest
-  """App-level middleware sets data that the handler reads."""
-  fun name(): String => "integration/app middleware"
-
-  fun label(): String => "integration"
-
-  fun apply(h: TestHelper) =>
-    let app_mw: Array[Middleware val] val = recover val
-      [as Middleware val:
-        _SetDataMiddleware("test_key", "from_app_middleware")]
-    end
-    let combined_mw = _ConcatMiddleware(app_mw, None)
-    let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/data", _DataReadFactory, combined_mw)]
-    end)
-    _IntegrationHelpers.run_test(h, router,
-      "GET /data HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "from_app_middleware")
 
 class \nodoc\ iso _TestNestedGroupIntegration is UnitTest
   """Nested group path resolves correctly through the HTTP stack."""
@@ -405,7 +275,7 @@ class \nodoc\ iso _TestNestedGroupIntegration is UnitTest
     let inner_path = _JoinPath("/admin", "/dashboard")
     let outer_path = _JoinPath("/api", inner_path)
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, outer_path, _HelloFactory, None)]
+      [(stallion.GET, outer_path, _HelloFactory)]
     end)
     _IntegrationHelpers.run_test(h, router,
       "GET /api/admin/dashboard HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -445,35 +315,11 @@ class \nodoc\ iso _TestAsyncHandler is UnitTest
       _AsyncTestHandler(consume ctx, service)
     } val
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", factory, None)]
+      [(stallion.GET, "/", factory)]
     end)
     _IntegrationHelpers.run_test(h, router,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "async-response-data")
-
-// --- Before-middleware error test ---
-
-class \nodoc\ val _ErrorMiddleware is Middleware
-  """Middleware whose before phase errors without responding."""
-  fun before(ctx: BeforeContext ref) ? =>
-    error
-
-class \nodoc\ iso _TestBeforeMiddlewareError500 is UnitTest
-  """Before-middleware error without responding produces 500."""
-  fun name(): String => "integration/before middleware error 500"
-
-  fun label(): String => "integration"
-
-  fun apply(h: TestHelper) =>
-    let mw: Array[Middleware val] val = recover val
-      [as Middleware val: _ErrorMiddleware]
-    end
-    let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory, mw)]
-    end)
-    _IntegrationHelpers.run_test(h, router,
-      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "Internal Server Error")
 
 // --- Streaming chunked not supported test ---
 
@@ -509,7 +355,7 @@ class \nodoc\ iso _TestStreamingChunkedNotSupported is UnitTest
       _StreamingFallbackHandler(consume ctx)
     } val
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", factory, None)]
+      [(stallion.GET, "/", factory)]
     end)
     _IntegrationHelpers.run_test(h, router,
       "GET / HTTP/1.0\r\nHost: localhost\r\n\r\n",
@@ -575,7 +421,7 @@ class \nodoc\ iso _TestStreamingResponse is UnitTest
 
   fun apply(h: TestHelper) =>
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _StreamingFactory, None)]
+      [(stallion.GET, "/", _StreamingFactory)]
     end)
     _IntegrationHelpers.run_test(h, router,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -592,8 +438,8 @@ class \nodoc\ iso _TestPipelinedStreaming is UnitTest
 
   fun apply(h: TestHelper) =>
     let router = _IntegrationHelpers.build_router(recover val
-      [ (stallion.GET, "/stream1", _StreamingFactory, None)
-        (stallion.GET, "/stream2", _PipelinedStreamFactory, None) ]
+      [ (stallion.GET, "/stream1", _StreamingFactory)
+        (stallion.GET, "/stream2", _PipelinedStreamFactory) ]
     end)
     _IntegrationHelpers.run_test(h, router,
       "GET /stream1 HTTP/1.1\r\nHost: localhost\r\n\r\n" +
@@ -684,11 +530,11 @@ class \nodoc\ iso _TestHeadFallbackToGet is UnitTest
 
   fun apply(h: TestHelper) =>
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory, None)]
+      [(stallion.GET, "/", _HelloFactory)]
     end)
     _HeadIntegrationHelpers.run_head_test(h, router,
       "HEAD / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "Content-Length: 17", "Hello from Hobby!")
+      "content-length: 17", "Hello from Hobby!")
 
 class \nodoc\ iso _TestHeadExplicitRoute is UnitTest
   """Explicit HEAD route takes precedence over GET fallback."""
@@ -698,12 +544,12 @@ class \nodoc\ iso _TestHeadExplicitRoute is UnitTest
 
   fun apply(h: TestHelper) =>
     let router = _IntegrationHelpers.build_router(recover val
-      [ (stallion.HEAD, "/", _HeadOnlyFactory, None)
-        (stallion.GET, "/", _HelloFactory, None) ]
+      [ (stallion.HEAD, "/", _HeadOnlyFactory)
+        (stallion.GET, "/", _HelloFactory) ]
     end)
     _HeadIntegrationHelpers.run_head_test(h, router,
       "HEAD / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "Content-Length: 18", "HEAD only response")
+      "content-length: 18", "HEAD only response")
 
 class \nodoc\ iso _TestHead404 is UnitTest
   """HEAD to nonexistent path returns 404 headers without body."""
@@ -713,30 +559,13 @@ class \nodoc\ iso _TestHead404 is UnitTest
 
   fun apply(h: TestHelper) =>
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory, None)]
+      [(stallion.GET, "/", _HelloFactory)]
     end)
     // Forbid "\r\n\r\nNot Found" (body after headers), not just "Not Found"
     // which also appears in the status line "404 Not Found".
     _HeadIntegrationHelpers.run_head_test(h, router,
       "HEAD /nonexistent HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "Content-Length: 9", "\r\n\r\nNot Found")
-
-class \nodoc\ iso _TestHeadWithMiddleware is UnitTest
-  """HEAD with middleware: body suppressed, headers preserved."""
-  fun name(): String => "integration/HEAD with middleware"
-
-  fun label(): String => "integration"
-
-  fun apply(h: TestHelper) =>
-    let mw: Array[Middleware val] val = recover val
-      [as Middleware val: _SetDataMiddleware("test_key", "middleware_value")]
-    end
-    let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/data", _DataReadFactory, mw)]
-    end)
-    _HeadIntegrationHelpers.run_head_test(h, router,
-      "HEAD /data HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "Content-Length: 16", "middleware_value")
+      "content-length: 9", "\r\n\r\nNot Found")
 
 class \nodoc\ iso _TestHeadStreamingHandler is UnitTest
   """HEAD to streaming handler: returns 200 OK without chunks."""
@@ -746,7 +575,7 @@ class \nodoc\ iso _TestHeadStreamingHandler is UnitTest
 
   fun apply(h: TestHelper) =>
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _StreamingFactory, None)]
+      [(stallion.GET, "/", _StreamingFactory)]
     end)
     _HeadIntegrationHelpers.run_head_test(h, router,
       "HEAD / HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -760,13 +589,13 @@ class \nodoc\ iso _TestHeadPostOnlyRoute is UnitTest
 
   fun apply(h: TestHelper) =>
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.POST, "/echo", _EchoBodyFactory, None)]
+      [(stallion.POST, "/echo", _EchoBodyFactory)]
     end)
     // Forbid "\r\n\r\nNot Found" (body after headers), not just "Not Found"
     // which also appears in the status line "404 Not Found".
     _HeadIntegrationHelpers.run_head_test(h, router,
       "HEAD /echo HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "Content-Length: 9", "\r\n\r\nNot Found")
+      "content-length: 9", "\r\n\r\nNot Found")
 
 class \nodoc\ iso _TestHeadStreamingPipelinedGet is UnitTest
   """
@@ -779,7 +608,7 @@ class \nodoc\ iso _TestHeadStreamingPipelinedGet is UnitTest
 
   fun apply(h: TestHelper) =>
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _StreamingFactory, None)]
+      [(stallion.GET, "/", _StreamingFactory)]
     end)
     _IntegrationHelpers.run_test(h, router,
       "HEAD / HTTP/1.1\r\nHost: localhost\r\n\r\n" +
@@ -832,7 +661,7 @@ actor \nodoc\ _TestTimeoutListener is lori.TCPListenerActor
 
   fun ref _on_accept(fd: U32): lori.TCPConnectionActor =>
     // 500ms timeout in nanoseconds
-    _Connection(_server_auth, fd, _config, _router, _timers, 500_000_000)
+    _Connection(_server_auth, fd, _config, _router, _timers, 500_000_000, None)
 
   fun ref _on_listening() =>
     try
@@ -903,7 +732,7 @@ class \nodoc\ iso _TestHandlerTimeout504 is UnitTest
     let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _NeverRespondFactory, None)]
+      [(stallion.GET, "/", _NeverRespondFactory)]
     end)
     _TestTimeoutListener(auth, config, router, h,
       {(h': TestHelper, port: String,
@@ -912,31 +741,6 @@ class \nodoc\ iso _TestHandlerTimeout504 is UnitTest
           "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
           listener)
       })
-
-// --- After-middleware header modification test ---
-
-class \nodoc\ val _AddHeaderMiddleware is Middleware
-  """After-middleware that adds a custom header to the response."""
-  fun before(ctx: BeforeContext ref) => None
-  fun after(ctx: AfterContext ref) =>
-    ctx.set_header("X-Custom", "test-value")
-
-class \nodoc\ iso _TestAfterMiddlewareSetHeader is UnitTest
-  """After-middleware can add headers to the response."""
-  fun name(): String => "integration/after middleware set header"
-
-  fun label(): String => "integration"
-
-  fun apply(h: TestHelper) =>
-    let mw: Array[Middleware val] val = recover val
-      [as Middleware val: _AddHeaderMiddleware]
-    end
-    let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory, mw)]
-    end)
-    _IntegrationHelpers.run_test(h, router,
-      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "x-custom: test-value")
 
 // --- Streaming timeout test ---
 
@@ -1016,7 +820,7 @@ class \nodoc\ iso _TestStreamingTimeout is UnitTest
       _StreamTimeoutHandler(consume ctx)
     } val
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", factory, None)]
+      [(stallion.GET, "/", factory)]
     end)
     _TestTimeoutListener(auth, config, router, h,
       {(h': TestHelper, port: String,
@@ -1112,7 +916,7 @@ class \nodoc\ iso _TestOnClosedDispose is UnitTest
       _WaitForDisposeHandler(consume ctx, coordinator)
     } val
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", factory, None)]
+      [(stallion.GET, "/", factory)]
     end)
     _TestIntegrationListener(auth, config, router, h,
       {(h': TestHelper, port: String,
@@ -1150,8 +954,8 @@ class \nodoc\ iso _TestPipelinedHandlerInProgress is UnitTest
       _DelayedResponseHandler(consume ctx)
     } val
     let router = _IntegrationHelpers.build_router(recover val
-      [ (stallion.GET, "/slow", factory, None)
-        (stallion.GET, "/fast", _HelloFactory, None) ]
+      [ (stallion.GET, "/slow", factory)
+        (stallion.GET, "/fast", _HelloFactory) ]
     end)
     _IntegrationHelpers.run_test(h, router,
       "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n" +
@@ -1169,8 +973,8 @@ class \nodoc\ iso _TestPipelinedMultipleRequests is UnitTest
       _DelayedResponseHandler(consume ctx)
     } val
     let router = _IntegrationHelpers.build_router(recover val
-      [ (stallion.GET, "/slow", factory, None)
-        (stallion.GET, "/fast", _HelloFactory, None) ]
+      [ (stallion.GET, "/slow", factory)
+        (stallion.GET, "/fast", _HelloFactory) ]
     end)
     _IntegrationHelpers.run_test(h, router,
       "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n" +
@@ -1232,7 +1036,7 @@ class \nodoc\ iso _TestRespondAfterDispose is UnitTest
       _LateRespondHandler(consume ctx)
     } val
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", factory, None)]
+      [(stallion.GET, "/", factory)]
     end)
     _TestTimeoutListener(auth, config, router, h,
       {(h': TestHelper, port: String,
@@ -1299,7 +1103,7 @@ class \nodoc\ iso _TestNormalCompletionWithTimeout is UnitTest
     let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory, None)]
+      [(stallion.GET, "/", _HelloFactory)]
     end)
     _TestTimeoutListener(auth, config, router, h,
       {(h': TestHelper, port: String,
@@ -1350,7 +1154,7 @@ class \nodoc\ iso _TestOnClosedStreamingDispose is UnitTest
       _StreamingDisposeHandler(consume ctx, coordinator)
     } val
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", factory, None)]
+      [(stallion.GET, "/", factory)]
     end)
     _TestIntegrationListener(auth, config, router, h,
       {(h': TestHelper, port: String,
@@ -1360,62 +1164,3 @@ class \nodoc\ iso _TestOnClosedStreamingDispose is UnitTest
           "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
       })
 
-// --- BeforeContext.respond_with_headers() test ---
-
-class \nodoc\ iso _TestBeforeMiddlewareRespondWithHeaders is UnitTest
-  """Before-middleware respond_with_headers() sends explicit headers."""
-  fun name(): String => "integration/before middleware respond with headers"
-
-  fun label(): String => "integration"
-
-  fun apply(h: TestHelper) =>
-    let mw: Array[Middleware val] val = recover val
-      [as Middleware val: _RespondWithHeadersMiddleware]
-    end
-    let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory, mw)]
-    end)
-    _IntegrationHelpers.run_test(h, router,
-      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "x-middleware: custom-value")
-
-// --- AfterContext.add_header() test ---
-
-class \nodoc\ iso _TestAfterMiddlewareAddHeader is UnitTest
-  """After-middleware add_header() appends without removing existing entries."""
-  fun name(): String => "integration/after middleware add header"
-
-  fun label(): String => "integration"
-
-  fun apply(h: TestHelper) =>
-    let mw: Array[Middleware val] val = recover val
-      [as Middleware val: _AddMultiHeaderMiddleware]
-    end
-    let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory, mw)]
-    end)
-    // Check for the first Set-Cookie header — if add_header() replaced
-    // instead of appending, only the second (b=2) would survive.
-    _IntegrationHelpers.run_test(h, router,
-      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "set-cookie: a=1")
-
-// --- Streaming after-middleware test ---
-
-class \nodoc\ iso _TestStreamingAfterMiddleware is UnitTest
-  """After-middleware header modification is silently ignored for streaming."""
-  fun name(): String => "integration/streaming after middleware"
-
-  fun label(): String => "integration"
-
-  fun apply(h: TestHelper) =>
-    let mw: Array[Middleware val] val = recover val
-      [as Middleware val: _StreamingAfterHeaderMiddleware]
-    end
-    let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _StreamingFactory, mw)]
-    end)
-    // Streaming data arrives; after-middleware header does not appear.
-    _HeadIntegrationHelpers.run_head_test(h, router,
-      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "chunk-1;", "x-after-stream")

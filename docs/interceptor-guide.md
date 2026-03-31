@@ -114,10 +114,10 @@ Every route in the group gets the auth interceptor without repeating it.
 
 ### Application-Level Interceptors
 
-`add_interceptor()` registers an interceptor that runs on every route:
+`add_request_interceptor()` registers an interceptor that runs on every route:
 
 ```pony
-app.>add_interceptor(RequiredHeadersInterceptor(
+app.>add_request_interceptor(RequiredHeadersInterceptor(
   recover val ["accept"] end))
 ```
 
@@ -131,4 +131,4 @@ If the check needs async work — querying a database, calling an external servi
 
 The dividing line: if you can decide by looking at the request headers alone, it's an interceptor. If you need to look anything up, it's handler logic.
 
-See the [interceptors example](../examples/interceptors/main.pony) for a complete demonstration with four interceptor implementations.
+See the [request-interceptors example](../examples/request-interceptors/main.pony) for a complete demonstration with four interceptor implementations.

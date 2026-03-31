@@ -33,33 +33,35 @@ primitive _TrimTrailingSlash
     end
     s
 
-primitive _ConcatMiddleware
+primitive _ConcatResponseInterceptors
   """
-  Concatenate two optional middleware arrays.
+  Concatenate two optional response interceptor arrays.
 
-  Returns a combined array with outer middleware first, then inner middleware.
+  Returns a combined array with outer interceptors first, then inner.
   When one side is `None`, returns the other directly (no allocation).
   When both are `None`, returns `None`.
   """
   fun apply(
-    outer: (Array[Middleware val] val | None),
-    inner: (Array[Middleware val] val | None))
-    : (Array[Middleware val] val | None)
+    outer: (Array[ResponseInterceptor val] val | None),
+    inner: (Array[ResponseInterceptor val] val | None))
+    : (Array[ResponseInterceptor val] val | None)
   =>
     match (outer, inner)
-    | (let o: Array[Middleware val] val, let i: Array[Middleware val] val) =>
+    | (let o: Array[ResponseInterceptor val] val,
+       let i: Array[ResponseInterceptor val] val) =>
       recover val
-        let combined = Array[Middleware val](o.size() + i.size())
-        for mw in o.values() do
-          combined.push(mw)
+        let combined =
+          Array[ResponseInterceptor val](o.size() + i.size())
+        for ri in o.values() do
+          combined.push(ri)
         end
-        for mw in i.values() do
-          combined.push(mw)
+        for ri in i.values() do
+          combined.push(ri)
         end
         combined
       end
-    | (let o: Array[Middleware val] val, None) => o
-    | (None, let i: Array[Middleware val] val) => i
+    | (let o: Array[ResponseInterceptor val] val, None) => o
+    | (None, let i: Array[ResponseInterceptor val] val) => i
     else
       None
     end

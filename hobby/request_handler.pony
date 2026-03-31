@@ -27,8 +27,8 @@ class ref RequestHandler
       _handler = hobby.RequestHandler(consume ctx)
       // ... start async work ...
 
-    be result(data: String) =>
-      _handler.respond(stallion.StatusOK, data)
+    be result(value: String) =>
+      _handler.respond(stallion.StatusOK, value)
 
     be dispose() => None
     be throttled() => None
@@ -40,7 +40,6 @@ class ref RequestHandler
   let _request: stallion.Request val
   let _params: Map[String, String] val
   let _body: Array[U8] val
-  let _data: Map[String, Any val] val
   let _is_head: Bool
   var _responded: Bool = false
   var _streaming: Bool = false
@@ -54,7 +53,6 @@ class ref RequestHandler
     _request = ctx.request
     _params = ctx.params
     _body = ctx.body
-    _data = ctx.data
     _conn = ctx._get_conn()
     _token = ctx._get_token()
     _is_head = ctx._get_is_head()
@@ -154,18 +152,6 @@ class ref RequestHandler
   fun box body(): Array[U8] val =>
     """Return the accumulated request body bytes."""
     _body
-
-  fun get[T: Any val](key: String): T ? =>
-    """
-    Get a typed value from the before-middleware data map.
-
-    Errors if the key does not exist or the value is not of type `T`.
-    """
-    match _data(key)?
-    | let t: T => t
-    else
-      error
-    end
 
   fun box request(): stallion.Request val =>
     """Return the HTTP request."""

@@ -21,7 +21,6 @@ primitive \nodoc\ _TestRequestInterceptorList
     test(_TestConcatInterceptorsInnerOnly)
     test(_TestInterceptRespondIntegration)
     test(_TestInterceptPassIntegration)
-    test(_TestInterceptWithMiddlewareIntegration)
     test(_TestInterceptGroupIntegration)
     test(_TestAppInterceptIntegration)
 
@@ -227,7 +226,7 @@ class \nodoc\ iso _TestInterceptRespondIntegration is UnitTest
     let interceptors: Array[RequestInterceptor val] val =
       recover val [as RequestInterceptor val: _RejectInterceptor] end
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory, None)]
+      [(stallion.GET, "/", _HelloFactory)]
     end where interceptors' = interceptors)
     _IntegrationHelpers.run_test(h, router,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -242,30 +241,11 @@ class \nodoc\ iso _TestInterceptPassIntegration is UnitTest
     let interceptors: Array[RequestInterceptor val] val =
       recover val [as RequestInterceptor val: _PassInterceptor] end
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory, None)]
+      [(stallion.GET, "/", _HelloFactory)]
     end where interceptors' = interceptors)
     _IntegrationHelpers.run_test(h, router,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "Hello from Hobby!")
-
-class \nodoc\ iso _TestInterceptWithMiddlewareIntegration is UnitTest
-  fun name(): String => "integration/interceptor with middleware"
-  fun label(): String => "integration"
-
-  fun apply(h: TestHelper) =>
-    h.long_test(10_000_000_000)
-    let interceptors: Array[RequestInterceptor val] val =
-      recover val [as RequestInterceptor val: _PassInterceptor] end
-    let mw: Array[Middleware val] val =
-      recover val
-        [as Middleware val: _SetDataMiddleware("test_key", "from_middleware")]
-      end
-    let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _DataReadFactory, mw)]
-    end where interceptors' = interceptors)
-    _IntegrationHelpers.run_test(h, router,
-      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "from_middleware")
 
 class \nodoc\ iso _TestInterceptGroupIntegration is UnitTest
   """Interceptors on a route group reject before the handler runs."""
@@ -292,7 +272,7 @@ class \nodoc\ iso _TestAppInterceptIntegration is UnitTest
     let interceptors: Array[RequestInterceptor val] val =
       recover val [as RequestInterceptor val: _RejectInterceptor] end
     let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory, None)]
+      [(stallion.GET, "/", _HelloFactory)]
     end where interceptors' = interceptors)
     _IntegrationHelpers.run_test(h, router,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",

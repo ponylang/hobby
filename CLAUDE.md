@@ -35,19 +35,18 @@ The `ssl` option is required — Stallion transitively depends on the `ssl` pack
 
 Users interact with these types:
 
-- **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_middleware()` for app-level middleware, `add_interceptor()` for app-level interceptors. Route methods accept optional `interceptors` parameter. `serve()` consumes the Application, freezes routes into an immutable router, and starts listening. `handler_timeout` parameter on `serve()` controls inactivity timeout (default 30 seconds, `None` to disable).
-- **`RouteGroup`** (`class iso`): Groups routes under a shared prefix and optional middleware/interceptors. Constructor accepts `interceptors` parameter. Supports nesting via `group()`. Consumed by `Application.group()` or outer `RouteGroup.group()`.
-- **`RequestInterceptor`** (`interface val`): Synchronous request gate. `apply(request: Request box): InterceptResult` returns `InterceptPass` or `InterceptRespond`. The return type forces an explicit decision — the compiler won't accept an interceptor that forgets to decide. Interceptors run before middleware — the first interceptor that responds wins.
+- **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_request_interceptor()` for app-level request interceptors, `add_response_interceptor()` for app-level response interceptors. Route methods accept optional `response_interceptors` parameter. `serve()` consumes the Application, freezes routes into an immutable router, and starts listening. `handler_timeout` parameter on `serve()` controls inactivity timeout (default 30 seconds, `None` to disable).
+- **`RouteGroup`** (`class iso`): Groups routes under a shared prefix and optional response interceptors. Constructor accepts `response_interceptors` parameter. Supports nesting via `group()`. Consumed by `Application.group()` or outer `RouteGroup.group()`.
+- **`RequestInterceptor`** (`interface val`): Synchronous request gate. `apply(request: Request box): InterceptResult` returns `InterceptPass` or `InterceptRespond`. The return type forces an explicit decision — the compiler won't accept an interceptor that forgets to decide. The first interceptor that responds wins.
 - **`InterceptResult`** (type alias): `(InterceptPass | InterceptRespond)`. Return type for request interceptors.
 - **`InterceptPass`** (`primitive`): Returned by an interceptor to pass the request through.
 - **`InterceptRespond`** (`class ref`): Returned by an interceptor to short-circuit with an HTTP response. The handler is not created. Constructed with `(status, body)`. Provides `set_header()` and `add_header()` for adding response headers.
+- **`ResponseInterceptor`** (`interface val`): Synchronous response interceptor. `fun apply(ctx: ResponseContext ref)` runs after the handler responds. All interceptors run in forward order.
+- **`ResponseContext`** (`class ref`): Context passed to response interceptors. Reads: `status()`, `body()`, `is_streaming()`, `request()`. Writes: `set_status()`, `set_header()`, `add_header()`, `set_body()`. All writes are no-ops for streaming responses. Package-private constructor.
 - **`HandlerFactory`** (type alias): `{(HandlerContext iso): (HandlerReceiver tag | None)} val`. Route handler entry point. Returns `None` for inline handlers, or a `HandlerReceiver tag` for async handlers that need lifecycle signals.
-- **`HandlerContext`** (`class iso`): Request context consumed by the handler factory. Carries `request`, `params`, `body`, and `data` (from before-middleware). Created by `_Connection` and passed to the factory.
-- **`RequestHandler`** (`class ref`): Embedded in handler actors. Created from a consumed `HandlerContext iso`. Provides `respond()`, `respond_with_headers()`, `start_streaming()`, `send_chunk()`, `finish()`, `param()`, `body()`, `get[T]()`, `request()`, `is_head()`.
+- **`HandlerContext`** (`class iso`): Request context consumed by the handler factory. Carries `request`, `params`, and `body`. Created by `_Connection` and passed to the factory.
+- **`RequestHandler`** (`class ref`): Embedded in handler actors. Created from a consumed `HandlerContext iso`. Provides `respond()`, `respond_with_headers()`, `start_streaming()`, `send_chunk()`, `finish()`, `param()`, `body()`, `request()`, `is_head()`.
 - **`HandlerReceiver`** (`interface tag`): Lifecycle notifications from the connection to a handler actor. Behaviors: `dispose()`, `throttled()`, `unthrottled()`.
-- **`Middleware`** (`interface val`): Two-phase processor. `before(ctx: BeforeContext ref) ?` runs before the handler; `after(ctx: AfterContext ref)` runs after, in reverse order.
-- **`BeforeContext`** (`class ref`): Context for the `before` phase. Provides `respond()`, `respond_with_headers()`, `is_handled()`, `request()`, `param()`, `body()`, `set()`, `get()`.
-- **`AfterContext`** (`class ref`): Context for the `after` phase. Provides `status()`, `body()`, `set_header()`, `add_header()`, `is_streaming()`, `request()`.
 - **`StreamingStarted`** (`primitive`): Returned by `RequestHandler.start_streaming()` on success.
 - **`BodyNotNeeded`** (`primitive`): Returned by `RequestHandler.start_streaming()` for HEAD requests.
 - **`ContentTypes`** (`class val`): File extension to MIME content type mapping. Ships with 17 common defaults. Chain `.add()` calls to add or override mappings.
@@ -61,12 +60,11 @@ Users interact with these types:
 ### Internal layers
 
 - **`_Listener`** (`actor`): Implements `lori.TCPListenerActor`. Accepts TCP connections and spawns `_Connection` actors. Creates a shared `Timers` actor for handler timeout management.
-- **`_Connection`** (`actor`): Implements `stallion.HTTPServerActor` and `_ConnectionProtocol`. State machine: `_Idle` → `_HandlerInProgress` → `_Streaming`. Runs before-middleware synchronously, calls factory, receives handler responses via protocol behaviors (`_handler_respond`, `_handler_start_streaming`, `_handler_send_chunk`, `_handler_finish`). Buffers responses for after-middleware modification. Manages handler timeout via interval-based timer.
+- **`_Connection`** (`actor`): Implements `stallion.HTTPServerActor` and `_ConnectionProtocol`. State machine: `_Idle` → `_HandlerInProgress` → `_Streaming`. Runs request interceptors, calls factory, receives handler responses via protocol behaviors (`_handler_respond`, `_handler_start_streaming`, `_handler_send_chunk`, `_handler_finish`). Buffers responses for response interceptors → wire. Manages handler timeout via interval-based timer.
 - **`_ConnectionProtocol`** (`trait tag`): Protocol behaviors that `RequestHandler` sends to `_Connection`.
-- **`_BufferedResponse`** (`class ref`): Mutable response buffer for after-middleware. After-middleware modifies headers via `AfterContext`, then `_Connection` serializes to wire.
+- **`_BufferedResponse`** (`class ref`): Mutable response buffer for response interceptors. Response interceptors modify status, headers, and body via `ResponseContext`; `_build()` serializes to wire and auto-adds Content-Length from the final body.
 - **`_RunRequestInterceptors`** (`primitive`): Runs request interceptors in order. Returns `InterceptRespond` on first short-circuit, `None` if all pass.
-- **`_RunBeforeMiddleware`** (`primitive`): Runs middleware `before` phases on `BeforeContext ref`. Returns invoked count.
-- **`_RunAfterMiddleware`** (`primitive`): Runs middleware `after` phases in reverse on `AfterContext ref`.
+- **`_RunResponseInterceptors`** (`primitive`): Runs response interceptors in forward order on a `ResponseContext ref`.
 - **`_HandlerTimeoutNotify`** (`class iso is TimerNotify`): Sends `_handler_timeout(token)` to `_Connection` on each interval fire.
 - **`_Router`** (`class val`): Immutable radix tree router. One tree per HTTP method.
 - **`_FileStreamer`** (`actor`): Reads files in 64 KB chunks. Sends to `_FileTarget tag`. Supports backpressure via `pause()`/`resume()`.
@@ -77,8 +75,7 @@ Users interact with these types:
 
 - **Actor-per-request handler model**: Each request's handler factory can spawn an actor that does async work and responds when ready. The connection waits for a response via protocol behaviors. This enables database queries, external service calls, and other async patterns without blocking the connection.
 - **Factory returns `(HandlerReceiver tag | None)`**: Inline handlers return None; async handlers return the actor's tag for dispose/throttle signals. No timing gap for lifecycle signals.
-- **Before-middleware data map → HandlerContext**: The mutable ref map is copied to a val map via `_freeze_data()`, which is sendable inside the `recover iso` block for `HandlerContext`.
-- **Response buffering for after-middleware**: Responses are buffered in `_BufferedResponse` before going to the wire. After-middleware can modify headers. For streaming, after-middleware runs after `_handler_finish` with header writes as no-ops.
+- **Response buffering for response interceptors**: Responses are buffered in `_BufferedResponse` before going to the wire. Response interceptors modify status, headers, and body via `ResponseContext`. Content-Length is computed automatically by `_build()` from the final body after all interceptors run. For streaming, interceptors run but mutations are no-ops (headers/status already on wire).
 - **Route methods are `fun ref`**: Auto receiver recovery handles calling them on the `iso` Application since all arguments are `val`. `serve()` is `fun iso` and uses `consume this`.
 - **Build/lookup separation**: Mutable `_BuildNode ref` trees for construction, frozen into immutable `_TreeNode val` trees for lookup.
 - **Static priority**: Static children checked before param child during lookup.
@@ -90,26 +87,27 @@ Users interact with these types:
 - **HEAD→GET fallback**: When no explicit HEAD route is registered, `_Connection` retries the lookup with GET.
 - **Backpressure forwarding**: `_Connection` forwards `on_throttled()`/`on_unthrottled()` to the handler actor when one is registered.
 - **Directory index auto-serving**: When a request resolves to a directory, `ServeFiles` tries `index.html`. Content type is derived from the resolved filesystem path.
-- **Request interceptors run before middleware**: Interceptors execute in `_Connection._dispatch` after route lookup but before before-middleware. An interceptor short-circuit sends the response directly to the wire without running any middleware. This is consistent with the 404 path, which also sends without middleware.
+- **Request interceptors run before the handler**: Interceptors execute in `_Connection._dispatch` after route lookup. An interceptor short-circuit sends the response (with response interceptors applied) without creating the handler.
+- **Response interceptors run on all response paths**: Response interceptors run after the handler responds and before the wire. For routed requests, the full concatenated array (app + group + route) from `_RouteMatch` is used. For 404s, app-level response interceptors (passed through `_Listener`) run. Exception: streaming timeout closes the connection directly.
+- **Content-Length deferred to serialization**: `_BufferedResponse._build()` auto-adds Content-Length from the final body after all response interceptors have run. Interceptors that call `set_body()` get correct Content-Length automatically. If Content-Length is already present (from explicit user headers), `_build()` does not override it.
+- **REVISIT: response interceptor mutators on streaming responses**: `set_body()`, `set_status()`, `set_header()`, and `add_header()` on `ResponseContext` are silent no-ops for streaming responses. The no-op behavior is correct (headers/status are already on the wire, body chunks are already sent), but `set_body()` being callable but silently ignored for streaming is a confusing API. Revisit whether the type system can make this a compile-time distinction rather than a runtime no-op.
 
 ## File Layout
 
 ```
 docs/
   interceptor-guide.md        - Writing Request Interceptors tutorial guide
-  middleware-guide.md         - Writing Middleware tutorial guide
 hobby/
   hobby.pony                  - Package docstring
   handler_factory.pony        - HandlerFactory type alias (public)
   handler_context.pony        - HandlerContext class (public)
   request_handler.pony        - RequestHandler class (public)
   handler_receiver.pony       - HandlerReceiver interface (public)
-  before_context.pony         - BeforeContext class (public)
-  after_context.pony          - AfterContext class (public)
   streaming_started.pony      - StreamingStarted primitive (public)
   body_not_needed.pony        - BodyNotNeeded primitive (public)
-  middleware.pony              - Middleware interface (public)
   request_interceptor.pony     - RequestInterceptor interface (public)
+  response_interceptor.pony    - ResponseInterceptor interface (public)
+  response_context.pony        - ResponseContext class (public)
   intercept_response.pony      - InterceptRespond class + result types (public)
   application.pony            - Application class (public)
   route_group.pony            - RouteGroup class (public)
@@ -119,10 +117,9 @@ hobby/
   signed_cookie.pony          - SignedCookie primitive (public)
   signed_cookie_error.pony    - SignedCookieError union type (public)
   _connection_protocol.pony   - Connection protocol trait (internal)
-  _buffered_response.pony     - Response buffer for after-middleware (internal)
-  _run_request_interceptors.pony - Interceptor execution (internal)
-  _run_before_middleware.pony  - Before-phase execution (internal)
-  _run_after_middleware.pony   - After-phase execution (internal)
+  _buffered_response.pony     - Response buffer for response interceptors (internal)
+  _run_request_interceptors.pony - Request interceptor execution (internal)
+  _run_response_interceptors.pony - Response interceptor execution (internal)
   _handler_timeout.pony       - Handler timeout timer notify (internal)
   _connection.pony             - Connection actor (internal)
   _listener.pony               - Listener actor (internal)
@@ -134,7 +131,7 @@ hobby/
   _serve_files_handler.pony    - ServeFiles handler actor (internal)
   _http_date.pony              - RFC 7231 HTTP-date formatting (internal)
   _etag.pony                   - Weak ETag computation and matching (internal)
-  _flatten.pony                - Path joining + middleware concatenation (internal)
+  _flatten.pony                - Path joining + array concatenation (internal)
   _mort.pony                   - _Unreachable primitive (internal)
   _test.pony                   - Test runner
   _test_router.pony            - Router property-based + example tests
@@ -145,7 +142,8 @@ hobby/
   _test_request_handler.pony   - RequestHandler unit tests with mock connection
   _test_integration.pony       - HTTP round-trip integration tests
   _test_serve_files.pony       - ServeFiles integration tests
-  _test_request_interceptor.pony - Interceptor unit + integration tests
+  _test_request_interceptor.pony - Request interceptor unit + integration tests
+  _test_response_interceptor.pony - Response interceptor unit + integration tests
   _test_signed_cookie.pony     - Signed cookie unit + property tests
 ```
 

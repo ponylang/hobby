@@ -12,8 +12,6 @@ primitive \nodoc\ _TestRequestHandlerList
     test(_TestRespondWithHeaders)
     test(_TestStartStreamingHead)
     test(_TestStartStreamingHttp10)
-    test(_TestGetTypeMismatch)
-    test(_TestSetHeaderCaseInsensitive)
 
 // --- Mock connection ---
 
@@ -82,10 +80,8 @@ primitive \nodoc\ _MockHandlerContext
     let params: Map[String, String] val =
       recover val Map[String, String] end
     let body: Array[U8] val = recover val Array[U8] end
-    let data: Map[String, Any val] val =
-      recover val Map[String, Any val] end
     recover iso
-      HandlerContext._create(_MockRequest(), params, body, data,
+      HandlerContext._create(_MockRequest(), params, body,
         conn, 1, false)
     end
 
@@ -103,10 +99,8 @@ primitive \nodoc\ _MockHeadHandlerContext
     let params: Map[String, String] val =
       recover val Map[String, String] end
     let body: Array[U8] val = recover val Array[U8] end
-    let data: Map[String, Any val] val =
-      recover val Map[String, Any val] end
     recover iso
-      HandlerContext._create(_MockRequest(), params, body, data,
+      HandlerContext._create(_MockRequest(), params, body,
         conn, 1, true)
     end
 
@@ -115,22 +109,8 @@ primitive \nodoc\ _MockHttp10HandlerContext
     let params: Map[String, String] val =
       recover val Map[String, String] end
     let body: Array[U8] val = recover val Array[U8] end
-    let data: Map[String, Any val] val =
-      recover val Map[String, Any val] end
     recover iso
-      HandlerContext._create(_MockHttp10Request(), params, body, data,
-        conn, 1, false)
-    end
-
-primitive \nodoc\ _MockHandlerContextWithData
-  fun apply(conn: _ConnectionProtocol tag,
-    data: Map[String, Any val] val): HandlerContext iso^
-  =>
-    let params: Map[String, String] val =
-      recover val Map[String, String] end
-    let body: Array[U8] val = recover val Array[U8] end
-    recover iso
-      HandlerContext._create(_MockRequest(), params, body, data,
+      HandlerContext._create(_MockHttp10Request(), params, body,
         conn, 1, false)
     end
 
@@ -208,38 +188,3 @@ class \nodoc\ iso _TestStartStreamingHttp10 is UnitTest
     let handler = RequestHandler(_MockHttp10HandlerContext(mock))
     let result = handler.start_streaming(stallion.StatusOK)
     h.assert_true(result is stallion.ChunkedNotSupported)
-
-class \nodoc\ iso _TestGetTypeMismatch is UnitTest
-  """get[T]() errors when the stored value is the wrong type."""
-  fun name(): String => "request handler/get type mismatch"
-
-  fun apply(h: TestHelper) =>
-    let mock = _MockConnection
-    let data: Map[String, Any val] val = recover val
-      let m = Map[String, Any val]
-      m("key") = U32(42)
-      m
-    end
-    let handler = RequestHandler(_MockHandlerContextWithData(mock, data))
-    try
-      handler.get[String]("key")?
-      h.fail("expected error for type mismatch")
-    end
-
-class \nodoc\ iso _TestSetHeaderCaseInsensitive is UnitTest
-  """set_header() replaces existing header with case-insensitive match."""
-  fun name(): String => "request handler/set_header case insensitive"
-
-  fun apply(h: TestHelper) =>
-    let buf = _BufferedResponse._standard(stallion.StatusOK, "body", false)
-    buf.headers.push(("X-Custom", "old-value"))
-    let after_ctx = AfterContext._create(buf, _MockRequest())
-    after_ctx.set_header("x-custom", "new-value")
-    var found_old = false
-    var found_new = false
-    for (n, v) in buf.headers.values() do
-      if n == "X-Custom" then found_old = true end
-      if (n == "x-custom") and (v == "new-value") then found_new = true end
-    end
-    h.assert_false(found_old, "old header should be removed")
-    h.assert_true(found_new, "new header should be present")
