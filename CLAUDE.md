@@ -35,8 +35,12 @@ The `ssl` option is required — Stallion transitively depends on the `ssl` pack
 
 Users interact with these types:
 
-- **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_middleware()` for app-level middleware. `serve()` consumes the Application, freezes routes into an immutable router, and starts listening. `handler_timeout` parameter on `serve()` controls inactivity timeout (default 30 seconds, `None` to disable).
-- **`RouteGroup`** (`class iso`): Groups routes under a shared prefix and optional middleware. Supports nesting via `group()`. Consumed by `Application.group()` or outer `RouteGroup.group()`.
+- **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_middleware()` for app-level middleware, `add_interceptor()` for app-level interceptors. Route methods accept optional `interceptors` parameter. `serve()` consumes the Application, freezes routes into an immutable router, and starts listening. `handler_timeout` parameter on `serve()` controls inactivity timeout (default 30 seconds, `None` to disable).
+- **`RouteGroup`** (`class iso`): Groups routes under a shared prefix and optional middleware/interceptors. Constructor accepts `interceptors` parameter. Supports nesting via `group()`. Consumed by `Application.group()` or outer `RouteGroup.group()`.
+- **`RequestInterceptor`** (`interface val`): Synchronous request gate. `apply(request: Request box): InterceptResult` returns `InterceptPass` or `InterceptRespond`. The return type forces an explicit decision — the compiler won't accept an interceptor that forgets to decide. Interceptors run before middleware — the first interceptor that responds wins.
+- **`InterceptResult`** (type alias): `(InterceptPass | InterceptRespond)`. Return type for request interceptors.
+- **`InterceptPass`** (`primitive`): Returned by an interceptor to pass the request through.
+- **`InterceptRespond`** (`class ref`): Returned by an interceptor to short-circuit with an HTTP response. The handler is not created. Constructed with `(status, body)`. Provides `set_header()` and `add_header()` for adding response headers.
 - **`HandlerFactory`** (type alias): `{(HandlerContext iso): (HandlerReceiver tag | None)} val`. Route handler entry point. Returns `None` for inline handlers, or a `HandlerReceiver tag` for async handlers that need lifecycle signals.
 - **`HandlerContext`** (`class iso`): Request context consumed by the handler factory. Carries `request`, `params`, `body`, and `data` (from before-middleware). Created by `_Connection` and passed to the factory.
 - **`RequestHandler`** (`class ref`): Embedded in handler actors. Created from a consumed `HandlerContext iso`. Provides `respond()`, `respond_with_headers()`, `start_streaming()`, `send_chunk()`, `finish()`, `param()`, `body()`, `get[T]()`, `request()`, `is_head()`.
@@ -60,6 +64,7 @@ Users interact with these types:
 - **`_Connection`** (`actor`): Implements `stallion.HTTPServerActor` and `_ConnectionProtocol`. State machine: `_Idle` → `_HandlerInProgress` → `_Streaming`. Runs before-middleware synchronously, calls factory, receives handler responses via protocol behaviors (`_handler_respond`, `_handler_start_streaming`, `_handler_send_chunk`, `_handler_finish`). Buffers responses for after-middleware modification. Manages handler timeout via interval-based timer.
 - **`_ConnectionProtocol`** (`trait tag`): Protocol behaviors that `RequestHandler` sends to `_Connection`.
 - **`_BufferedResponse`** (`class ref`): Mutable response buffer for after-middleware. After-middleware modifies headers via `AfterContext`, then `_Connection` serializes to wire.
+- **`_RunRequestInterceptors`** (`primitive`): Runs request interceptors in order. Returns `InterceptRespond` on first short-circuit, `None` if all pass.
 - **`_RunBeforeMiddleware`** (`primitive`): Runs middleware `before` phases on `BeforeContext ref`. Returns invoked count.
 - **`_RunAfterMiddleware`** (`primitive`): Runs middleware `after` phases in reverse on `AfterContext ref`.
 - **`_HandlerTimeoutNotify`** (`class iso is TimerNotify`): Sends `_handler_timeout(token)` to `_Connection` on each interval fire.
@@ -85,11 +90,13 @@ Users interact with these types:
 - **HEAD→GET fallback**: When no explicit HEAD route is registered, `_Connection` retries the lookup with GET.
 - **Backpressure forwarding**: `_Connection` forwards `on_throttled()`/`on_unthrottled()` to the handler actor when one is registered.
 - **Directory index auto-serving**: When a request resolves to a directory, `ServeFiles` tries `index.html`. Content type is derived from the resolved filesystem path.
+- **Request interceptors run before middleware**: Interceptors execute in `_Connection._dispatch` after route lookup but before before-middleware. An interceptor short-circuit sends the response directly to the wire without running any middleware. This is consistent with the 404 path, which also sends without middleware.
 
 ## File Layout
 
 ```
 docs/
+  interceptor-guide.md        - Writing Request Interceptors tutorial guide
   middleware-guide.md         - Writing Middleware tutorial guide
 hobby/
   hobby.pony                  - Package docstring
@@ -102,6 +109,8 @@ hobby/
   streaming_started.pony      - StreamingStarted primitive (public)
   body_not_needed.pony        - BodyNotNeeded primitive (public)
   middleware.pony              - Middleware interface (public)
+  request_interceptor.pony     - RequestInterceptor interface (public)
+  intercept_response.pony      - InterceptRespond class + result types (public)
   application.pony            - Application class (public)
   route_group.pony            - RouteGroup class (public)
   serve_files.pony            - ServeFiles handler factory (public)
@@ -111,6 +120,7 @@ hobby/
   signed_cookie_error.pony    - SignedCookieError union type (public)
   _connection_protocol.pony   - Connection protocol trait (internal)
   _buffered_response.pony     - Response buffer for after-middleware (internal)
+  _run_request_interceptors.pony - Interceptor execution (internal)
   _run_before_middleware.pony  - Before-phase execution (internal)
   _run_after_middleware.pony   - After-phase execution (internal)
   _handler_timeout.pony       - Handler timeout timer notify (internal)
@@ -135,6 +145,7 @@ hobby/
   _test_request_handler.pony   - RequestHandler unit tests with mock connection
   _test_integration.pony       - HTTP round-trip integration tests
   _test_serve_files.pony       - ServeFiles integration tests
+  _test_request_interceptor.pony - Interceptor unit + integration tests
   _test_signed_cookie.pony     - Signed cookie unit + property tests
 ```
 

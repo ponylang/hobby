@@ -10,12 +10,15 @@ class val _RouteMatch
   """
   let factory: HandlerFactory
   let middleware: (Array[Middleware val] val | None)
+  let interceptors: (Array[RequestInterceptor val] val | None)
   let params: Map[String, String] val
 
   new val create(factory': HandlerFactory,
     middleware': (Array[Middleware val] val | None),
+    interceptors': (Array[RequestInterceptor val] val | None),
     params': Map[String, String] val)
   =>
     factory = factory'
     middleware = middleware'
+    interceptors = interceptors'
     params = params'

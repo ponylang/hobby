@@ -152,6 +152,14 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
     responder: stallion.Responder, body: Array[U8] val,
     m: _RouteMatch, is_head: Bool)
   =>
+    // Run interceptors — short-circuit before creating middleware or handler state
+    match _RunRequestInterceptors(request', m.interceptors)
+    | let respond: InterceptRespond =>
+      let buf = _BufferedResponse._from_intercept_respond(respond, is_head)
+      responder.respond(buf._build())
+      return
+    end
+
     // Run before-middleware synchronously
     let before_ctx = BeforeContext._create(request', m.params, body)
     let invoked = _RunBeforeMiddleware(before_ctx, m.middleware)
