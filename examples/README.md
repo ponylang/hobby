@@ -10,6 +10,10 @@ Starts an HTTP server with two routes: a static greeting at `/` and a parameteri
 
 Demonstrates actor-based handlers that do async work before responding. A `SlowService` actor simulates an async operation (e.g., a database query or external API call). The handler actor creates a `RequestHandler`, sends a query to the service, and responds when the result arrives. Shows the `HandlerReceiver` interface for lifecycle notifications.
 
+## [interceptors](interceptors/)
+
+Demonstrates request interceptors for synchronous request short-circuiting. Includes four interceptor implementations: auth header presence check, content type validation, request body size limit, and required headers. Shows per-route interceptor registration and combining multiple interceptors on a single route.
+
 ## [middleware](middleware/)
 
 Starts an HTTP server with public and protected routes. Demonstrates two middleware patterns: an auth middleware that short-circuits with 401 in the `before` phase when a token is missing, and a logging middleware that records requests in the `after` phase. Also shows the typed accessor pattern for inter-middleware communication — `handler.get[AuthenticatedUser]()` extracts domain types from the data map.

@@ -63,3 +63,36 @@ primitive _ConcatMiddleware
     else
       None
     end
+
+primitive _ConcatInterceptors
+  """
+  Concatenate two optional interceptor arrays.
+
+  Returns a combined array with outer interceptors first, then inner.
+  When one side is `None`, returns the other directly (no allocation).
+  When both are `None`, returns `None`.
+  """
+  fun apply(
+    outer: (Array[RequestInterceptor val] val | None),
+    inner: (Array[RequestInterceptor val] val | None))
+    : (Array[RequestInterceptor val] val | None)
+  =>
+    match (outer, inner)
+    | (let o: Array[RequestInterceptor val] val,
+       let i: Array[RequestInterceptor val] val) =>
+      recover val
+        let combined =
+          Array[RequestInterceptor val](o.size() + i.size())
+        for g in o.values() do
+          combined.push(g)
+        end
+        for g in i.values() do
+          combined.push(g)
+        end
+        combined
+      end
+    | (let o: Array[RequestInterceptor val] val, None) => o
+    | (None, let i: Array[RequestInterceptor val] val) => i
+    else
+      None
+    end

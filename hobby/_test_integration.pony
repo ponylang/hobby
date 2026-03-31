@@ -209,11 +209,13 @@ class \nodoc\ val _StreamingAfterHeaderMiddleware is Middleware
 primitive \nodoc\ _IntegrationHelpers
   fun build_router(
     routes: Array[(stallion.Method, String, HandlerFactory,
-      (Array[Middleware val] val | None))] val): _Router val
+      (Array[Middleware val] val | None))] val,
+    interceptors': (Array[RequestInterceptor val] val | None) = None):
+    _Router val
   =>
     let builder = _RouterBuilder
     for (method, path, factory, middleware) in routes.values() do
-      builder.add(method, path, factory, middleware)
+      builder.add(method, path, factory, middleware, interceptors')
     end
     builder.build()
 

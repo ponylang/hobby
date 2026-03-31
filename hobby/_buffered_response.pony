@@ -43,6 +43,41 @@ class ref _BufferedResponse
     is_streaming = false
     is_head = is_head'
 
+  new ref _from_intercept_respond(respond: InterceptRespond ref,
+    is_head': Bool)
+  =>
+    """Create a buffered response from an interceptor short-circuit."""
+    status = respond._response_status()
+    headers = Array[(String, String)]
+    var i: USize = 0
+    while i < respond._headers_size() do
+      try
+        headers.push(respond._header_at(i)?)
+      else
+        _Unreachable()
+      end
+      i = i + 1
+    end
+    let b = respond._response_body()
+    // Auto-add content-length if not explicitly set
+    var has_content_length = false
+    for (n, _) in headers.values() do
+      if n == "content-length" then
+        has_content_length = true
+        break
+      end
+    end
+    if not has_content_length then
+      let body_size: USize = match \exhaustive\ b
+      | let s: String val => s.size()
+      | let a: Array[U8] val => a.size()
+      end
+      headers.push(("content-length", body_size.string()))
+    end
+    body = b
+    is_streaming = false
+    is_head = is_head'
+
   new ref _streaming_complete(status': stallion.Status, is_head': Bool) =>
     """Create a buffered response for after-middleware on stream finish."""
     status = status'

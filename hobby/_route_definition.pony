@@ -12,12 +12,15 @@ class val _RouteDefinition
   let path: String
   let factory: HandlerFactory
   let middleware: (Array[Middleware val] val | None)
+  let interceptors: (Array[RequestInterceptor val] val | None)
 
   new val create(method': stallion.Method, path': String,
     factory': HandlerFactory,
-    middleware': (Array[Middleware val] val | None))
+    middleware': (Array[Middleware val] val | None),
+    interceptors': (Array[RequestInterceptor val] val | None) = None)
   =>
     method = method'
     path = path'
     factory = factory'
     middleware = middleware'
+    interceptors = interceptors'
