@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file. This projec
 ### Changed
 
 - Remove middleware in favor of interceptors ([PR #57](https://github.com/ponylang/hobby/pull/57))
-
+- Interceptors now run on 404 responses under their path ([PR #59](https://github.com/ponylang/hobby/pull/59))
 
 ## [0.4.1] - 2026-03-28
 
