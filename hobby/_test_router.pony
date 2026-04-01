@@ -6,7 +6,7 @@ use stallion = "stallion"
 primitive \nodoc\ _TestRouterList
   fun tests(test: PonyTest) =>
     test(Property1UnitTest[String](_PropertyStaticRouteMatches))
-    test(Property1UnitTest[String](_PropertyUnregisteredReturnsNone))
+    test(Property1UnitTest[String](_PropertyUnregisteredReturnsMiss))
     test(Property1UnitTest[
       (String, String)](_PropertyParamExtraction))
     test(Property1UnitTest[
@@ -25,9 +25,38 @@ primitive \nodoc\ _TestRouterList
     test(_TestSplitAtSegmentBoundary)
     test(_TestSplitMidSegmentParam)
     test(_TestDeepNestedParamSharedPrefix)
+    test(_TestStaticPrefixFallsBackToParam)
     test(Property1UnitTest[
       (Array[USize] val, Array[USize] val)](
       _PropertyInsertionOrderInvariance))
+    test(_TestHeadFallbackInRouter)
+    test(_TestInterceptorAccumulation)
+    test(_TestMissCarriesInterceptors)
+    test(_TestRootMissCarriesInterceptors)
+    test(_TestPerRouteInterceptorsMethodSpecific)
+    test(_TestValidateGroupsDistinctPrefixes)
+    test(_TestValidateGroupsOverlappingPrefixes)
+    test(_TestValidateGroupsEmptyPrefix)
+    test(_TestValidateGroupsRootPrefix)
+    test(_TestValidateGroupsSpecialChars)
+    test(_TestParamNameConflictReturnsError)
+    test(_TestInterceptorSegmentBoundary)
+    test(_TestInterceptorSegmentBoundaryMiss)
+    test(_TestInterceptorSegmentBoundaryNestedGroups)
+    test(_TestDeepestMissPreservesRicherInterceptors)
+    test(_TestSharedParamNameConsistent)
+    test(_TestMethodNotAllowed)
+    test(_TestMethodNotAllowedAllowHeader)
+    test(_TestWildcardMethodIsolation)
+    test(_TestWildcardHeadFallback)
+    test(_TestParamPriorityOverWildcard)
+    test(_TestStaticParamWildcardPriority)
+    test(_Test405FallsBackToLowerPriorityMatch)
+    test(_Test405FallsBackStaticToParam)
+    test(_Test405AllowHeaderScopedToEntryType)
+    test(_TestEmptyParamSegmentSkipped)
+    test(_TestRoutesBeforeInterceptors)
+    test(_TestMethodNotAllowedCarriesInterceptors)
 
 // --- Generators ---
 
@@ -89,21 +118,24 @@ class \nodoc\ iso _PropertyStaticRouteMatches is Property1[String]
     match router.lookup(stallion.GET, path)
     | let m: _RouteMatch =>
       h.assert_eq[USize](0, m.params.size())
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for " + path)
     end
 
-class \nodoc\ iso _PropertyUnregisteredReturnsNone is Property1[String]
-  """An unregistered path returns None."""
-  fun name(): String => "router/property/unregistered returns None"
+class \nodoc\ iso _PropertyUnregisteredReturnsMiss is Property1[String]
+  """An unregistered path returns _RouteMiss."""
+  fun name(): String => "router/property/unregistered returns miss"
 
   fun gen(): Generator[String] => _GenStaticPath()
 
   fun property(path: String, h: PropertyHelper) =>
     let router = _RouterBuilder.build()
     match router.lookup(stallion.GET, path)
+    | let _: _RouteMiss => None
     | let _: _RouteMatch =>
-      h.fail("expected None for " + path + " on empty router")
+      h.fail("expected miss for " + path + " on empty router")
+    | let _: _MethodNotAllowed =>
+      h.fail("expected miss for " + path + " on empty router")
     end
 
 class \nodoc\ iso _PropertyParamExtraction is
@@ -124,14 +156,14 @@ class \nodoc\ iso _PropertyParamExtraction is
     let router = builder.build()
 
     let lookup_path: String val = prefix + "/testvalue"
-    match \exhaustive\ router.lookup(stallion.GET, lookup_path)
+    match router.lookup(stallion.GET, lookup_path)
     | let m: _RouteMatch =>
       try
         h.assert_eq[String]("testvalue", m.params(param_name)?)
       else
         h.fail("param not found in match")
       end
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match")
     end
 
@@ -168,7 +200,7 @@ class \nodoc\ iso _PropertyMultipleParams is
       else
         h.fail("param p2 not found")
       end
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match")
     end
 
@@ -180,6 +212,9 @@ class \nodoc\ iso _PropertyMethodIsolation is
   fun gen(): Generator[stallion.Method] => _GenMethod()
 
   fun property(method: stallion.Method, h: PropertyHelper) =>
+    // Skip HEAD — it falls back to GET in the shared tree
+    if method is stallion.HEAD then return end
+
     let builder = _RouterBuilder
     builder.add(method, "/test", _NoOpFactory, None)
     let router = builder.build()
@@ -191,15 +226,18 @@ class \nodoc\ iso _PropertyMethodIsolation is
       h.fail("expected match for registered method")
     end
 
-    // Should NOT match a different method
+    // Should return 405 for a different method (excluding HEAD→GET)
     let other: stallion.Method = if method is stallion.GET then
       stallion.POST
     else
       stallion.GET
     end
     match router.lookup(other, "/test")
+    | let _: _MethodNotAllowed => None
     | let _: _RouteMatch =>
       h.fail("should not match different method")
+    | let _: _RouteMiss =>
+      h.fail("should be 405, not 404")
     end
 
 class \nodoc\ iso _PropertyWildcardCapture is Property1[String]
@@ -222,7 +260,7 @@ class \nodoc\ iso _PropertyWildcardCapture is Property1[String]
       else
         h.fail("wildcard param 'path' not found")
       end
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match")
     end
 
@@ -247,7 +285,7 @@ class \nodoc\ iso _TestStaticPriorityOverParam is UnitTest
     match router.lookup(stallion.GET, "/users/new")
     | let m: _RouteMatch =>
       h.assert_is[HandlerFactory](static_factory, m.factory)
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /users/new")
     end
 
@@ -259,7 +297,7 @@ class \nodoc\ iso _TestStaticPriorityOverParam is UnitTest
       else
         h.fail("param 'id' not found")
       end
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /users/42")
     end
 
@@ -274,7 +312,7 @@ class \nodoc\ iso _TestRootPath is UnitTest
 
     match router.lookup(stallion.GET, "/")
     | let _: _RouteMatch => None
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /")
     end
 
@@ -296,13 +334,13 @@ class \nodoc\ iso _TestOverlappingPrefixes is UnitTest
 
     match router.lookup(stallion.GET, "/api/v1/users")
     | let m: _RouteMatch => h.assert_is[HandlerFactory](f1, m.factory)
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /api/v1/users")
     end
 
     match router.lookup(stallion.GET, "/api/v2/users")
     | let m: _RouteMatch => h.assert_is[HandlerFactory](f2, m.factory)
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /api/v2/users")
     end
 
@@ -322,7 +360,7 @@ class \nodoc\ iso _TestWildcardSingleSegment is UnitTest
       else
         h.fail("wildcard param 'path' not found")
       end
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /files/readme.txt")
     end
 
@@ -343,13 +381,13 @@ class \nodoc\ iso _TestTrailingSlashNormalization is UnitTest
 
     match router.lookup(stallion.GET, "/users")
     | let _: _RouteMatch => None
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /users")
     end
 
     match router.lookup(stallion.GET, "/users/")
     | let _: _RouteMatch => None
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /users/ (trailing slash)")
     end
 
@@ -380,7 +418,7 @@ class \nodoc\ iso _TestSplitThenParam is UnitTest
     match router.lookup(stallion.POST, "/a/b/c/login")
     | let m: _RouteMatch =>
       h.assert_is[HandlerFactory](login_factory, m.factory)
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /a/b/c/login")
     end
 
@@ -393,7 +431,7 @@ class \nodoc\ iso _TestSplitThenParam is UnitTest
       else
         h.fail("param 'id' not found")
       end
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /a/b/c/user/42/filter")
     end
 
@@ -418,7 +456,7 @@ class \nodoc\ iso _TestSplitThenWildcard is UnitTest
     match router.lookup(stallion.GET, "/static/page")
     | let m: _RouteMatch =>
       h.assert_is[HandlerFactory](exact_factory, m.factory)
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /static/page")
     end
 
@@ -430,7 +468,7 @@ class \nodoc\ iso _TestSplitThenWildcard is UnitTest
       else
         h.fail("wildcard param 'rest' not found")
       end
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /static/other/deep/path")
     end
 
@@ -453,7 +491,7 @@ class \nodoc\ iso _TestSplitThenMultipleParams is UnitTest
     match router.lookup(stallion.GET, "/api/v1/health")
     | let m: _RouteMatch =>
       h.assert_is[HandlerFactory](static_factory, m.factory)
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /api/v1/health")
     end
 
@@ -470,7 +508,7 @@ class \nodoc\ iso _TestSplitThenMultipleParams is UnitTest
       else
         h.fail("param 'id' not found")
       end
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /api/v1/users/99")
     end
 
@@ -495,7 +533,7 @@ class \nodoc\ iso _TestSplitParamThenStatic is UnitTest
     match router.lookup(stallion.POST, "/a/b/c/login")
     | let m: _RouteMatch =>
       h.assert_is[HandlerFactory](static_factory, m.factory)
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /a/b/c/login")
     end
 
@@ -507,7 +545,7 @@ class \nodoc\ iso _TestSplitParamThenStatic is UnitTest
       else
         h.fail("param 'id' not found")
       end
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /a/b/c/user/42/filter")
     end
 
@@ -530,7 +568,7 @@ class \nodoc\ iso _TestSplitAtSegmentBoundary is UnitTest
     match router.lookup(stallion.GET, "/items/list")
     | let m: _RouteMatch =>
       h.assert_is[HandlerFactory](list_factory, m.factory)
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /items/list")
     end
 
@@ -542,7 +580,7 @@ class \nodoc\ iso _TestSplitAtSegmentBoundary is UnitTest
       else
         h.fail("param 'id' not found")
       end
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /items/42")
     end
 
@@ -569,7 +607,7 @@ class \nodoc\ iso _TestSplitMidSegmentParam is UnitTest
     match router.lookup(stallion.GET, "/prefix/index")
     | let m: _RouteMatch =>
       h.assert_is[HandlerFactory](index_factory, m.factory)
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /prefix/index")
     end
 
@@ -581,7 +619,7 @@ class \nodoc\ iso _TestSplitMidSegmentParam is UnitTest
       else
         h.fail("param 'id' not found")
       end
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /prefix/item/7")
     end
 
@@ -608,7 +646,7 @@ class \nodoc\ iso _TestDeepNestedParamSharedPrefix is UnitTest
     match router.lookup(stallion.GET, "/x/y/z/alpha")
     | let m: _RouteMatch =>
       h.assert_is[HandlerFactory](fa, m.factory)
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /x/y/z/alpha")
     end
 
@@ -620,7 +658,7 @@ class \nodoc\ iso _TestDeepNestedParamSharedPrefix is UnitTest
       else
         h.fail("param 'id' not found")
       end
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /x/y/z/a/10")
     end
 
@@ -637,8 +675,265 @@ class \nodoc\ iso _TestDeepNestedParamSharedPrefix is UnitTest
       else
         h.fail("param 'sid' not found")
       end
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match for /x/y/z/a/10/sub/20")
+    end
+
+class \nodoc\ iso _TestStaticPrefixFallsBackToParam is UnitTest
+  """
+  When a static child's prefix matches as a prefix of the remaining path
+  but the subtree doesn't match, lookup falls back to the param child.
+
+  Regression: _RouteMiss from a static child must not block param fallback.
+  `/users/new` and `/users/:id` — a lookup for `/users/newsletter` enters
+  the `new` static child (since "newsletter" starts with "new") but fails.
+  The param child `:id` should still match.
+  """
+  fun name(): String => "router/static prefix falls back to param"
+
+  fun apply(h: TestHelper) =>
+    let static_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "static")
+    } val
+    let param_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "param")
+    } val
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/users/new", static_factory, None)
+    builder.add(stallion.GET, "/users/:id", param_factory, None)
+    let router = builder.build()
+
+    // Exact static match still works
+    match router.lookup(stallion.GET, "/users/new")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](static_factory, m.factory)
+    | let _: _RouteMiss =>
+      h.fail("expected match for /users/new")
+    end
+
+    // "newsletter" starts with "new" — must fall back to param
+    match router.lookup(stallion.GET, "/users/newsletter")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](param_factory, m.factory)
+      try
+        h.assert_eq[String]("newsletter", m.params("id")?)
+      else
+        h.fail("param 'id' not found")
+      end
+    | let _: _RouteMiss =>
+      h.fail("expected param match for /users/newsletter (backtrack from static)")
+    end
+
+class \nodoc\ iso _TestParamPriorityOverWildcard is UnitTest
+  """Param child is tried before wildcard at the same node."""
+  fun name(): String => "router/param priority over wildcard"
+
+  fun apply(h: TestHelper) =>
+    let param_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "param")
+    } val
+    let wildcard_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "wildcard")
+    } val
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/files/:id", param_factory, None)
+    builder.add(stallion.GET, "/files/*path", wildcard_factory, None)
+    let router = builder.build()
+
+    // Single segment — param wins over wildcard
+    match router.lookup(stallion.GET, "/files/readme.txt")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](param_factory, m.factory)
+      try
+        h.assert_eq[String]("readme.txt", m.params("id")?)
+      else
+        h.fail("param 'id' not found")
+      end
+    else
+      h.fail("expected param match for /files/readme.txt")
+    end
+
+    // Multi-segment — param can't match (stops at /), wildcard takes it
+    match router.lookup(stallion.GET, "/files/css/style.css")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](wildcard_factory, m.factory)
+      try
+        h.assert_eq[String]("css/style.css", m.params("path")?)
+      else
+        h.fail("wildcard param 'path' not found")
+      end
+    else
+      h.fail("expected wildcard match for /files/css/style.css")
+    end
+
+class \nodoc\ iso _TestStaticParamWildcardPriority is UnitTest
+  """Full three-level priority: static > param > wildcard."""
+  fun name(): String => "router/static param wildcard priority"
+
+  fun apply(h: TestHelper) =>
+    let static_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "static")
+    } val
+    let param_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "param")
+    } val
+    let wildcard_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "wildcard")
+    } val
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/files/special", static_factory, None)
+    builder.add(stallion.GET, "/files/:id", param_factory, None)
+    builder.add(stallion.GET, "/files/*path", wildcard_factory, None)
+    let router = builder.build()
+
+    // Exact static match — highest priority
+    match router.lookup(stallion.GET, "/files/special")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](static_factory, m.factory)
+    else
+      h.fail("expected static match for /files/special")
+    end
+
+    // Single segment, not "special" — param wins over wildcard
+    match router.lookup(stallion.GET, "/files/other")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](param_factory, m.factory)
+    else
+      h.fail("expected param match for /files/other")
+    end
+
+    // Multi-segment — only wildcard can match
+    match router.lookup(stallion.GET, "/files/a/b/c")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](wildcard_factory, m.factory)
+    else
+      h.fail("expected wildcard match for /files/a/b/c")
+    end
+
+class \nodoc\ iso _Test405FallsBackToLowerPriorityMatch is UnitTest
+  """
+  405 from param falls back to wildcard match.
+
+  POST /files/:id + GET /files/*path — GET /files/readme.txt should match
+  the wildcard, not return 405 from the param branch.
+  """
+  fun name(): String => "router/405 falls back to lower priority match"
+
+  fun apply(h: TestHelper) =>
+    let param_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "param")
+    } val
+    let wildcard_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "wildcard")
+    } val
+    let builder = _RouterBuilder
+    builder.add(stallion.POST, "/files/:id", param_factory, None)
+    builder.add(stallion.GET, "/files/*path", wildcard_factory, None)
+    let router = builder.build()
+
+    // GET should fall through param (POST-only) to wildcard (GET)
+    match router.lookup(stallion.GET, "/files/readme.txt")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](wildcard_factory, m.factory)
+      try
+        h.assert_eq[String]("readme.txt", m.params("path")?)
+      else
+        h.fail("wildcard param 'path' not found")
+      end
+    | let _: _MethodNotAllowed =>
+      h.fail("should match GET wildcard, not return 405 from POST param")
+    | let _: _RouteMiss =>
+      h.fail("expected match")
+    end
+
+    // POST should match param (higher priority than wildcard)
+    match router.lookup(stallion.POST, "/files/readme.txt")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](param_factory, m.factory)
+    else
+      h.fail("expected POST param match")
+    end
+
+class \nodoc\ iso _Test405FallsBackStaticToParam is UnitTest
+  """
+  405 from static falls back to param match.
+
+  POST /users/new + GET /users/:id — GET /users/new should match the param
+  with id="new", not return 405 from the static branch.
+  """
+  fun name(): String => "router/405 falls back static to param"
+
+  fun apply(h: TestHelper) =>
+    let static_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "static")
+    } val
+    let param_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "param")
+    } val
+    let builder = _RouterBuilder
+    builder.add(stallion.POST, "/users/new", static_factory, None)
+    builder.add(stallion.GET, "/users/:id", param_factory, None)
+    let router = builder.build()
+
+    // GET /users/new: static has POST-only → falls back to param GET
+    match router.lookup(stallion.GET, "/users/new")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](param_factory, m.factory)
+      try
+        h.assert_eq[String]("new", m.params("id")?)
+      else
+        h.fail("param 'id' not found")
+      end
+    | let _: _MethodNotAllowed =>
+      h.fail("should match GET param, not return 405 from POST static")
+    | let _: _RouteMiss =>
+      h.fail("expected match")
+    end
+
+    // POST /users/new: static matches (highest priority)
+    match router.lookup(stallion.POST, "/users/new")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](static_factory, m.factory)
+    else
+      h.fail("expected POST static match")
+    end
+
+class \nodoc\ iso _Test405AllowHeaderScopedToEntryType is UnitTest
+  """
+  Allow header on 405 lists only methods from the matching entry type.
+
+  GET /files + POST /files/*path → DELETE /files gets Allow: GET, HEAD
+  (from exact-path entries only), not GET, HEAD, POST (which would leak
+  wildcard methods).
+  """
+  fun name(): String => "router/405 allow header scoped to entry type"
+
+  fun apply(h: TestHelper) =>
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/files", _NoOpFactory, None)
+    builder.add(stallion.POST, "/files/*path", _NoOpFactory, None)
+    let router = builder.build()
+
+    // DELETE /files → 405 from exact-path entries (GET only)
+    match router.lookup(stallion.DELETE, "/files")
+    | let na: _MethodNotAllowed =>
+      // Should have GET and HEAD (implicit), but NOT POST
+      var has_get = false
+      var has_head = false
+      var has_post = false
+      for m in na.allowed_methods.values() do
+        if m == "GET" then has_get = true end
+        if m == "HEAD" then has_head = true end
+        if m == "POST" then has_post = true end
+      end
+      h.assert_true(has_get, "Allow should include GET")
+      h.assert_true(has_head, "Allow should include HEAD")
+      h.assert_false(has_post,
+        "Allow must NOT include POST (wildcard method, different resource)")
+    | let _: _RouteMatch =>
+      h.fail("DELETE should not match")
+    | let _: _RouteMiss =>
+      h.fail("should be 405, not 404")
     end
 
 // --- Property test: insertion order invariance ---
@@ -663,40 +958,60 @@ class \nodoc\ iso _PropertyInsertionOrderInvariance is
   =>
     (let perm_a, let perm_b) = sample
 
+    // Distinct factories per route so we can verify the same route matched
+    let f0: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "0")
+    } val
+    let f1: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "1")
+    } val
+    let f2: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "2")
+    } val
+    let f3: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "3")
+    } val
+    let f4: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "4")
+    } val
+
     // Fixed route set mixing static, param, and wildcard patterns
-    let routes: Array[(String, String)] val = [
-      ("/api/v1/users", "/api/v1/users")
-      ("/api/v1/users/:id", "/api/v1/users/42")
-      ("/api/v1/items", "/api/v1/items")
-      ("/api/v1/items/:id/detail", "/api/v1/items/7/detail")
-      ("/api/v1/*rest", "/api/v1/anything/here")
+    let routes: Array[(String, String, HandlerFactory)] val = [
+      ("/api/v1/users", "/api/v1/users", f0)
+      ("/api/v1/users/:id", "/api/v1/users/42", f1)
+      ("/api/v1/items", "/api/v1/items", f2)
+      ("/api/v1/items/:id/detail", "/api/v1/items/7/detail", f3)
+      ("/api/v1/*rest", "/api/v1/anything/here", f4)
     ]
 
     let router_a = _build_in_order(routes, perm_a)
     let router_b = _build_in_order(routes, perm_b)
 
-    // Both routers must agree on every lookup path
-    for (_, lookup_path) in routes.values() do
+    // Both routers must agree on every lookup path AND match the same route
+    for (_, lookup_path, _) in routes.values() do
       let result_a = router_a.lookup(stallion.GET, lookup_path)
       let result_b = router_b.lookup(stallion.GET, lookup_path)
       match (result_a, result_b)
-      | (let _: _RouteMatch, let _: _RouteMatch) => None
-      | (None, None) => None
+      | (let ma: _RouteMatch, let mb: _RouteMatch) =>
+        h.assert_true(ma.factory is mb.factory,
+          "insertion order changed matched route for " + lookup_path)
+      | (let _: _RouteMiss, let _: _RouteMiss) => None
+      | (let _: _MethodNotAllowed, let _: _MethodNotAllowed) => None
       else
-        h.fail("insertion order changed result for " + lookup_path)
+        h.fail("insertion order changed result type for " + lookup_path)
       end
     end
 
   fun _build_in_order(
-    routes: Array[(String, String)] val,
+    routes: Array[(String, String, HandlerFactory)] val,
     order: Array[USize] val)
     : _Router val
   =>
     let builder = _RouterBuilder
     for idx in order.values() do
       try
-        (let pattern, _) = routes(idx)?
-        builder.add(stallion.GET, pattern, _NoOpFactory, None)
+        (let pattern, _, let factory) = routes(idx)?
+        builder.add(stallion.GET, pattern, factory, None)
       else
         _Unreachable()
       end
@@ -722,3 +1037,801 @@ primitive \nodoc\ _GenPermutation
           consume result
       end)
 
+// --- New tests for shared path tree ---
+
+class \nodoc\ iso _TestHeadFallbackInRouter is UnitTest
+  """HEAD falls back to GET handler in a single tree traversal."""
+  fun name(): String => "router/HEAD fallback in router"
+
+  fun apply(h: TestHelper) =>
+    let get_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "get")
+    } val
+    let head_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "head")
+    } val
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/fallback", get_factory, None)
+    builder.add(stallion.HEAD, "/explicit", head_factory, None)
+    builder.add(stallion.GET, "/explicit", get_factory, None)
+    let router = builder.build()
+
+    // HEAD to /fallback should resolve to GET handler
+    match router.lookup(stallion.HEAD, "/fallback")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](get_factory, m.factory)
+    | let _: _RouteMiss =>
+      h.fail("HEAD should fall back to GET for /fallback")
+    end
+
+    // HEAD to /explicit should resolve to HEAD handler
+    match router.lookup(stallion.HEAD, "/explicit")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](head_factory, m.factory)
+    | let _: _RouteMiss =>
+      h.fail("expected match for HEAD /explicit")
+    end
+
+class \nodoc\ iso _TestInterceptorAccumulation is UnitTest
+  """Interceptors on a path node accumulate into matched routes under it."""
+  fun name(): String => "router/interceptor accumulation"
+
+  fun apply(h: TestHelper) =>
+    let interceptor: RequestInterceptor val = _PassInterceptor
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: interceptor] end
+    let builder = _RouterBuilder
+    builder.add_interceptors("/api", interceptors, None)
+    builder.add(stallion.GET, "/api/users", _NoOpFactory, None)
+    let router = builder.build()
+
+    match router.lookup(stallion.GET, "/api/users")
+    | let m: _RouteMatch =>
+      match m.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](1, ints.size())
+        try
+          h.assert_true(ints(0)? is interceptor,
+            "accumulated interceptor should be the one registered on /api")
+        else
+          h.fail("interceptor access failed")
+        end
+      else
+        h.fail("expected interceptors on matched route")
+      end
+    | let _: _RouteMiss =>
+      h.fail("expected match for /api/users")
+    end
+
+class \nodoc\ iso _TestMissCarriesInterceptors is UnitTest
+  """A miss under a group carries the group's accumulated interceptors."""
+  fun name(): String => "router/miss carries interceptors"
+
+  fun apply(h: TestHelper) =>
+    let interceptor: RequestInterceptor val = _PassInterceptor
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: interceptor] end
+    let resp_interceptor: ResponseInterceptor val = _NoOpResponseInterceptor
+    let resp_interceptors: Array[ResponseInterceptor val] val =
+      recover val [as ResponseInterceptor val: resp_interceptor] end
+    let builder = _RouterBuilder
+    builder.add_interceptors("/api", interceptors, resp_interceptors)
+    builder.add(stallion.GET, "/api/users", _NoOpFactory, None)
+    let router = builder.build()
+
+    // Miss under /api should carry /api's interceptors
+    match router.lookup(stallion.GET, "/api/nonexistent")
+    | let miss: _RouteMiss =>
+      match miss.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](1, ints.size())
+        try
+          h.assert_true(ints(0)? is interceptor,
+            "miss should carry the request interceptor from /api")
+        else
+          h.fail("interceptor access failed")
+        end
+      else
+        h.fail("expected request interceptors on miss")
+      end
+      match miss.response_interceptors
+      | let ris: Array[ResponseInterceptor val] val =>
+        h.assert_eq[USize](1, ris.size())
+        try
+          h.assert_true(ris(0)? is resp_interceptor,
+            "miss should carry the response interceptor from /api")
+        else
+          h.fail("response interceptor access failed")
+        end
+      else
+        h.fail("expected response interceptors on miss")
+      end
+    | let _: _RouteMatch =>
+      h.fail("expected miss for /api/nonexistent")
+    end
+
+class \nodoc\ iso _TestRootMissCarriesInterceptors is UnitTest
+  """A miss at the root carries root-level interceptors."""
+  fun name(): String => "router/root miss carries interceptors"
+
+  fun apply(h: TestHelper) =>
+    let interceptor: RequestInterceptor val = _PassInterceptor
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: interceptor] end
+    let builder = _RouterBuilder
+    builder.add_interceptors("", interceptors, None)
+    builder.add(stallion.GET, "/exists", _NoOpFactory, None)
+    let router = builder.build()
+
+    match router.lookup(stallion.GET, "/nonexistent")
+    | let miss: _RouteMiss =>
+      match miss.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](1, ints.size())
+        try
+          h.assert_true(ints(0)? is interceptor,
+            "root miss should carry the root interceptor")
+        else
+          h.fail("interceptor access failed")
+        end
+      else
+        h.fail("expected root interceptors on miss")
+      end
+    | let _: _RouteMatch =>
+      h.fail("expected miss for /nonexistent")
+    end
+
+class \nodoc\ iso _TestPerRouteInterceptorsMethodSpecific is UnitTest
+  """Per-route interceptors are method-specific at the same leaf."""
+  fun name(): String => "router/per-route interceptors method-specific"
+
+  fun apply(h: TestHelper) =>
+    let get_interceptor: RequestInterceptor val = _PassInterceptor
+    let get_interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: get_interceptor] end
+    let post_interceptor: RequestInterceptor val = _RejectInterceptor
+    let post_interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: post_interceptor] end
+
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/api/users", _NoOpFactory, None,
+      get_interceptors)
+    builder.add(stallion.POST, "/api/users", _NoOpFactory, None,
+      post_interceptors)
+    let router = builder.build()
+
+    match router.lookup(stallion.GET, "/api/users")
+    | let m: _RouteMatch =>
+      match m.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](1, ints.size())
+        try
+          h.assert_true(ints(0)? is get_interceptor)
+        else
+          h.fail("unexpected interceptor on GET")
+        end
+      else
+        h.fail("expected interceptors on GET")
+      end
+    | let _: _RouteMiss =>
+      h.fail("expected match for GET /api/users")
+    end
+
+    match router.lookup(stallion.POST, "/api/users")
+    | let m: _RouteMatch =>
+      match m.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](1, ints.size())
+        try
+          h.assert_true(ints(0)? is post_interceptor)
+        else
+          h.fail("unexpected interceptor on POST")
+        end
+      else
+        h.fail("expected interceptors on POST")
+      end
+    | let _: _RouteMiss =>
+      h.fail("expected match for POST /api/users")
+    end
+
+class \nodoc\ iso _TestValidateGroupsDistinctPrefixes is UnitTest
+  """Distinct sibling and nested group prefixes pass validation."""
+  fun name(): String => "router/validate groups distinct prefixes"
+
+  fun apply(h: TestHelper) =>
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: _PassInterceptor] end
+    let infos: Array[_GroupInfo] ref = Array[_GroupInfo]
+    infos.push(_GroupInfo("/api", interceptors, None))
+    infos.push(_GroupInfo("/admin", interceptors, None))
+    infos.push(_GroupInfo("/api/v1", interceptors, None))
+    h.assert_true(_ValidateGroups(infos) is None,
+      "distinct prefixes should pass validation")
+
+class \nodoc\ iso _TestValidateGroupsOverlappingPrefixes is UnitTest
+  """Overlapping group prefixes produce a ConfigError."""
+  fun name(): String => "router/validate groups overlapping prefixes"
+
+  fun apply(h: TestHelper) =>
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: _PassInterceptor] end
+    let infos: Array[_GroupInfo] ref = Array[_GroupInfo]
+    infos.push(_GroupInfo("/api", interceptors, None))
+    infos.push(_GroupInfo("/api", interceptors, None))
+    match _ValidateGroups(infos)
+    | let err: ConfigError =>
+      h.assert_true(err.message.contains("Overlapping"))
+    else
+      h.fail("overlapping prefixes should produce ConfigError")
+    end
+
+class \nodoc\ iso _TestValidateGroupsEmptyPrefix is UnitTest
+  """Empty group prefix produces a ConfigError."""
+  fun name(): String => "router/validate groups empty prefix"
+
+  fun apply(h: TestHelper) =>
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: _PassInterceptor] end
+    let infos: Array[_GroupInfo] ref = Array[_GroupInfo]
+    infos.push(_GroupInfo("", interceptors, None))
+    match _ValidateGroups(infos)
+    | let err: ConfigError =>
+      h.assert_true(err.message.contains("app-level interceptors"))
+    else
+      h.fail("empty prefix should produce ConfigError")
+    end
+
+class \nodoc\ iso _TestValidateGroupsRootPrefix is UnitTest
+  """RouteGroup("/") with interceptors produces a ConfigError."""
+  fun name(): String => "router/validate groups root prefix"
+
+  fun apply(h: TestHelper) =>
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: _PassInterceptor] end
+    let infos: Array[_GroupInfo] ref = Array[_GroupInfo]
+    infos.push(_GroupInfo("/", interceptors, None))
+    match _ValidateGroups(infos)
+    | let err: ConfigError =>
+      h.assert_true(err.message.contains("app-level interceptors"))
+    else
+      h.fail("root prefix should produce ConfigError")
+    end
+
+class \nodoc\ iso _TestValidateGroupsSpecialChars is UnitTest
+  """Special characters in group prefix produce a ConfigError."""
+  fun name(): String => "router/validate groups special chars"
+
+  fun apply(h: TestHelper) =>
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: _PassInterceptor] end
+
+    // Colon in prefix
+    let infos_colon: Array[_GroupInfo] ref = Array[_GroupInfo]
+    infos_colon.push(_GroupInfo("/:org", interceptors, None))
+    match _ValidateGroups(infos_colon)
+    | let err: ConfigError =>
+      h.assert_true(err.message.contains("':'"))
+    else
+      h.fail("colon in prefix should produce ConfigError")
+    end
+
+    // Wildcard in prefix
+    let infos_star: Array[_GroupInfo] ref = Array[_GroupInfo]
+    infos_star.push(_GroupInfo("/files/*path", interceptors, None))
+    match _ValidateGroups(infos_star)
+    | let err: ConfigError =>
+      h.assert_true(err.message.contains("'*'"))
+    else
+      h.fail("wildcard in prefix should produce ConfigError")
+    end
+
+class \nodoc\ iso _TestParamNameConflictReturnsError is UnitTest
+  """Conflicting param names at the same position produce a ConfigError."""
+  fun name(): String => "router/param name conflict returns error"
+
+  fun apply(h: TestHelper) =>
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/users/:userId", _NoOpFactory, None)
+    builder.add(stallion.POST, "/users/:id", _NoOpFactory, None)
+    match builder.first_error()
+    | let err: ConfigError =>
+      h.assert_true(err.message.contains("Conflicting param names"))
+      h.assert_true(err.message.contains("userId"))
+      h.assert_true(err.message.contains("id"))
+    else
+      h.fail("conflicting param names should produce ConfigError")
+    end
+
+class \nodoc\ iso _TestInterceptorSegmentBoundary is UnitTest
+  """
+  Group interceptors at /api must NOT leak to /api-docs.
+
+  A radix tree node for /api has children at '/' (sub-paths like /api/users)
+  and '-' (sibling routes like /api-docs). Only sub-path children should
+  inherit the group's interceptors.
+  """
+  fun name(): String => "router/interceptor segment boundary"
+
+  fun apply(h: TestHelper) =>
+    let interceptor: RequestInterceptor val = _PassInterceptor
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: interceptor] end
+    let builder = _RouterBuilder
+    builder.add_interceptors("/api", interceptors, None)
+    builder.add(stallion.GET, "/api/users", _NoOpFactory, None)
+    builder.add(stallion.GET, "/api-docs", _NoOpFactory, None)
+    let router = builder.build()
+
+    // /api/users is under the /api group — should get interceptors
+    match router.lookup(stallion.GET, "/api/users")
+    | let m: _RouteMatch =>
+      match m.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](1, ints.size(),
+          "/api/users should have group interceptors")
+      else
+        h.fail("/api/users should have interceptors")
+      end
+    | let _: _RouteMiss =>
+      h.fail("expected match for /api/users")
+    end
+
+    // /api-docs is NOT under the /api group — must NOT get interceptors
+    match router.lookup(stallion.GET, "/api-docs")
+    | let m: _RouteMatch =>
+      h.assert_true(m.interceptors is None,
+        "/api-docs must not inherit /api group interceptors")
+    | let _: _RouteMiss =>
+      h.fail("expected match for /api-docs")
+    end
+
+class \nodoc\ iso _TestInterceptorSegmentBoundaryMiss is UnitTest
+  """
+  A 404 miss at a sibling path (/api-unknown) must NOT carry group
+  interceptors from /api.
+  """
+  fun name(): String => "router/interceptor segment boundary miss"
+
+  fun apply(h: TestHelper) =>
+    let interceptor: RequestInterceptor val = _PassInterceptor
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: interceptor] end
+    let builder = _RouterBuilder
+    builder.add_interceptors("/api", interceptors, None)
+    builder.add(stallion.GET, "/api/users", _NoOpFactory, None)
+    builder.add(stallion.GET, "/api-docs", _NoOpFactory, None)
+    let router = builder.build()
+
+    // Miss under /api/ — SHOULD carry /api's interceptors
+    match router.lookup(stallion.GET, "/api/nonexistent")
+    | let miss: _RouteMiss =>
+      match miss.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](1, ints.size(),
+          "/api/nonexistent should carry group interceptors")
+      else
+        h.fail("/api/nonexistent miss should have interceptors")
+      end
+    | let _: _RouteMatch =>
+      h.fail("expected miss for /api/nonexistent")
+    end
+
+    // Miss at /api-unknown — must NOT carry /api's interceptors
+    match router.lookup(stallion.GET, "/api-unknown")
+    | let miss: _RouteMiss =>
+      h.assert_true(miss.interceptors is None,
+        "/api-unknown miss must not inherit /api group interceptors")
+    | let _: _RouteMatch =>
+      h.fail("expected miss for /api-unknown")
+    end
+
+class \nodoc\ iso _TestInterceptorSegmentBoundaryNestedGroups is UnitTest
+  """
+  App-level interceptors propagate everywhere. Group interceptors at /api
+  propagate to /api/admin/users but not to /api-docs.
+  """
+  fun name(): String => "router/interceptor segment boundary nested groups"
+
+  fun apply(h: TestHelper) =>
+    let app_interceptor: RequestInterceptor val = _PassInterceptor
+    let app_interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: app_interceptor] end
+    let api_interceptor: RequestInterceptor val = _RejectInterceptor
+    let api_interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: api_interceptor] end
+
+    let builder = _RouterBuilder
+    builder.add_interceptors("", app_interceptors, None)
+    builder.add_interceptors("/api", api_interceptors, None)
+    builder.add(stallion.GET, "/api/users", _NoOpFactory, None)
+    builder.add(stallion.GET, "/api-docs", _NoOpFactory, None)
+    let router = builder.build()
+
+    // /api/users gets app + api interceptors (2 total)
+    match router.lookup(stallion.GET, "/api/users")
+    | let m: _RouteMatch =>
+      match m.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](2, ints.size(),
+          "/api/users should have app + api interceptors")
+      else
+        h.fail("/api/users should have interceptors")
+      end
+    | let _: _RouteMiss =>
+      h.fail("expected match for /api/users")
+    end
+
+    // /api-docs gets ONLY app interceptors (1 total, not 2)
+    match router.lookup(stallion.GET, "/api-docs")
+    | let m: _RouteMatch =>
+      match m.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](1, ints.size(),
+          "/api-docs should have only app interceptors")
+        try
+          h.assert_true(ints(0)? is app_interceptor,
+            "/api-docs should have app interceptor, not api interceptor")
+        else
+          h.fail("interceptor access failed")
+        end
+      else
+        h.fail("/api-docs should have app interceptors")
+      end
+    | let _: _RouteMiss =>
+      h.fail("expected match for /api-docs")
+    end
+
+class \nodoc\ iso _TestDeepestMissPreservesRicherInterceptors is UnitTest
+  """
+  When static and param children both miss, the miss with richer interceptors
+  wins.
+
+  Group [A] on /api, group [B] on /api/users/new. Routes: GET
+  /api/users/new/settings and GET /api/users/:id. Lookup for GET
+  /api/users/new/nonexistent — static child reaches depth with [A, B] but
+  misses, param child :id misses with only [A]. The 404 must carry [A, B].
+  """
+  fun name(): String => "router/deepest miss preserves richer interceptors"
+
+  fun apply(h: TestHelper) =>
+    let int_a: RequestInterceptor val = _PassInterceptor
+    let ints_a: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: int_a] end
+    let int_b: RequestInterceptor val = _RejectInterceptor
+    let ints_b: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: int_b] end
+
+    let builder = _RouterBuilder
+    builder.add_interceptors("/api", ints_a, None)
+    builder.add_interceptors("/api/users/new", ints_b, None)
+    builder.add(stallion.GET, "/api/users/new/settings", _NoOpFactory, None)
+    builder.add(stallion.GET, "/api/users/:id", _NoOpFactory, None)
+    let router = builder.build()
+
+    // /api/users/new/nonexistent: static child "new" reaches depth with
+    // [A, B] but misses. Param :id misses with [A]. Must keep [A, B].
+    match router.lookup(stallion.GET, "/api/users/new/nonexistent")
+    | let miss: _RouteMiss =>
+      match miss.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](2, ints.size(),
+          "miss should carry [A, B] from deeper static traversal, not [A]")
+      else
+        h.fail("expected interceptors on miss")
+      end
+    | let _: _RouteMatch =>
+      h.fail("expected miss for /api/users/new/nonexistent")
+    end
+
+class \nodoc\ iso _TestSharedParamNameConsistent is UnitTest
+  """
+  Multiple methods at the same param position with the same name works.
+
+  GET /users/:id and POST /users/:id share a param child — the name must
+  match. Mismatched names (e.g., :userId vs :id) would panic at startup.
+  """
+  fun name(): String => "router/shared param name consistent"
+
+  fun apply(h: TestHelper) =>
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/users/:id", _NoOpFactory, None)
+    builder.add(stallion.POST, "/users/:id", _NoOpFactory, None)
+    let router = builder.build()
+
+    match router.lookup(stallion.GET, "/users/42")
+    | let m: _RouteMatch =>
+      try
+        h.assert_eq[String]("42", m.params("id")?)
+      else
+        h.fail("param 'id' not found on GET")
+      end
+    | let _: _RouteMiss =>
+      h.fail("expected match for GET /users/42")
+    end
+
+    match router.lookup(stallion.POST, "/users/42")
+    | let m: _RouteMatch =>
+      try
+        h.assert_eq[String]("42", m.params("id")?)
+      else
+        h.fail("param 'id' not found on POST")
+      end
+    | let _: _RouteMiss =>
+      h.fail("expected match for POST /users/42")
+    end
+
+class \nodoc\ iso _TestEmptyParamSegmentSkipped is UnitTest
+  """Empty param segment (/users//details) does not match the param child."""
+  fun name(): String => "router/empty param segment skipped"
+
+  fun apply(h: TestHelper) =>
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/users/:id/details", _NoOpFactory, None)
+    let router = builder.build()
+
+    // Normal param — matches
+    match router.lookup(stallion.GET, "/users/42/details")
+    | let m: _RouteMatch =>
+      try
+        h.assert_eq[String]("42", m.params("id")?)
+      else
+        h.fail("param 'id' not found")
+      end
+    else
+      h.fail("expected match for /users/42/details")
+    end
+
+    // Empty segment — param child requires value_end > offset
+    match router.lookup(stallion.GET, "/users//details")
+    | let _: _RouteMatch =>
+      h.fail("empty param segment should not match")
+    | let _: _RouteMiss => None
+    | let _: _MethodNotAllowed => None
+    end
+
+class \nodoc\ iso _TestMethodNotAllowed is UnitTest
+  """Path exists but method doesn't → _MethodNotAllowed, not _RouteMiss."""
+  fun name(): String => "router/method not allowed"
+
+  fun apply(h: TestHelper) =>
+    let builder = _RouterBuilder
+    builder.add(stallion.POST, "/api/users", _NoOpFactory, None)
+    let router = builder.build()
+
+    // GET to a POST-only path → 405
+    match router.lookup(stallion.GET, "/api/users")
+    | let na: _MethodNotAllowed => None
+    | let _: _RouteMatch =>
+      h.fail("should not match GET on POST-only route")
+    | let _: _RouteMiss =>
+      h.fail("should be 405, not 404 — path exists")
+    end
+
+    // Nonexistent path → 404
+    match router.lookup(stallion.GET, "/api/nonexistent")
+    | let _: _RouteMiss => None
+    | let _: _RouteMatch =>
+      h.fail("should not match nonexistent path")
+    | let _: _MethodNotAllowed =>
+      h.fail("should be 404, not 405 — path doesn't exist")
+    end
+
+class \nodoc\ iso _TestMethodNotAllowedAllowHeader is UnitTest
+  """_MethodNotAllowed carries the correct allowed methods list."""
+  fun name(): String => "router/method not allowed allow header"
+
+  fun apply(h: TestHelper) =>
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/api/users", _NoOpFactory, None)
+    builder.add(stallion.POST, "/api/users", _NoOpFactory, None)
+    let router = builder.build()
+
+    // DELETE to a GET+POST path → 405 with Allow: GET, POST, HEAD
+    match router.lookup(stallion.DELETE, "/api/users")
+    | let na: _MethodNotAllowed =>
+      // Should have GET, POST, and HEAD (implicit from GET)
+      h.assert_eq[USize](3, na.allowed_methods.size())
+      var has_get = false
+      var has_post = false
+      var has_head = false
+      for m in na.allowed_methods.values() do
+        if m == "GET" then has_get = true end
+        if m == "POST" then has_post = true end
+        if m == "HEAD" then has_head = true end
+      end
+      h.assert_true(has_get, "Allow should include GET")
+      h.assert_true(has_post, "Allow should include POST")
+      h.assert_true(has_head, "Allow should include HEAD (implicit from GET)")
+    | let _: _RouteMatch =>
+      h.fail("should not match DELETE on GET+POST route")
+    | let _: _RouteMiss =>
+      h.fail("should be 405, not 404")
+    end
+
+class \nodoc\ iso _TestWildcardMethodIsolation is UnitTest
+  """Wildcard routes are method-isolated — POST wildcard doesn't match GET."""
+  fun name(): String => "router/wildcard method isolation"
+
+  fun apply(h: TestHelper) =>
+    let post_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "post")
+    } val
+    let builder = _RouterBuilder
+    builder.add(stallion.POST, "/files/*path", post_factory, None)
+    let router = builder.build()
+
+    // POST matches
+    match router.lookup(stallion.POST, "/files/readme.txt")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](post_factory, m.factory)
+      try
+        h.assert_eq[String]("readme.txt", m.params("path")?)
+      else
+        h.fail("wildcard param 'path' not found")
+      end
+    else
+      h.fail("expected POST match for /files/readme.txt")
+    end
+
+    // GET does not match — wildcard entries are method-keyed → 405
+    match router.lookup(stallion.GET, "/files/readme.txt")
+    | let na: _MethodNotAllowed =>
+      var has_post = false
+      for m in na.allowed_methods.values() do
+        if m == "POST" then has_post = true end
+      end
+      h.assert_true(has_post, "Allow should include POST")
+    | let _: _RouteMatch =>
+      h.fail("GET should not match POST-only wildcard")
+    | let _: _RouteMiss =>
+      h.fail("should be 405, not 404 — wildcard path exists for POST")
+    end
+
+class \nodoc\ iso _TestWildcardHeadFallback is UnitTest
+  """HEAD falls back to GET for wildcard routes."""
+  fun name(): String => "router/wildcard HEAD fallback"
+
+  fun apply(h: TestHelper) =>
+    let get_factory: HandlerFactory = {(ctx) =>
+      RequestHandler(consume ctx).respond(stallion.StatusOK, "get")
+    } val
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/files/*path", get_factory, None)
+    let router = builder.build()
+
+    // HEAD falls back to GET wildcard
+    match router.lookup(stallion.HEAD, "/files/readme.txt")
+    | let m: _RouteMatch =>
+      h.assert_is[HandlerFactory](get_factory, m.factory)
+      try
+        h.assert_eq[String]("readme.txt", m.params("path")?)
+      else
+        h.fail("wildcard param 'path' not found")
+      end
+    else
+      h.fail("HEAD should fall back to GET wildcard")
+    end
+
+class \nodoc\ iso _TestRoutesBeforeInterceptors is UnitTest
+  """
+  Routes registered before interceptors still get the interceptors.
+
+  `add_interceptors` may be called after `add` — the tree traversal in
+  `_ensure_path` must work on a tree that already has route nodes.
+  """
+  fun name(): String => "router/routes before interceptors"
+
+  fun apply(h: TestHelper) =>
+    let interceptor: RequestInterceptor val = _PassInterceptor
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: interceptor] end
+    let builder = _RouterBuilder
+    // Routes first
+    builder.add(stallion.GET, "/api/users", _NoOpFactory, None)
+    builder.add(stallion.GET, "/api/items", _NoOpFactory, None)
+    // Interceptors after
+    builder.add_interceptors("/api", interceptors, None)
+    let router = builder.build()
+
+    // Both routes should have the interceptor
+    match router.lookup(stallion.GET, "/api/users")
+    | let m: _RouteMatch =>
+      match m.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](1, ints.size())
+        try
+          h.assert_true(ints(0)? is interceptor)
+        else
+          h.fail("interceptor access failed")
+        end
+      else
+        h.fail("/api/users should have interceptors")
+      end
+    else
+      h.fail("expected match for /api/users")
+    end
+
+    match router.lookup(stallion.GET, "/api/items")
+    | let m: _RouteMatch =>
+      match m.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](1, ints.size())
+        try
+          h.assert_true(ints(0)? is interceptor)
+        else
+          h.fail("interceptor access failed")
+        end
+      else
+        h.fail("/api/items should have interceptors")
+      end
+    else
+      h.fail("expected match for /api/items")
+    end
+
+    // Miss under /api should also carry interceptors
+    match router.lookup(stallion.GET, "/api/nonexistent")
+    | let miss: _RouteMiss =>
+      match miss.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](1, ints.size())
+        try
+          h.assert_true(ints(0)? is interceptor)
+        else
+          h.fail("interceptor access failed")
+        end
+      else
+        h.fail("miss should carry interceptors")
+      end
+    else
+      h.fail("expected miss for /api/nonexistent")
+    end
+
+class \nodoc\ iso _TestMethodNotAllowedCarriesInterceptors is UnitTest
+  """405 responses carry accumulated interceptors from the matched path."""
+  fun name(): String => "router/method not allowed carries interceptors"
+
+  fun apply(h: TestHelper) =>
+    let interceptor: RequestInterceptor val = _PassInterceptor
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: interceptor] end
+    let resp_interceptor: ResponseInterceptor val = _NoOpResponseInterceptor
+    let resp_interceptors: Array[ResponseInterceptor val] val =
+      recover val [as ResponseInterceptor val: resp_interceptor] end
+
+    let builder = _RouterBuilder
+    builder.add_interceptors("/api", interceptors, resp_interceptors)
+    builder.add(stallion.POST, "/api/users", _NoOpFactory, None)
+    let router = builder.build()
+
+    // GET to POST-only path → 405 with /api's interceptors
+    match router.lookup(stallion.GET, "/api/users")
+    | let na: _MethodNotAllowed =>
+      match na.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](1, ints.size())
+        try
+          h.assert_true(ints(0)? is interceptor,
+            "405 should carry request interceptor from /api")
+        else
+          h.fail("interceptor access failed")
+        end
+      else
+        h.fail("405 should have request interceptors")
+      end
+      match na.response_interceptors
+      | let ris: Array[ResponseInterceptor val] val =>
+        h.assert_eq[USize](1, ris.size())
+        try
+          h.assert_true(ris(0)? is resp_interceptor,
+            "405 should carry response interceptor from /api")
+        else
+          h.fail("response interceptor access failed")
+        end
+      else
+        h.fail("405 should have response interceptors")
+      end
+    | let _: _RouteMatch =>
+      h.fail("should not match GET on POST-only route")
+    | let _: _RouteMiss =>
+      h.fail("should be 405, not 404")
+    end

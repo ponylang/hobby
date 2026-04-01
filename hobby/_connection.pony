@@ -25,8 +25,6 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
   let _router: _Router val
   let _timers: Timers tag
   let _timeout_ns: U64
-  let _app_response_interceptors:
-    (Array[ResponseInterceptor val] val | None)
   var _body: Array[U8] iso = recover iso Array[U8] end
   var _has_body: Bool = false
 
@@ -46,13 +44,11 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
 
   new create(auth: lori.TCPServerAuth, fd: U32,
     config: stallion.ServerConfig, router: _Router val,
-    timers: Timers tag, timeout_ns: U64,
-    response_interceptors: (Array[ResponseInterceptor val] val | None))
+    timers: Timers tag, timeout_ns: U64)
   =>
     _router = router
     _timers = timers
     _timeout_ns = timeout_ns
-    _app_response_interceptors = response_interceptors
     _pending_requests = Array[_PendingRequest]
     _http = stallion.HTTPServer(auth, fd, this, config)
 
@@ -121,24 +117,44 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
     let path = request'.uri.path
     let is_head = request'.method is stallion.HEAD
 
-    let route_match = match _router.lookup(request'.method, path)
-    | let m: _RouteMatch => m
-    else
-      // HEAD falls back to GET handler when no explicit HEAD route exists
-      if is_head then
-        _router.lookup(stallion.GET, path)
-      end
-    end
-
-    match route_match
+    // Single lookup — HEAD→GET fallback is handled inside the router
+    match _router.lookup(request'.method, path)
     | let m: _RouteMatch =>
       _dispatch(request', responder, body, m, is_head)
-    else
-      // No route match — send 404 with app-level response interceptors
+    | let na: _MethodNotAllowed =>
+      // Path exists but method not allowed — run interceptors then send 405
+      match _RunRequestInterceptors(request', na.interceptors)
+      | let respond: InterceptRespond =>
+        let buf = _BufferedResponse._from_intercept_respond(respond, is_head)
+        let ctx = ResponseContext._create(buf, request')
+        _RunResponseInterceptors(ctx, na.response_interceptors)
+        responder.respond(buf._build())
+        return
+      end
+      let allow_value: String val = ", ".join(
+        na.allowed_methods.values())
+      let buf = _BufferedResponse._standard(
+        stallion.StatusMethodNotAllowed, "Method Not Allowed", is_head)
+      buf.headers.push(("allow", allow_value))
+      let ctx = ResponseContext._create(buf, request')
+      _RunResponseInterceptors(ctx, na.response_interceptors)
+      responder.respond(buf._build())
+    | let miss: _RouteMiss =>
+      // Run request interceptors from the traversal — may short-circuit
+      match _RunRequestInterceptors(request', miss.interceptors)
+      | let respond: InterceptRespond =>
+        let buf = _BufferedResponse._from_intercept_respond(respond, is_head)
+        let ctx = ResponseContext._create(buf, request')
+        _RunResponseInterceptors(ctx, miss.response_interceptors)
+        responder.respond(buf._build())
+        return
+      end
+      // No interceptor short-circuit — send 404 with accumulated response
+      // interceptors
       let buf = _BufferedResponse._standard(
         stallion.StatusNotFound, "Not Found", is_head)
       let ctx = ResponseContext._create(buf, request')
-      _RunResponseInterceptors(ctx, _app_response_interceptors)
+      _RunResponseInterceptors(ctx, miss.response_interceptors)
       responder.respond(buf._build())
     end
 

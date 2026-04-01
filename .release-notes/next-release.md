@@ -51,7 +51,7 @@ hobby.Application
     where response_interceptors = cache_interceptors)
 ```
 
-App-level response interceptors also run on 404 responses where no route matched, so security headers and CORS headers cover error responses too.
+Response interceptors run on 404 responses too — app-level interceptors run on all 404s, and group-level interceptors run on 404s under their prefix. Security headers and CORS headers cover error responses automatically.
 
 For streaming responses, all mutations (`set_status()`, `set_header()`, `add_header()`, `set_body()`) are silently ignored since headers and status are already on the wire. The interceptor still runs, so logging interceptors work regardless of response type.
 

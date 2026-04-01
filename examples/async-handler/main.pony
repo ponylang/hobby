@@ -24,15 +24,19 @@ actor Main
   new create(env: Env) =>
     let auth = lori.TCPListenAuth(env.root)
     let slow = SlowService
-    hobby.Application
-      .>get("/", {(ctx) =>
-        hobby.RequestHandler(consume ctx)
-          .respond(stallion.StatusOK, "Hello from Hobby!")
-      } val)
-      .>get("/slow", {(ctx)(slow) =>
-        SlowHandler(consume ctx, slow)
-      } val)
-      .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    match
+      hobby.Application
+        .>get("/", {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Hello from Hobby!")
+        } val)
+        .>get("/slow", {(ctx)(slow) =>
+          SlowHandler(consume ctx, slow)
+        } val)
+        .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    | let err: hobby.ConfigError =>
+      env.err.print(err.message)
+    end
 
 actor SlowService
   """Simulates an async service via self-directed message."""

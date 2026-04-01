@@ -39,29 +39,33 @@ actor Main
             recover val ["x-admin"] end)]
       end
 
-    hobby.Application
-      .>get("/", {(ctx) =>
-        hobby.RequestHandler(consume ctx)
-          .respond(stallion.StatusOK, "Hello from Hobby!")
-      } val)
-      .>get("/api/:id", {(ctx) =>
-        let handler = hobby.RequestHandler(consume ctx)
-        try
-          let id = handler.param("id")?
-          handler.respond(stallion.StatusOK, "Resource: " + id)
-        else
-          handler.respond(stallion.StatusBadRequest, "Bad Request")
-        end
-      } val where interceptors = auth_interceptor)
-      .>post("/api/upload", {(ctx) =>
-        hobby.RequestHandler(consume ctx)
-          .respond(stallion.StatusOK, "Upload accepted")
-      } val where interceptors = upload_interceptors)
-      .>get("/admin", {(ctx) =>
-        hobby.RequestHandler(consume ctx)
-          .respond(stallion.StatusOK, "Admin dashboard")
-      } val where interceptors = admin_interceptors)
-      .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+    match
+      hobby.Application
+        .>get("/", {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Hello from Hobby!")
+        } val)
+        .>get("/api/:id", {(ctx) =>
+          let handler = hobby.RequestHandler(consume ctx)
+          try
+            let id = handler.param("id")?
+            handler.respond(stallion.StatusOK, "Resource: " + id)
+          else
+            handler.respond(stallion.StatusBadRequest, "Bad Request")
+          end
+        } val where interceptors = auth_interceptor)
+        .>post("/api/upload", {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Upload accepted")
+        } val where interceptors = upload_interceptors)
+        .>get("/admin", {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Admin dashboard")
+        } val where interceptors = admin_interceptors)
+        .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+    | let err: hobby.ConfigError =>
+      env.err.print(err.message)
+    end
 
 class val AuthInterceptor is hobby.RequestInterceptor
   """

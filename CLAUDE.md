@@ -5,6 +5,7 @@ An HTTP server framework for Pony, powered by [Stallion](https://github.com/pony
 Design: https://github.com/ponylang/hobby/discussions/2
 Static file serving design: https://github.com/ponylang/hobby/discussions/18
 Actor-per-request design: https://github.com/ponylang/hobby/discussions/41
+Shared path tree design: https://github.com/ponylang/hobby/discussions/58
 
 ## Building and Testing
 
@@ -35,7 +36,10 @@ The `ssl` option is required — Stallion transitively depends on the `ssl` pack
 
 Users interact with these types:
 
-- **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_request_interceptor()` for app-level request interceptors, `add_response_interceptor()` for app-level response interceptors. Route methods accept optional `response_interceptors` parameter. `serve()` consumes the Application, freezes routes into an immutable router, and starts listening. `handler_timeout` parameter on `serve()` controls inactivity timeout (default 30 seconds, `None` to disable).
+- **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_request_interceptor()` for app-level request interceptors, `add_response_interceptor()` for app-level response interceptors. Route methods accept optional `response_interceptors` parameter. `serve()` consumes the Application, validates configuration, freezes routes into an immutable router, and starts listening. Returns `ServeResult` — `Serving` on success or `ConfigError` with a description of the problem. `handler_timeout` parameter on `serve()` controls inactivity timeout (default 30 seconds, `None` to disable).
+- **`Serving`** (`primitive`): Returned by `serve()` when the server started successfully.
+- **`ConfigError`** (`class val`): Returned by `serve()` when a configuration error prevented startup. Carries a `message: String` describing the error. Detected errors: overlapping group prefixes, empty group prefix, special characters in group prefix, conflicting param names.
+- **`ServeResult`** (type alias): `(Serving | ConfigError)`. Return type of `serve()`.
 - **`RouteGroup`** (`class iso`): Groups routes under a shared prefix and optional response interceptors. Constructor accepts `response_interceptors` parameter. Supports nesting via `group()`. Consumed by `Application.group()` or outer `RouteGroup.group()`.
 - **`RequestInterceptor`** (`interface val`): Synchronous request gate. `apply(request: Request box): InterceptResult` returns `InterceptPass` or `InterceptRespond`. The return type forces an explicit decision — the compiler won't accept an interceptor that forgets to decide. The first interceptor that responds wins.
 - **`InterceptResult`** (type alias): `(InterceptPass | InterceptRespond)`. Return type for request interceptors.
@@ -60,13 +64,21 @@ Users interact with these types:
 ### Internal layers
 
 - **`_Listener`** (`actor`): Implements `lori.TCPListenerActor`. Accepts TCP connections and spawns `_Connection` actors. Creates a shared `Timers` actor for handler timeout management.
-- **`_Connection`** (`actor`): Implements `stallion.HTTPServerActor` and `_ConnectionProtocol`. State machine: `_Idle` → `_HandlerInProgress` → `_Streaming`. Runs request interceptors, calls factory, receives handler responses via protocol behaviors (`_handler_respond`, `_handler_start_streaming`, `_handler_send_chunk`, `_handler_finish`). Buffers responses for response interceptors → wire. Manages handler timeout via interval-based timer.
+- **`_Connection`** (`actor`): Implements `stallion.HTTPServerActor` and `_ConnectionProtocol`. State machine: `_Idle` → `_HandlerInProgress` → `_Streaming`. Matches on `(_RouteMatch | _RouteMiss | _MethodNotAllowed)` from router lookup. On match: runs request interceptors, calls factory, receives handler responses via protocol behaviors. On miss: runs accumulated request interceptors (may short-circuit), then sends 404 with accumulated response interceptors. On method-not-allowed: runs accumulated interceptors, then sends 405 with `Allow` header. Manages handler timeout via interval-based timer.
 - **`_ConnectionProtocol`** (`trait tag`): Protocol behaviors that `RequestHandler` sends to `_Connection`.
 - **`_BufferedResponse`** (`class ref`): Mutable response buffer for response interceptors. Response interceptors modify status, headers, and body via `ResponseContext`; `_build()` serializes to wire and auto-adds Content-Length from the final body.
 - **`_RunRequestInterceptors`** (`primitive`): Runs request interceptors in order. Returns `InterceptRespond` on first short-circuit, `None` if all pass.
 - **`_RunResponseInterceptors`** (`primitive`): Runs response interceptors in forward order on a `ResponseContext ref`.
 - **`_HandlerTimeoutNotify`** (`class iso is TimerNotify`): Sends `_handler_timeout(token)` to `_Connection` on each interval fire.
-- **`_Router`** (`class val`): Immutable radix tree router. One tree per HTTP method.
+- **`_Router`** (`class val`): Immutable single shared path tree router. Handlers are keyed by HTTP method at leaf nodes. Interceptors are path-scoped on shared nodes.
+- **`_RouterBuilder`** (`class ref`): Mutable builder. `add()` registers routes, `add_interceptors()` tags path nodes with group/app interceptors. `build()` freezes into `_Router`.
+- **`_BuildNode`** / **`_TreeNode`** (`class ref` / `class val`): Mutable build-time and immutable lookup-time radix tree nodes. Each node carries path-level interceptors and method-keyed handler entries.
+- **`_MethodEntry`** (`class val`): Handler factory + final pre-computed interceptor arrays for a specific HTTP method at a path node.
+- **`_BuildMethodEntry`** (`class ref`): Mutable method entry during construction, before freeze-time interceptor concatenation.
+- **`_RouteMatch`** (`class val`): Successful lookup result — factory, interceptors, params.
+- **`_RouteMiss`** (`class val`): Failed lookup result (path doesn't exist) — carries accumulated interceptors from deepest reached node for 404 interceptor execution.
+- **`_MethodNotAllowed`** (`class val`): Path exists but method doesn't match — carries allowed methods list and accumulated interceptors for 405 response with `Allow` header.
+- **`_GroupInfo`** (`class val`): Group metadata (prefix + interceptors) preserved for tree building. Created during `group()`, consumed by `serve()`.
 - **`_FileStreamer`** (`actor`): Reads files in 64 KB chunks. Sends to `_FileTarget tag`. Supports backpressure via `pause()`/`resume()`.
 - **`_ServeFilesHandler`** (`actor`): Handler actor for large file streaming. Implements `HandlerReceiver` and `_FileTarget`. Receives file chunks from `_FileStreamer` and forwards through `RequestHandler`. Forwards `throttled()`/`unthrottled()` to `_FileStreamer` as `pause()`/`resume()`.
 - **`_FileTarget`** (`trait tag`): Internal interface for `_FileStreamer` to send to.
@@ -77,18 +89,22 @@ Users interact with these types:
 - **Factory returns `(HandlerReceiver tag | None)`**: Inline handlers return None; async handlers return the actor's tag for dispose/throttle signals. No timing gap for lifecycle signals.
 - **Response buffering for response interceptors**: Responses are buffered in `_BufferedResponse` before going to the wire. Response interceptors modify status, headers, and body via `ResponseContext`. Content-Length is computed automatically by `_build()` from the final body after all interceptors run. For streaming, interceptors run but mutations are no-ops (headers/status already on wire).
 - **Route methods are `fun ref`**: Auto receiver recovery handles calling them on the `iso` Application since all arguments are `val`. `serve()` is `fun iso` and uses `consume this`.
-- **Build/lookup separation**: Mutable `_BuildNode ref` trees for construction, frozen into immutable `_TreeNode val` trees for lookup.
-- **Static priority**: Static children checked before param child during lookup.
+- **Single shared path tree**: One radix tree for all HTTP methods. Handlers are keyed by method at leaf nodes. Interceptors live on shared path nodes and are method-independent. Replaces the old per-method tree map.
+- **Build/lookup separation**: Mutable `_BuildNode ref` tree for construction, frozen into immutable `_TreeNode val` tree for lookup. `freeze()` pre-computes accumulated interceptor arrays from root to each node, so lookup is zero-allocation.
+- **Lookup priority: static > param > wildcard**: During lookup, static children are tried first, then the param child, then the wildcard. If a higher-priority branch fails (returns miss or method-not-allowed), lookup falls back to the next branch. A match from any branch is returned immediately. This priority means `/users/new` (static) beats `/users/:id` (param), and `/files/:id` (param) beats `/files/*path` (wildcard).
 - **Trailing slash normalization**: `/users/` and `/users` match the same route.
-- **Flatten at registration time**: Route groups are flattened when consumed by `group()`.
+- **Group info preservation**: Route groups are flattened into routes when consumed by `group()`, but group metadata (prefix + interceptors) is preserved separately as `_GroupInfo` entries. `Application.serve()` registers group interceptors on tree path nodes via `add_interceptors()`, and registers routes with per-route interceptors only via `add()`.
+- **Overlapping group prefix rejection**: Two groups registering interceptors on the same prefix is a configuration error detected at `serve()` time via `_ValidateGroups`, returned as `ConfigError`.
+- **Segment-boundary scoping**: A node's own interceptors only propagate to children at segment boundaries (child key `'/'`) and param children, not to children sharing a character prefix (e.g., `/api` interceptors don't leak to `/api-docs`). `_TreeNode` stores both parent-level and accumulated interceptors; `_RouteMiss` uses parent interceptors when the remaining path starts with a non-`'/'` character.
 - **Interval-based handler timeout**: Uses a repeating timer that checks a `_last_handler_activity` timestamp rather than cancel+recreate on every chunk. Avoids per-chunk timer allocation overhead during streaming.
 - **Pipelined request buffering**: Requests arriving during `_HandlerInProgress` or `_Streaming` are buffered and drained when the handler completes.
 - **HEAD via split handling**: `RequestHandler.start_streaming()` returns `BodyNotNeeded` for HEAD (local check). `_Connection` uses `is_head` when building buffered responses for the wire (suppresses body, preserves Content-Length).
-- **HEAD→GET fallback**: When no explicit HEAD route is registered, `_Connection` retries the lookup with GET.
+- **HEAD→GET fallback**: When no explicit HEAD handler exists at a leaf, `_resolve_method` in `_TreeNode` checks the HEAD key first then falls back to GET — single traversal, no second lookup.
 - **Backpressure forwarding**: `_Connection` forwards `on_throttled()`/`on_unthrottled()` to the handler actor when one is registered.
 - **Directory index auto-serving**: When a request resolves to a directory, `ServeFiles` tries `index.html`. Content type is derived from the resolved filesystem path.
 - **Request interceptors run before the handler**: Interceptors execute in `_Connection._dispatch` after route lookup. An interceptor short-circuit sends the response (with response interceptors applied) without creating the handler.
-- **Response interceptors run on all response paths**: Response interceptors run after the handler responds and before the wire. For routed requests, the full concatenated array (app + group + route) from `_RouteMatch` is used. For 404s, app-level response interceptors (passed through `_Listener`) run. Exception: streaming timeout closes the connection directly.
+- **Interceptors run on 404s and 405s**: On a failed lookup, `_RouteMiss` carries accumulated interceptors from the deepest reached tree node. `_Connection` runs request interceptors (may short-circuit with 401/403) then sends 404 with response interceptors applied. `_MethodNotAllowed` carries interceptors and the allowed methods list — `_Connection` sends 405 with `Allow` header. App-level interceptors run on all error responses; group-level interceptors run on errors under their prefix.
+- **Response interceptors run on all response paths**: Response interceptors run after the handler responds and before the wire. For routed requests, the pre-computed array from `_RouteMatch` is used. For 404s, the accumulated array from `_RouteMiss` is used. Exception: streaming timeout closes the connection directly.
 - **Content-Length deferred to serialization**: `_BufferedResponse._build()` auto-adds Content-Length from the final body after all response interceptors have run. Interceptors that call `set_body()` get correct Content-Length automatically. If Content-Length is already present (from explicit user headers), `_build()` does not override it.
 - **REVISIT: response interceptor mutators on streaming responses**: `set_body()`, `set_status()`, `set_header()`, and `add_header()` on `ResponseContext` are silent no-ops for streaming responses. The no-op behavior is correct (headers/status are already on the wire, body chunks are already sent), but `set_body()` being callable but silently ignored for streaming is a confusing API. Revisit whether the type system can make this a compile-time distinction rather than a runtime no-op.
 
@@ -111,6 +127,7 @@ hobby/
   intercept_response.pony      - InterceptRespond class + result types (public)
   application.pony            - Application class (public)
   route_group.pony            - RouteGroup class (public)
+  serve_result.pony           - Serving, ConfigError, ServeResult types (public)
   serve_files.pony            - ServeFiles handler factory (public)
   content_types.pony          - ContentTypes class + defaults (public)
   cookie_signing_key.pony     - CookieSigningKey class (public)
@@ -124,14 +141,16 @@ hobby/
   _connection.pony             - Connection actor (internal)
   _listener.pony               - Listener actor (internal)
   _router.pony                 - Router + radix tree (internal)
-  _route_match.pony            - Route match result type (internal)
+  _route_match.pony            - Route match + route miss result types (internal)
   _route_definition.pony       - Route definition for building (internal)
+  _method_entry.pony           - Per-method handler entry at tree leaf (internal)
+  _group_info.pony             - Group metadata for tree building (internal)
   _file_streamer.pony          - Chunked file reader actor (internal)
   _file_target.pony            - File target trait (internal)
   _serve_files_handler.pony    - ServeFiles handler actor (internal)
   _http_date.pony              - RFC 7231 HTTP-date formatting (internal)
   _etag.pony                   - Weak ETag computation and matching (internal)
-  _flatten.pony                - Path joining + array concatenation (internal)
+  _flatten.pony                - Path joining, array concatenation, overlap detection, prefix validation (internal)
   _mort.pony                   - _Unreachable primitive (internal)
   _test.pony                   - Test runner
   _test_router.pony            - Router property-based + example tests

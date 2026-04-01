@@ -33,6 +33,69 @@ primitive _TrimTrailingSlash
     end
     s
 
+primitive _ValidateGroups
+  """
+  Validate group configuration before tree insertion.
+
+  Called in `Application.serve()` where the original full prefix strings
+  are available. Returns the first error found, or `None` if all groups
+  are valid. Checks:
+  - Empty prefix (collides with app-level interceptors)
+  - Special characters in prefix (`:` or `*`)
+  - Overlapping prefixes (two groups with the same prefix)
+  """
+  fun apply(infos: Array[_GroupInfo] box): (ConfigError | None) =>
+    for gi in infos.values() do
+      if (gi.prefix.size() == 0) or (gi.prefix == "/") then
+        return ConfigError(
+          "RouteGroup with prefix \"" + gi.prefix +
+          "\" is equivalent to app-level interceptors. " +
+          "Use add_request_interceptor() / " +
+          "add_response_interceptor() instead.")
+      end
+      if _HasSpecialChars(gi.prefix) then
+        return ConfigError(
+          "RouteGroup prefix '" + gi.prefix +
+          "' contains ':' or '*'. Group prefixes must be static paths " +
+          "— use route-level params instead.")
+      end
+    end
+    var i: USize = 0
+    while i < infos.size() do
+      var j = i + 1
+      while j < infos.size() do
+        try
+          if infos(i)?.prefix == infos(j)?.prefix then
+            return ConfigError(
+              "Overlapping group interceptors on prefix '" +
+              infos(i)?.prefix +
+              "'. Two groups cannot register interceptors on the same " +
+              "prefix.")
+          end
+        else
+          _Unreachable()
+        end
+        j = j + 1
+      end
+      i = i + 1
+    end
+    None
+
+primitive _HasSpecialChars
+  """Check if a string contains `:` or `*` (param/wildcard markers)."""
+  fun apply(s: String box): Bool =>
+    var i: USize = 0
+    try
+      while i < s.size() do
+        let c = s(i)?
+        if (c == ':') or (c == '*') then return true end
+        i = i + 1
+      end
+    else
+      _Unreachable()
+    end
+    false
+
 primitive _ConcatResponseInterceptors
   """
   Concatenate two optional response interceptor arrays.

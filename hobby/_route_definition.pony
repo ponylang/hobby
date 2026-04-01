@@ -5,9 +5,11 @@ class val _RouteDefinition
   A route registration captured during route setup.
 
   Stores the HTTP method, path pattern, handler factory, and optional
-  response interceptor and request interceptor chains. Created by `Application`
-  and `RouteGroup` route methods, then iterated by `Application.serve()` to
-  populate the router.
+  per-route response interceptor and request interceptor chains. Created by
+  `Application` and `RouteGroup` route methods, then iterated by
+  `Application.serve()` to populate the router. Group-level and app-level
+  interceptors are registered separately on tree nodes — the interceptors
+  here are per-route only.
   """
   let method: stallion.Method
   let path: String

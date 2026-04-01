@@ -112,9 +112,19 @@ app.>group(consume api)
 
 Every route in the group gets the auth interceptor without repeating it.
 
+Group interceptors are path-scoped — they apply to all HTTP methods under the group's prefix. If you need different interceptors for different methods at the same path, use per-route interceptors:
+
+```pony
+let api = hobby.RouteGroup("/api")
+api.>get("/users", users_handler
+  where interceptors = recover val [as hobby.RequestInterceptor val: CacheInterceptor] end)
+api.>post("/users", create_user_handler
+  where interceptors = recover val [as hobby.RequestInterceptor val: CsrfInterceptor] end)
+```
+
 ### Application-Level Interceptors
 
-`add_request_interceptor()` registers an interceptor that runs on every route:
+`add_request_interceptor()` registers an interceptor that runs on every request, including 404s:
 
 ```pony
 app.>add_request_interceptor(RequiredHeadersInterceptor(
