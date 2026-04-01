@@ -23,6 +23,8 @@ primitive \nodoc\ _TestRequestInterceptorList
     test(_TestInterceptPassIntegration)
     test(_TestInterceptGroupIntegration)
     test(_TestAppInterceptIntegration)
+    test(_TestInterceptGroup404Integration)
+    test(_TestInterceptGroup405Integration)
 
 // --- Test interceptors ---
 
@@ -276,6 +278,44 @@ class \nodoc\ iso _TestAppInterceptIntegration is UnitTest
     end where interceptors' = interceptors)
     _IntegrationHelpers.run_test(h, router,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "Forbidden by interceptor")
+
+class \nodoc\ iso _TestInterceptGroup404Integration is UnitTest
+  """Group request interceptor fires on 404 under the group's prefix."""
+  fun name(): String => "integration/interceptor group 404"
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    h.long_test(10_000_000_000)
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: _RejectInterceptor] end
+    let builder = _RouterBuilder
+    builder.add_interceptors("/api", interceptors, None)
+    builder.add(stallion.GET, "/api/users", _HelloFactory)
+    let router = builder.build()
+    // Request to /api/nonexistent should hit the /api group's interceptor
+    // and get rejected with 403 instead of 404
+    _IntegrationHelpers.run_test(h, router,
+      "GET /api/nonexistent HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "Forbidden by interceptor")
+
+class \nodoc\ iso _TestInterceptGroup405Integration is UnitTest
+  """Group request interceptor fires on 405 under the group's prefix."""
+  fun name(): String => "integration/interceptor group 405"
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    h.long_test(10_000_000_000)
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: _RejectInterceptor] end
+    let builder = _RouterBuilder
+    builder.add_interceptors("/api", interceptors, None)
+    builder.add(stallion.POST, "/api/users", _HelloFactory)
+    let router = builder.build()
+    // GET to POST-only /api/users should hit the /api group's interceptor
+    // and get rejected with 403 instead of 405
+    _IntegrationHelpers.run_test(h, router,
+      "GET /api/users HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "Forbidden by interceptor")
 
 // --- Helpers ---

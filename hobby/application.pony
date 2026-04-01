@@ -16,37 +16,43 @@ class iso Application
   actor Main
     new create(env: Env) =>
       let auth = lori.TCPListenAuth(env.root)
-      hobby.Application
-        .>get("/", {(ctx) =>
-          hobby.RequestHandler(consume ctx)
-            .respond(stallion.StatusOK, "Hello!")
-        } val)
-        .>get("/greet/:name", {(ctx) =>
-          let handler = hobby.RequestHandler(consume ctx)
-          try
-            handler.respond(stallion.StatusOK,
-              "Hello, " + handler.param("name")? + "!")
-          else
-            handler.respond(stallion.StatusBadRequest, "Bad Request")
-          end
-        } val)
-        .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+      match
+        hobby.Application
+          .>get("/", {(ctx) =>
+            hobby.RequestHandler(consume ctx)
+              .respond(stallion.StatusOK, "Hello!")
+          } val)
+          .>get("/greet/:name", {(ctx) =>
+            let handler = hobby.RequestHandler(consume ctx)
+            try
+              handler.respond(stallion.StatusOK,
+                "Hello, " + handler.param("name")? + "!")
+            else
+              handler.respond(stallion.StatusBadRequest, "Bad Request")
+            end
+          } val)
+          .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+      | let err: hobby.ConfigError =>
+        env.err.print(err.message)
+      end
   ```
 
   Route methods are `fun ref` — automatic receiver recovery allows calling
   them on an `iso` receiver since all arguments are `val`. Use `.>` to chain
   route calls (it discards the method's return and passes the receiver
-  through). Call `.serve()` last — it consumes the Application and freezes
+  through). Call `.serve()` last — it consumes the Application and returns
   the routes.
   """
   embed _routes: Array[_RouteDefinition]
   embed _app_interceptors: Array[RequestInterceptor val]
   embed _app_response_interceptors: Array[ResponseInterceptor val]
+  embed _group_infos: Array[_GroupInfo]
 
   new iso create() =>
     _routes = Array[_RouteDefinition]
     _app_interceptors = Array[RequestInterceptor val]
     _app_response_interceptors = Array[ResponseInterceptor val]
+    _group_infos = Array[_GroupInfo]
 
   fun ref get(path: String, factory: HandlerFactory,
     interceptors: (Array[RequestInterceptor val] val | None) = None,
@@ -125,10 +131,12 @@ class iso Application
     """
     Add an application-level request interceptor.
 
-    Request interceptors run before the handler on every route. Application
+    Request interceptors run before the handler on every request. Application
     interceptors run before group interceptors, which run before per-route
     interceptors. The first interceptor that returns `InterceptRespond` rejects
     the request — the handler is never created.
+
+    App-level interceptors also run on 404 responses where no route matched.
     """
     _app_interceptors.push(interceptor)
 
@@ -150,22 +158,27 @@ class iso Application
     """
     Consume a route group, flattening its routes into this application.
 
-    The group's prefix, interceptors, and response interceptors are applied to
-    each of its routes. The group is consumed — no further registration on it
-    is possible.
+    The group's prefix is applied to each of its routes. Group-level
+    interceptors are preserved separately for tree building — they are
+    registered on path nodes, not concatenated onto routes. The group is
+    consumed — no further registration on it is possible.
     """
     let g_ref: RouteGroup ref = consume g
-    g_ref._flatten_into(_routes)
+    g_ref._collect_group_infos(_group_infos)
+    g_ref._flatten_routes_into(_routes)
 
   fun iso serve(auth: lori.TCPListenAuth, config: stallion.ServerConfig,
     out: OutStream,
     handler_timeout: (U64 | None) = 30_000)
+    : ServeResult
   =>
     """
-    Freeze routes and start listening for HTTP connections.
+    Freeze routes, validate configuration, and start listening.
 
     Consumes the Application — no further route registration is possible
-    after this call.
+    after this call. Returns `Serving` on success or `ConfigError` if
+    a configuration error was detected (overlapping group prefixes,
+    invalid group prefix, conflicting param names).
 
     `handler_timeout` is the handler inactivity timeout in milliseconds.
     Defaults to 30 seconds. Pass `None` to disable the timeout. When a
@@ -173,6 +186,11 @@ class iso Application
     Gateway Timeout (or closes the connection for active streams).
     """
     let self: Application ref = consume this
+
+    // Validate group configuration before building
+    match _ValidateGroups(self._group_infos)
+    | let err: ConfigError => return err
+    end
 
     // Build app-level request interceptors as a val array (or None if empty)
     let app_interceptors: (Array[RequestInterceptor val] val | None) =
@@ -202,14 +220,25 @@ class iso Application
       end
 
     let builder = _RouterBuilder
+
+    // Register app-level interceptors on the root node
+    builder.add_interceptors("", app_interceptors, app_response_interceptors)
+
+    // Register group-level interceptors on their prefix nodes
+    for gi in self._group_infos.values() do
+      builder.add_interceptors(gi.prefix, gi.interceptors,
+        gi.response_interceptors)
+    end
+
+    // Register routes with per-route interceptors only
     for r in self._routes.values() do
-      let combined_interceptors =
-        _ConcatInterceptors(app_interceptors, r.interceptors)
-      let combined_response_interceptors =
-        _ConcatResponseInterceptors(app_response_interceptors,
-          r.response_interceptors)
-      builder.add(r.method, r.path, r.factory, combined_response_interceptors,
-        combined_interceptors)
+      builder.add(r.method, r.path, r.factory,
+        r.response_interceptors, r.interceptors)
+    end
+
+    // Check for tree-level errors (e.g., conflicting param names)
+    match builder.first_error()
+    | let err: ConfigError => return err
     end
     let router: _Router val = builder.build()
 
@@ -220,5 +249,5 @@ class iso Application
       0
     end
 
-    _Listener(auth, config, router, out, timeout_ns,
-      app_response_interceptors)
+    _Listener(auth, config, router, out, timeout_ns)
+    Serving

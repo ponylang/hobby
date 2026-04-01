@@ -16,6 +16,9 @@ primitive \nodoc\ _TestRouteGroupList
     test(_TestJoinPath)
     test(_TestEmptyGroup)
     test(_TestMultipleGroupsOnApplication)
+    test(_TestGroupInfoCollection)
+    test(_TestNestedGroupInfoCollection)
+    test(_TestTripleLevelGroupInfoCollection)
 
 // --- Generators ---
 
@@ -45,7 +48,7 @@ class \nodoc\ iso _PropertyGroupPrefixMatches is
     let router = builder.build()
     match router.lookup(stallion.GET, joined)
     | let _: _RouteMatch => None
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match at " + joined)
     end
 
@@ -68,7 +71,7 @@ class \nodoc\ iso _PropertyNestedGroupPrefixOrder is
     let router = builder.build()
     match router.lookup(stallion.GET, joined)
     | let _: _RouteMatch => None
-    else
+    | let _: _RouteMiss =>
       h.fail("expected match at " + joined)
     end
 
@@ -97,9 +100,17 @@ class \nodoc\ iso _PropertyGroupFlattenEquivalence is
     builder2.add(stallion.GET, manual, _NoOpFactory, None)
     let router2 = builder2.build()
 
-    let r1_matches = router1.lookup(stallion.GET, joined) isnt None
-    let r2_matches = router2.lookup(stallion.GET, joined) isnt None
-    h.assert_eq[Bool](r1_matches, r2_matches)
+    let r1_match = match router1.lookup(stallion.GET, joined)
+    | let _: _RouteMatch => true
+    else
+      false
+    end
+    let r2_match = match router2.lookup(stallion.GET, joined)
+    | let _: _RouteMatch => true
+    else
+      false
+    end
+    h.assert_eq[Bool](r1_match, r2_match)
 
 // --- Example-based tests ---
 
@@ -133,7 +144,7 @@ class \nodoc\ iso _TestEmptyGroup is UnitTest
     let g = RouteGroup("/api")
     let target = Array[_RouteDefinition]
     let g_ref: RouteGroup ref = consume g
-    g_ref._flatten_into(target)
+    g_ref._flatten_routes_into(target)
     h.assert_eq[USize](0, target.size())
 
 class \nodoc\ iso _TestMultipleGroupsOnApplication is UnitTest
@@ -156,9 +167,9 @@ class \nodoc\ iso _TestMultipleGroupsOnApplication is UnitTest
 
     let target = Array[_RouteDefinition]
     let g1_ref: RouteGroup ref = consume g1
-    g1_ref._flatten_into(target)
+    g1_ref._flatten_routes_into(target)
     let g2_ref: RouteGroup ref = consume g2
-    g2_ref._flatten_into(target)
+    g2_ref._flatten_routes_into(target)
 
     h.assert_eq[USize](2, target.size())
     try
@@ -168,4 +179,96 @@ class \nodoc\ iso _TestMultipleGroupsOnApplication is UnitTest
       h.assert_is[HandlerFactory](f2, target(1)?.factory)
     else
       h.fail("expected two routes")
+    end
+
+class \nodoc\ iso _TestGroupInfoCollection is UnitTest
+  """Group info is collected with prefix and interceptors."""
+  fun name(): String => "route-group/group info collection"
+
+  fun apply(h: TestHelper) =>
+    let interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: _PassInterceptor] end
+    let g = RouteGroup("/api" where interceptors = interceptors)
+    g.get("/users", _NoOpFactory)
+
+    let infos = Array[_GroupInfo]
+    let g_ref: RouteGroup ref = consume g
+    g_ref._collect_group_infos(infos)
+
+    h.assert_eq[USize](1, infos.size())
+    try
+      h.assert_eq[String]("/api", infos(0)?.prefix)
+      match infos(0)?.interceptors
+      | let ints: Array[RequestInterceptor val] val =>
+        h.assert_eq[USize](1, ints.size())
+      else
+        h.fail("expected interceptors on group info")
+      end
+    else
+      h.fail("expected one group info")
+    end
+
+class \nodoc\ iso _TestNestedGroupInfoCollection is UnitTest
+  """Nested group infos are collected with joined prefixes."""
+  fun name(): String => "route-group/nested group info collection"
+
+  fun apply(h: TestHelper) =>
+    let outer_interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: _PassInterceptor] end
+    let inner_interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: _RejectInterceptor] end
+
+    let inner = RouteGroup("/v1" where interceptors = inner_interceptors)
+    inner.get("/users", _NoOpFactory)
+
+    let outer = RouteGroup("/api" where interceptors = outer_interceptors)
+    outer.get("/health", _NoOpFactory)
+    outer.group(consume inner)
+
+    let infos = Array[_GroupInfo]
+    let outer_ref: RouteGroup ref = consume outer
+    outer_ref._collect_group_infos(infos)
+
+    // Should have two infos: outer (/api) and inner (/api/v1)
+    h.assert_eq[USize](2, infos.size())
+    try
+      h.assert_eq[String]("/api", infos(0)?.prefix)
+      h.assert_eq[String]("/api/v1", infos(1)?.prefix)
+    else
+      h.fail("expected two group infos with correct prefixes")
+    end
+
+class \nodoc\ iso _TestTripleLevelGroupInfoCollection is UnitTest
+  """3-level nested group infos have fully joined prefixes."""
+  fun name(): String => "route-group/triple level group info collection"
+
+  fun apply(h: TestHelper) =>
+    let deep_interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: _PassInterceptor] end
+    let inner_interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: _RejectInterceptor] end
+    let outer_interceptors: Array[RequestInterceptor val] val =
+      recover val [as RequestInterceptor val: _PassInterceptor] end
+
+    let deep = RouteGroup("/settings" where interceptors = deep_interceptors)
+    deep.get("/profile", _NoOpFactory)
+
+    let inner = RouteGroup("/admin" where interceptors = inner_interceptors)
+    inner.group(consume deep)
+
+    let outer = RouteGroup("/api" where interceptors = outer_interceptors)
+    outer.group(consume inner)
+
+    let infos = Array[_GroupInfo]
+    let outer_ref: RouteGroup ref = consume outer
+    outer_ref._collect_group_infos(infos)
+
+    // Should have three infos: /api, /api/admin, /api/admin/settings
+    h.assert_eq[USize](3, infos.size())
+    try
+      h.assert_eq[String]("/api", infos(0)?.prefix)
+      h.assert_eq[String]("/api/admin", infos(1)?.prefix)
+      h.assert_eq[String]("/api/admin/settings", infos(2)?.prefix)
+    else
+      h.fail("expected three group infos with correct prefixes")
     end

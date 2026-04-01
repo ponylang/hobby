@@ -32,6 +32,7 @@ primitive \nodoc\ _TestIntegrationList
     test(_TestPipelinedMultipleRequests)
     test(_TestNormalCompletionWithTimeout)
     test(_TestOnClosedStreamingDispose)
+    test(_TestMethodNotAllowed405)
 
 // --- Test helpers ---
 
@@ -105,7 +106,7 @@ actor \nodoc\ _TestIntegrationListener is lori.TCPListenerActor
   fun ref _listener(): lori.TCPListener => _tcp_listener
 
   fun ref _on_accept(fd: U32): lori.TCPConnectionActor =>
-    _Connection(_server_auth, fd, _config, _router, _timers, 0, None)
+    _Connection(_server_auth, fd, _config, _router, _timers, 0)
 
   fun ref _on_listening() =>
     try
@@ -582,7 +583,7 @@ class \nodoc\ iso _TestHeadStreamingHandler is UnitTest
       "200 OK", "chunk-1;")
 
 class \nodoc\ iso _TestHeadPostOnlyRoute is UnitTest
-  """HEAD to POST-only route returns 404 (HEAD only falls back to GET)."""
+  """HEAD to POST-only route returns 405 with Allow header."""
   fun name(): String => "integration/HEAD on POST-only route"
 
   fun label(): String => "integration"
@@ -591,11 +592,9 @@ class \nodoc\ iso _TestHeadPostOnlyRoute is UnitTest
     let router = _IntegrationHelpers.build_router(recover val
       [(stallion.POST, "/echo", _EchoBodyFactory)]
     end)
-    // Forbid "\r\n\r\nNot Found" (body after headers), not just "Not Found"
-    // which also appears in the status line "404 Not Found".
     _HeadIntegrationHelpers.run_head_test(h, router,
       "HEAD /echo HTTP/1.1\r\nHost: localhost\r\n\r\n",
-      "content-length: 9", "\r\n\r\nNot Found")
+      "405 Method Not Allowed", "\r\n\r\nMethod Not Allowed")
 
 class \nodoc\ iso _TestHeadStreamingPipelinedGet is UnitTest
   """
@@ -661,7 +660,7 @@ actor \nodoc\ _TestTimeoutListener is lori.TCPListenerActor
 
   fun ref _on_accept(fd: U32): lori.TCPConnectionActor =>
     // 500ms timeout in nanoseconds
-    _Connection(_server_auth, fd, _config, _router, _timers, 500_000_000, None)
+    _Connection(_server_auth, fd, _config, _router, _timers, 500_000_000)
 
   fun ref _on_listening() =>
     try
@@ -1163,4 +1162,20 @@ class \nodoc\ iso _TestOnClosedStreamingDispose is UnitTest
         _DisconnectAfterSendClient(connect_auth, host, port, h',
           "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
       })
+
+class \nodoc\ iso _TestMethodNotAllowed405 is UnitTest
+  """GET to a POST-only route returns 405 with Allow header."""
+  fun name(): String => "integration/method not allowed 405"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let router = _IntegrationHelpers.build_router(recover val
+      [(stallion.POST, "/echo", _EchoBodyFactory)]
+    end)
+    // Check for Allow header — implies 405 status and verifies the header
+    // appears on the wire
+    _IntegrationHelpers.run_test(h, router,
+      "GET /echo HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "allow: POST")
 

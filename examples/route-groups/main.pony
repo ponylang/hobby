@@ -34,37 +34,41 @@ actor Main
     let auth_interceptor: Array[hobby.RequestInterceptor val] val =
       recover val [as hobby.RequestInterceptor val: AuthInterceptor] end
 
-    hobby.Application
-      .>get("/", {(ctx) =>
-        hobby.RequestHandler(consume ctx)
-          .respond(stallion.StatusOK, "Hello from Hobby!")
-      } val)
-      .>get("/health", {(ctx) =>
-        hobby.RequestHandler(consume ctx)
-          .respond(stallion.StatusOK, "OK")
-      } val)
-      .>group(
-        hobby.RouteGroup("/api" where interceptors = auth_interceptor)
-          .>get("/users", {(ctx) =>
-            hobby.RequestHandler(consume ctx)
-              .respond(stallion.StatusOK, "User list")
-          } val)
-          .>get("/users/:id", {(ctx) =>
-            let handler = hobby.RequestHandler(consume ctx)
-            try
-              let id = handler.param("id")?
-              handler.respond(stallion.StatusOK, "User " + id)
-            else
-              handler.respond(stallion.StatusBadRequest, "Bad Request")
-            end
-          } val)
-          .>group(
-            hobby.RouteGroup("/admin")
-              .>get("/dashboard", {(ctx) =>
-                hobby.RequestHandler(consume ctx)
-                  .respond(stallion.StatusOK, "Admin dashboard")
-              } val)))
-      .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    match
+      hobby.Application
+        .>get("/", {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Hello from Hobby!")
+        } val)
+        .>get("/health", {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "OK")
+        } val)
+        .>group(
+          hobby.RouteGroup("/api" where interceptors = auth_interceptor)
+            .>get("/users", {(ctx) =>
+              hobby.RequestHandler(consume ctx)
+                .respond(stallion.StatusOK, "User list")
+            } val)
+            .>get("/users/:id", {(ctx) =>
+              let handler = hobby.RequestHandler(consume ctx)
+              try
+                let id = handler.param("id")?
+                handler.respond(stallion.StatusOK, "User " + id)
+              else
+                handler.respond(stallion.StatusBadRequest, "Bad Request")
+              end
+            } val)
+            .>group(
+              hobby.RouteGroup("/admin")
+                .>get("/dashboard", {(ctx) =>
+                  hobby.RequestHandler(consume ctx)
+                    .respond(stallion.StatusOK, "Admin dashboard")
+                } val)))
+        .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    | let err: hobby.ConfigError =>
+      env.err.print(err.message)
+    end
 
 // --- Request interceptor ---
 

@@ -33,7 +33,11 @@ actor Main
       .add("webp", "image/webp")
       .add("avif", "image/avif")
 
-    hobby.Application
-      .>get("/static/*filepath",
-        hobby.ServeFiles(root where content_types = types))
-      .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    match
+      hobby.Application
+        .>get("/static/*filepath",
+          hobby.ServeFiles(root where content_types = types))
+        .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    | let err: hobby.ConfigError =>
+      env.err.print(err.message)
+    end

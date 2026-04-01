@@ -28,6 +28,7 @@ class iso RouteGroup
   let _interceptors: (Array[RequestInterceptor val] val | None)
   let _response_interceptors: (Array[ResponseInterceptor val] val | None)
   embed _routes: Array[_RouteDefinition]
+  embed _group_infos: Array[_GroupInfo]
 
   new iso create(prefix: String,
     interceptors: (Array[RequestInterceptor val] val | None) = None,
@@ -36,15 +37,18 @@ class iso RouteGroup
     """
     Create a route group with a path prefix and optional interceptors.
 
-    The prefix is prepended to every route path in the group. Request
-    interceptors, if provided, run before each route's own interceptors.
-    Response interceptors, if provided, run before each route's own response
-    interceptors.
+    The prefix must be a static path segment — no `:param` or `*wildcard`
+    characters. This is validated at `serve()` time and reported as a
+    `ConfigError`. The prefix is prepended to every route path in the group.
+    Request interceptors, if provided, run before each route's own
+    interceptors. Response interceptors, if provided, run before each
+    route's own response interceptors.
     """
     _prefix = prefix
     _interceptors = interceptors
     _response_interceptors = response_interceptors
     _routes = Array[_RouteDefinition]
+    _group_infos = Array[_GroupInfo]
 
   fun ref get(path: String, factory: HandlerFactory,
     interceptors: (Array[RequestInterceptor val] val | None) = None,
@@ -124,20 +128,48 @@ class iso RouteGroup
     Consume a nested route group, flattening its routes into this group.
 
     The inner group's prefix is appended to this group's prefix, and the inner
-    group's interceptors are appended after this group's interceptors. The inner
+    group's interceptors are preserved separately for tree building. The inner
     group is consumed — no further registration on it is possible.
     """
     let inner_ref: RouteGroup ref = consume inner
-    inner_ref._flatten_into(_routes)
+    inner_ref._collect_group_infos(_group_infos, _prefix)
+    inner_ref._flatten_routes_into(_routes, _prefix)
 
-  fun box _flatten_into(target: Array[_RouteDefinition] ref) =>
+  fun box _flatten_routes_into(target: Array[_RouteDefinition] ref,
+    outer_prefix: String = "")
+  =>
+    """
+    Flatten routes into target, joining paths with outer prefix.
+
+    Per-route interceptors are passed through unchanged — no concatenation
+    with group interceptors. Group interceptors are handled separately via
+    `_collect_group_infos()` and registered on tree nodes.
+    """
+    let full_prefix = _JoinPath(outer_prefix, _prefix)
     for r in _routes.values() do
-      let joined_path = _JoinPath(_prefix, r.path)
-      let combined_interceptors =
-        _ConcatInterceptors(_interceptors, r.interceptors)
-      let combined_response_interceptors =
-        _ConcatResponseInterceptors(_response_interceptors,
-          r.response_interceptors)
+      let joined_path = _JoinPath(full_prefix, r.path)
       target.push(_RouteDefinition(r.method, joined_path, r.factory,
-        combined_response_interceptors, combined_interceptors))
+        r.response_interceptors, r.interceptors))
+    end
+
+  fun box _collect_group_infos(target: Array[_GroupInfo] ref,
+    outer_prefix: String = "")
+  =>
+    """
+    Collect this group's info and any nested group infos into target.
+
+    Prefixes are joined through all nesting levels. Only emits a `_GroupInfo`
+    if this group has interceptors.
+    """
+    let full_prefix = _JoinPath(outer_prefix, _prefix)
+    if (_interceptors isnt None) or (_response_interceptors isnt None) then
+      target.push(_GroupInfo(full_prefix, _interceptors,
+        _response_interceptors))
+    end
+    // Re-prefix nested group infos with our outer prefix, since they were
+    // collected relative to this group's prefix, not the full path.
+    for gi in _group_infos.values() do
+      let adjusted_prefix = _JoinPath(outer_prefix, gi.prefix)
+      target.push(_GroupInfo(adjusted_prefix, gi.interceptors,
+        gi.response_interceptors))
     end

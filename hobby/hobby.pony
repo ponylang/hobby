@@ -17,21 +17,25 @@ use lori = "lori"
 actor Main
   new create(env: Env) =>
     let auth = lori.TCPListenAuth(env.root)
-    hobby.Application
-      .>get("/", {(ctx) =>
-        hobby.RequestHandler(consume ctx)
-          .respond(stallion.StatusOK, "Hello!")
-      } val)
-      .>get("/greet/:name", {(ctx) =>
-        let handler = hobby.RequestHandler(consume ctx)
-        try
-          handler.respond(stallion.StatusOK,
-            "Hello, " + handler.param("name")? + "!")
-        else
-          handler.respond(stallion.StatusBadRequest, "Bad Request")
-        end
-      } val)
-      .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+    match
+      hobby.Application
+        .>get("/", {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Hello!")
+        } val)
+        .>get("/greet/:name", {(ctx) =>
+          let handler = hobby.RequestHandler(consume ctx)
+          try
+            handler.respond(stallion.StatusOK,
+              "Hello, " + handler.param("name")? + "!")
+          else
+            handler.respond(stallion.StatusBadRequest, "Bad Request")
+          end
+        } val)
+        .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+    | let err: hobby.ConfigError =>
+      env.err.print(err.message)
+    end
 ```
 
 ## Handler Factories
@@ -95,7 +99,7 @@ let auth: Array[hobby.RequestInterceptor val] val =
 app.>get("/private", private_factory where interceptors = auth)
 ```
 
-Application-level interceptors run on every route:
+Application-level interceptors run on every request, including 404s:
 
 ```pony
 app.>add_request_interceptor(RequiredHeadersInterceptor(
@@ -199,9 +203,13 @@ actor Main
   new create(env: Env) =>
     let auth = lori.TCPListenAuth(env.root)
     let root = FilePath(FileAuth(env.root), "./public")
-    hobby.Application
-      .>get("/static/*filepath", hobby.ServeFiles(root))
-      .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    match
+      hobby.Application
+        .>get("/static/*filepath", hobby.ServeFiles(root))
+        .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    | let err: hobby.ConfigError =>
+      env.err.print(err.message)
+    end
 ```
 
 Routes must use `*filepath` as the wildcard parameter name. When a request
@@ -211,11 +219,12 @@ resolves to a directory, `ServeFiles` automatically serves `index.html`.
 
 Users import up to four packages:
 
-- **`hobby`**: Application, BodyNotNeeded, ContentTypes, CookieSigningKey,
-  HandlerContext, HandlerFactory, HandlerReceiver, InterceptPass,
-  InterceptRespond, InterceptResult, InvalidSignature, MalformedSignedValue,
-  RequestHandler, RequestInterceptor, ResponseContext, ResponseInterceptor,
-  RouteGroup, ServeFiles, SignedCookie, SignedCookieError, StreamingStarted
+- **`hobby`**: Application, BodyNotNeeded, ConfigError, ContentTypes,
+  CookieSigningKey, HandlerContext, HandlerFactory, HandlerReceiver,
+  InterceptPass, InterceptRespond, InterceptResult, InvalidSignature,
+  MalformedSignedValue, RequestHandler, RequestInterceptor, ResponseContext,
+  ResponseInterceptor, RouteGroup, ServeFiles, ServeResult, Serving,
+  SignedCookie, SignedCookieError, StreamingStarted
 - **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig,
   ChunkedNotSupported)
 - **`lori`**: `TCPListenAuth(env.root)` for network access

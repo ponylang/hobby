@@ -22,15 +22,19 @@ actor Main
   """
   new create(env: Env) =>
     let auth = lori.TCPListenAuth(env.root)
-    hobby.Application
-      .>get("/", {(ctx) =>
-        hobby.RequestHandler(consume ctx).respond(stallion.StatusOK,
-          "Visit /stream to see a chunked streaming response.")
-      } val)
-      .>get("/stream", {(ctx) =>
-        StreamHandler(consume ctx)
-      } val)
-      .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    match
+      hobby.Application
+        .>get("/", {(ctx) =>
+          hobby.RequestHandler(consume ctx).respond(stallion.StatusOK,
+            "Visit /stream to see a chunked streaming response.")
+        } val)
+        .>get("/stream", {(ctx) =>
+          StreamHandler(consume ctx)
+        } val)
+        .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    | let err: hobby.ConfigError =>
+      env.err.print(err.message)
+    end
 
 actor StreamHandler is hobby.HandlerReceiver
   """Starts streaming and sends 5 numbered chunks."""

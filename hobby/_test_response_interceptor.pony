@@ -28,6 +28,7 @@ primitive \nodoc\ _TestResponseInterceptorList
     test(_TestResponseInterceptorOnRejectIntercept)
     test(_TestResponseInterceptorSetBodyIntegration)
     test(_TestResponseInterceptorStreamingIntegration)
+    test(_TestResponseInterceptorGroupOn404)
 
 // --- Test interceptors ---
 
@@ -255,20 +256,18 @@ class \nodoc\ iso _TestConcatResponseInterceptorsInnerOnly is UnitTest
 // --- Integration test infrastructure ---
 
 actor \nodoc\ _TestResponseInterceptorListener is lori.TCPListenerActor
-  """Listener that passes app-level response interceptors to connections."""
+  """Listener for response interceptor integration tests."""
   var _tcp_listener: lori.TCPListener = lori.TCPListener.none()
   let _server_auth: lori.TCPServerAuth
   let _config: stallion.ServerConfig
   let _router: _Router val
   let _timers: Timers tag
   let _h: TestHelper
-  let _response_interceptors: (Array[ResponseInterceptor val] val | None)
   let _run_client:
     {(TestHelper, String, _TestResponseInterceptorListener)} val
 
   new create(auth: lori.TCPListenAuth, config: stallion.ServerConfig,
     router: _Router val, h: TestHelper,
-    response_interceptors: (Array[ResponseInterceptor val] val | None),
     run_client:
       {(TestHelper, String, _TestResponseInterceptorListener)} val)
   =>
@@ -277,15 +276,13 @@ actor \nodoc\ _TestResponseInterceptorListener is lori.TCPListenerActor
     _router = router
     _timers = Timers
     _h = h
-    _response_interceptors = response_interceptors
     _run_client = run_client
     _tcp_listener = lori.TCPListener(auth, config.host, config.port, this)
 
   fun ref _listener(): lori.TCPListener => _tcp_listener
 
   fun ref _on_accept(fd: U32): lori.TCPConnectionActor =>
-    _Connection(_server_auth, fd, _config, _router, _timers, 0,
-      _response_interceptors)
+    _Connection(_server_auth, fd, _config, _router, _timers, 0)
 
   fun ref _on_listening() =>
     try
@@ -346,7 +343,6 @@ actor \nodoc\ _TestResponseInterceptorClient is (lori.TCPConnectionActor & lori.
 
 primitive \nodoc\ _ResponseInterceptorIntegrationHelpers
   fun run_test(h: TestHelper, router: _Router val,
-    response_interceptors: (Array[ResponseInterceptor val] val | None),
     request: String, expected: String)
   =>
     h.long_test(5_000_000_000)
@@ -355,7 +351,6 @@ primitive \nodoc\ _ResponseInterceptorIntegrationHelpers
     let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
     _TestResponseInterceptorListener(auth, config, router, h,
-      response_interceptors,
       {(h': TestHelper, port: String,
         listener: _TestResponseInterceptorListener) =>
         _TestResponseInterceptorClient(connect_auth, host, port, h',
@@ -379,7 +374,6 @@ class \nodoc\ iso _TestResponseInterceptorSetHeaderIntegration is UnitTest
     builder.add(stallion.GET, "/", _HelloFactory, interceptors)
     let router = builder.build()
     _ResponseInterceptorIntegrationHelpers.run_test(h, router,
-      interceptors,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "x-custom: test-value")
 
@@ -395,10 +389,11 @@ class \nodoc\ iso _TestResponseInterceptorOn404 is UnitTest
           _AddHeaderResponseInterceptor("x-custom", "on-404")]
       end
     let builder = _RouterBuilder
+    // Register app-level interceptors on root node
+    builder.add_interceptors("", None, interceptors)
     builder.add(stallion.GET, "/exists", _HelloFactory)
     let router = builder.build()
     _ResponseInterceptorIntegrationHelpers.run_test(h, router,
-      interceptors,
       "GET /nonexistent HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "x-custom: on-404")
 
@@ -420,7 +415,6 @@ class \nodoc\ iso _TestResponseInterceptorOnRejectIntercept is UnitTest
       request_interceptors)
     let router = builder.build()
     _ResponseInterceptorIntegrationHelpers.run_test(h, router,
-      response_interceptors,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "x-custom: on-reject")
 
@@ -439,7 +433,6 @@ class \nodoc\ iso _TestResponseInterceptorSetBodyIntegration is UnitTest
     builder.add(stallion.GET, "/", _HelloFactory, interceptors)
     let router = builder.build()
     _ResponseInterceptorIntegrationHelpers.run_test(h, router,
-      interceptors,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "replaced-body")
 
@@ -463,13 +456,31 @@ class \nodoc\ iso _TestResponseInterceptorStreamingIntegration is UnitTest
     let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
     _TestResponseInterceptorListener(auth, config, router, h,
-      interceptors,
       {(h': TestHelper, port: String,
         listener: _TestResponseInterceptorListener) =>
         _TestStreamingNoOpClient(connect_auth, host, port, h',
           "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
           "chunk-1;", "x-after-stream", listener)
       })
+
+class \nodoc\ iso _TestResponseInterceptorGroupOn404 is UnitTest
+  """Group response interceptor runs on 404 under the group's prefix."""
+  fun name(): String => "integration/response interceptor group on 404"
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let interceptors: Array[ResponseInterceptor val] val =
+      recover val
+        [as ResponseInterceptor val:
+          _AddHeaderResponseInterceptor("x-group", "api-404")]
+      end
+    let builder = _RouterBuilder
+    builder.add_interceptors("/api", None, interceptors)
+    builder.add(stallion.GET, "/api/users", _HelloFactory)
+    let router = builder.build()
+    _ResponseInterceptorIntegrationHelpers.run_test(h, router,
+      "GET /api/nonexistent HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "x-group: api-404")
 
 actor \nodoc\ _TestStreamingNoOpClient is (lori.TCPConnectionActor & lori.ClientLifecycleEventReceiver)
   """

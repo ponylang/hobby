@@ -34,24 +34,28 @@ actor Main
     let auth_interceptor: Array[hobby.RequestInterceptor val] val =
       recover val [as hobby.RequestInterceptor val: AuthInterceptor] end
 
-    hobby.Application
-      .>add_response_interceptor(CorsResponseInterceptor("*"))
-      .>add_response_interceptor(SecurityHeadersInterceptor)
-      .>add_response_interceptor(LogResponseInterceptor(env.out))
-      .>get("/", {(ctx) =>
-        hobby.RequestHandler(consume ctx)
-          .respond(stallion.StatusOK, "Hello from Hobby!")
-      } val)
-      .>get("/api/:id", {(ctx) =>
-        let handler = hobby.RequestHandler(consume ctx)
-        try
-          let id = handler.param("id")?
-          handler.respond(stallion.StatusOK, "Resource: " + id)
-        else
-          handler.respond(stallion.StatusBadRequest, "Bad Request")
-        end
-      } val where interceptors = auth_interceptor)
-      .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    match
+      hobby.Application
+        .>add_response_interceptor(CorsResponseInterceptor("*"))
+        .>add_response_interceptor(SecurityHeadersInterceptor)
+        .>add_response_interceptor(LogResponseInterceptor(env.out))
+        .>get("/", {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Hello from Hobby!")
+        } val)
+        .>get("/api/:id", {(ctx) =>
+          let handler = hobby.RequestHandler(consume ctx)
+          try
+            let id = handler.param("id")?
+            handler.respond(stallion.StatusOK, "Resource: " + id)
+          else
+            handler.respond(stallion.StatusBadRequest, "Bad Request")
+          end
+        } val where interceptors = auth_interceptor)
+        .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    | let err: hobby.ConfigError =>
+      env.err.print(err.message)
+    end
 
 // --- Response interceptors ---
 
