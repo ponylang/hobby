@@ -45,7 +45,9 @@ primitive \nodoc\ _TestRouterList
     test(_TestStaticParamWildcardPriority)
     test(_Test405FallsBackToLowerPriorityMatch)
     test(_Test405FallsBackStaticToParam)
-    test(_Test405AllowHeaderScopedToEntryType)
+    test(_Test405ExactPathDoesNotIncludeWildcard)
+    test(_Test405MergesMethodsAcrossBranches)
+    test(_Test405MergeDeduplicatesOverlappingMethods)
     test(_TestDoubleSlashNormalization)
     test(_TestWildcardDoubleSlashNormalization)
     test(_TestSplitSegmentsEdgeCases)
@@ -686,17 +688,20 @@ class \nodoc\ iso _Test405FallsBackStaticToParam is UnitTest
       h.fail("expected POST static match")
     end
 
-class \nodoc\ iso _Test405AllowHeaderScopedToEntryType is UnitTest
+class \nodoc\ iso _Test405ExactPathDoesNotIncludeWildcard is UnitTest
   """
 
-  Allow header on 405 lists only methods from the matching entry type.
+  Exact-path 405 does not include wildcard methods.
 
   GET /files + POST /files/*path → DELETE /files gets Allow: GET, HEAD
-  (from exact-path entries only), not GET, HEAD, POST (which would leak
-  wildcard methods).
+  (from exact-path entries only), not GET, HEAD, POST. The wildcard branch
+  requires remaining segments, so it is not checked for exact-path requests
+  (the early return at `idx >= segments.size()` resolves before the
+  priority branch loop runs).
   """
 
-  fun name(): String => "router/405 allow header scoped to entry type"
+  fun name(): String =>
+    "router/405 exact path does not include wildcard"
 
   fun apply(h: TestHelper) =>
     let builder = _RouterBuilder
@@ -722,6 +727,106 @@ class \nodoc\ iso _Test405AllowHeaderScopedToEntryType is UnitTest
         has_post,
         "Allow must NOT include POST "
           + "(wildcard method, different resource)")
+    | let _: _RouteMatch =>
+      h.fail("DELETE should not match")
+    | let _: _RouteMiss =>
+      h.fail("should be 405, not 404")
+    end
+
+class \nodoc\ iso _Test405MergesMethodsAcrossBranches is UnitTest
+  """
+
+  Allow header merges methods from all priority branches.
+
+  POST /files/:id + GET /files/*path → DELETE /files/readme.txt hits the
+  param branch first (405 with POST) then the wildcard branch (405 with
+  GET, HEAD). The merged Allow header should include all three.
+  """
+
+  fun name(): String =>
+    "router/405 merges methods across branches"
+
+  fun apply(h: TestHelper) =>
+    let builder = _RouterBuilder
+    builder.add(
+      stallion.POST, "/files/:id", _NoOpFactory, None)
+    builder.add(
+      stallion.GET, "/files/*path", _NoOpFactory, None)
+    let router = builder.build()
+
+    match \exhaustive\ router.lookup(
+      stallion.DELETE, "/files/readme.txt")
+    | let na: _MethodNotAllowed =>
+      var has_post = false
+      var has_get = false
+      var has_head = false
+      for m in na.allowed_methods.values() do
+        if m == "POST" then has_post = true end
+        if m == "GET" then has_get = true end
+        if m == "HEAD" then has_head = true end
+      end
+      h.assert_true(
+        has_post,
+        "Allow should include POST (from param branch)")
+      h.assert_true(
+        has_get,
+        "Allow should include GET (from wildcard branch)")
+      h.assert_true(
+        has_head,
+        "Allow should include HEAD (implicit from GET)")
+      h.assert_eq[USize](
+        3,
+        na.allowed_methods.size(),
+        "Allow should have exactly 3 methods")
+    | let _: _RouteMatch =>
+      h.fail("DELETE should not match")
+    | let _: _RouteMiss =>
+      h.fail("should be 405, not 404")
+    end
+
+class \nodoc\ iso _Test405MergeDeduplicatesOverlappingMethods
+  is UnitTest
+  """
+
+  Allow header deduplicates methods that appear in multiple branches.
+
+  GET /users/new + GET /users/:id → DELETE /users/new hits the static
+  branch (405 with GET, HEAD) then the param branch (405 with GET, HEAD).
+  The merged Allow header should contain each method only once.
+  """
+
+  fun name(): String =>
+    "router/405 merge deduplicates overlapping methods"
+
+  fun apply(h: TestHelper) =>
+    let builder = _RouterBuilder
+    builder.add(
+      stallion.GET, "/users/new", _NoOpFactory, None)
+    builder.add(
+      stallion.GET, "/users/:id", _NoOpFactory, None)
+    let router = builder.build()
+
+    match \exhaustive\ router.lookup(
+      stallion.DELETE, "/users/new")
+    | let na: _MethodNotAllowed =>
+      var get_count: USize = 0
+      var head_count: USize = 0
+      for m in na.allowed_methods.values() do
+        if m == "GET" then get_count = get_count + 1 end
+        if m == "HEAD" then head_count = head_count + 1 end
+      end
+      h.assert_eq[USize](
+        1,
+        get_count,
+        "GET should appear exactly once")
+      h.assert_eq[USize](
+        1,
+        head_count,
+        "HEAD should appear exactly once")
+      h.assert_eq[USize](
+        2,
+        na.allowed_methods.size(),
+        "Allow should have exactly 2 methods")
     | let _: _RouteMatch =>
       h.fail("DELETE should not match")
     | let _: _RouteMiss =>

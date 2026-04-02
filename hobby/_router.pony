@@ -514,6 +514,13 @@ class val _TreeNode
 
     Params are built bottom-up: the leaf returns an empty val array, and each
     param level prepends its parameter to the child's val result.
+
+    When multiple priority branches (static > param > wildcard) each return
+    `_MethodNotAllowed`, this function merges their allowed methods into a
+    single `Allow` header. The first 405's interceptors are kept — they come
+    from the highest-priority (most specific) branch. `_resolve_or_405`
+    reports methods from a single entries map; this function merges across
+    calls.
     """
 
     if idx >= segments.size() then
@@ -535,6 +542,8 @@ class val _TreeNode
     // 404 vs 405 after all branches are exhausted.
     var deepest_miss: (_RouteMiss | None) = None
     var method_not_allowed: (_MethodNotAllowed | None) = None
+    var merged_methods: Array[String] iso =
+      recover iso Array[String] end
 
     // Try static children first (highest priority)
     try
@@ -553,6 +562,13 @@ class val _TreeNode
         | let na: _MethodNotAllowed =>
           if method_not_allowed is None then
             method_not_allowed = na
+          end
+          for m in na.allowed_methods.values() do
+            if not merged_methods.contains(
+              m, {(l, r) => l == r })
+            then
+              merged_methods.push(m)
+            end
           end
         | let miss: _RouteMiss =>
           deepest_miss = miss
@@ -595,6 +611,13 @@ class val _TreeNode
             if method_not_allowed is None then
               method_not_allowed = na
             end
+            for m in na.allowed_methods.values() do
+              if not merged_methods.contains(
+                m, {(l, r) => l == r })
+              then
+                merged_methods.push(m)
+              end
+            end
           | let miss: _RouteMiss =>
             // Keep whichever miss traversed deeper
             // (has richer interceptors).
@@ -633,13 +656,30 @@ class val _TreeNode
       if method_not_allowed is None then
         method_not_allowed = na
       end
+      for m in na.allowed_methods.values() do
+        if not merged_methods.contains(
+          m, {(l, r) => l == r })
+        then
+          merged_methods.push(m)
+        end
+      end
     end
 
     // All branches exhausted. Priority: 405 > deepest miss > fresh miss.
     // 405 means the path exists (for some method), which is more specific
-    // than a miss (path doesn't exist at all).
+    // than a miss (path doesn't exist at all). When multiple branches
+    // returned 405, merged_methods has the union; use it if it's larger
+    // than the first 405's list.
     match method_not_allowed
-    | let na: _MethodNotAllowed => return na
+    | let na: _MethodNotAllowed =>
+      if merged_methods.size() > na.allowed_methods.size() then
+        return _MethodNotAllowed(
+          consume merged_methods,
+          na.response_interceptors,
+          na.interceptors)
+      else
+        return na
+      end
     end
 
     match deepest_miss
@@ -663,8 +703,10 @@ class val _TreeNode
     Returns the entry on match, `_MethodNotAllowed` if the map has entries
     but not for this method (with HEAD→GET fallback for HEAD requests),
     or `None` if the map is empty. The `_MethodNotAllowed` carries only
-    the methods from this specific map — exact-path and wildcard entries
-    are never mixed.
+    the methods from this specific entries map — exact-path and wildcard
+    entries are never mixed at this level. `_lookup` merges methods across
+    multiple `_resolve_or_405` calls when multiple priority branches each
+    return 405.
     """
 
     try
