@@ -113,7 +113,7 @@ api.>post("/users", create_user_factory
   where interceptors = recover val [as hobby.RequestInterceptor val: CsrfInterceptor] end)
 ```
 
-`Application.serve()` now returns `ServeResult` — either `Serving` on success or `ConfigError` with a message describing the problem. Configuration errors (overlapping group prefixes, empty group prefix, special characters in group prefix, conflicting param names) are detected at `serve()` time and reported as data instead of panicking:
+`Application.serve()` now returns `ServeResult` — either `Serving` on success or `ConfigError` with a message describing the problem. Configuration errors (overlapping group prefixes, empty group prefix, special characters in group prefix, conflicting param names, conflicting wildcard names) are detected at `serve()` time and reported as data instead of panicking:
 
 ```pony
 match

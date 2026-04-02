@@ -8,8 +8,8 @@ class ref _RouterBuilder
 
   Accumulates route definitions and group interceptors into a single shared
   path tree, then freezes it into an immutable router via `build()`.
-  Configuration errors (e.g., conflicting param names) are accumulated in
-  `_errors` and available via `first_error()`.
+  Configuration errors (e.g., conflicting param or wildcard names) are
+  accumulated in `_errors` and available via `first_error()`.
   """
 
   var _root: _BuildNode ref
@@ -250,12 +250,23 @@ class ref _BuildNode
         interceptors,
         errors)
     elseif first == '*' then
+      let name = segment.trim(1)
       _wildcard_entries(method) =
         _BuildMethodEntry(
           factory,
           interceptors,
           response_interceptors)
-      _wildcard_name = segment.trim(1)
+      if (_wildcard_name.size() > 0)
+        and (_wildcard_name != name)
+      then
+        errors.push(
+          "Conflicting wildcard names at the same path " +
+          "position: '*" + _wildcard_name +
+          "' vs '*" + name +
+          "'. All methods at the same path must use " +
+          "the same wildcard name.")
+      end
+      _wildcard_name = name
     else
       let child =
         try _children(segment)? else

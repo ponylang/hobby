@@ -14,6 +14,7 @@ class val ConfigError
   - Empty group prefix (use `add_request_interceptor()` instead)
   - Special characters in group prefix (`:` or `*`)
   - Conflicting param names at the same path position across methods
+  - Conflicting wildcard names at the same path position across methods
   """
   let message: String
 
