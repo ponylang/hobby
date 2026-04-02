@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Fixed
 
+- Fix 405 Allow header to include methods from all matching branches ([PR #68](https://github.com/ponylang/hobby/pull/68))
 
 ### Added
 
