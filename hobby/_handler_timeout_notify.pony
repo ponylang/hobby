@@ -2,6 +2,7 @@ use "time"
 
 class iso _HandlerTimeoutNotify is TimerNotify
   """
+
   Timer notify that sends `_handler_timeout(token)` to the connection on
   each interval fire.
 
@@ -9,6 +10,7 @@ class iso _HandlerTimeoutNotify is TimerNotify
   constitute a timeout. The interval-based approach avoids per-chunk timer
   allocation overhead during high-throughput streaming.
   """
+
   let _conn: _Connection tag
   let _token: U64
 

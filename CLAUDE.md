@@ -139,7 +139,7 @@ hobby/
   _buffered_response.pony     - Response buffer for response interceptors (internal)
   _run_request_interceptors.pony - Request interceptor execution (internal)
   _run_response_interceptors.pony - Response interceptor execution (internal)
-  _handler_timeout.pony       - Handler timeout timer notify (internal)
+  _handler_timeout_notify.pony - Handler timeout timer notify (internal)
   _connection.pony             - Connection actor (internal)
   _listener.pony               - Listener actor (internal)
   _router.pony                 - Router + segment trie (internal)
@@ -151,9 +151,9 @@ hobby/
   _file_target.pony            - File target trait (internal)
   _serve_files_handler.pony    - ServeFiles handler actor (internal)
   _http_date.pony              - RFC 7231 HTTP-date formatting (internal)
-  _etag.pony                   - Weak ETag computation and matching (internal)
+  _e_tag.pony                  - Weak ETag computation and matching (internal)
   _flatten.pony                - Segment splitting, path joining, array concatenation, overlap detection, prefix validation (internal)
-  _mort.pony                   - _Unreachable primitive (internal)
+  _unreachable.pony            - _Unreachable primitive (internal)
   _test.pony                   - Test runner
   _test_router.pony            - Router property-based + example tests
   _test_route_group.pony       - Route group unit + property tests

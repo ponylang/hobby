@@ -2,6 +2,7 @@ use stallion = "stallion"
 
 interface val ResponseInterceptor
   """
+
   Synchronous response interceptor that runs after the handler responds but
   before the response goes to the wire.
 
@@ -18,4 +19,11 @@ interface val ResponseInterceptor
   are already on the wire. The interceptor still runs for logging and
   metrics; check `ctx.is_streaming()` to branch on streaming state.
   """
+
   fun apply(ctx: ResponseContext ref)
+    """
+
+    Process the response. Inspect or modify status, headers, and body
+    via the provided `ResponseContext`.
+    """
+

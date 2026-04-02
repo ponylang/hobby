@@ -1,0 +1,5 @@
+"""
+
+Streaming response example.
+"""
+

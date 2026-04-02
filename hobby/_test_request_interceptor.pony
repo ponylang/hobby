@@ -27,7 +27,6 @@ primitive \nodoc\ _TestRequestInterceptorList
     test(_TestInterceptGroup405Integration)
 
 // --- Test interceptors ---
-
 class \nodoc\ val _RejectInterceptor is RequestInterceptor
   fun apply(request: stallion.Request box): InterceptResult =>
     InterceptRespond(stallion.StatusForbidden, "Forbidden by interceptor")
@@ -35,7 +34,7 @@ class \nodoc\ val _RejectInterceptor is RequestInterceptor
 class \nodoc\ val _RejectWithHeaderInterceptor is RequestInterceptor
   fun apply(request: stallion.Request box): InterceptResult =>
     InterceptRespond(stallion.StatusForbidden, "Forbidden")
-      .>set_header("x-interceptor", "rejected")
+      .> set_header("x-interceptor", "rejected")
 
 class \nodoc\ val _PassInterceptor is RequestInterceptor
   fun apply(request: stallion.Request box): InterceptResult =>
@@ -50,7 +49,6 @@ class \nodoc\ val _AuthHeaderInterceptor is RequestInterceptor
     end
 
 // --- InterceptRespond unit tests ---
-
 class \nodoc\ iso _TestInterceptRespondSetHeader is UnitTest
   fun name(): String => "interceptor/reject set_header"
 
@@ -121,7 +119,6 @@ class \nodoc\ iso _TestInterceptRespondAddHeaderMultiple is UnitTest
     h.assert_eq[USize](2, r._headers_size())
 
 // --- _RunRequestInterceptors unit tests ---
-
 class \nodoc\ iso _TestRunInterceptorsNone is UnitTest
   fun name(): String => "interceptor/run interceptors none"
 
@@ -159,7 +156,10 @@ class \nodoc\ iso _TestRunInterceptorsFirstRejectWins is UnitTest
     let request = _InterceptorTestRequest()
     let interceptors: Array[RequestInterceptor val] val =
       recover val
-        [as RequestInterceptor val: _PassInterceptor; _RejectInterceptor; _PassInterceptor]
+        [ as RequestInterceptor val:
+          _PassInterceptor
+          _RejectInterceptor
+          _PassInterceptor]
       end
     match _RunRequestInterceptors(request, interceptors)
     | let r: InterceptRespond =>
@@ -169,7 +169,6 @@ class \nodoc\ iso _TestRunInterceptorsFirstRejectWins is UnitTest
     end
 
 // --- _ConcatInterceptors unit tests ---
-
 class \nodoc\ iso _TestConcatInterceptorsNone is UnitTest
   fun name(): String => "interceptor/concat interceptors none"
 
@@ -218,7 +217,6 @@ class \nodoc\ iso _TestConcatInterceptorsInnerOnly is UnitTest
     end
 
 // --- Integration tests ---
-
 class \nodoc\ iso _TestInterceptRespondIntegration is UnitTest
   fun name(): String => "integration/interceptor reject"
   fun label(): String => "integration"
@@ -227,10 +225,15 @@ class \nodoc\ iso _TestInterceptRespondIntegration is UnitTest
     h.long_test(10_000_000_000)
     let interceptors: Array[RequestInterceptor val] val =
       recover val [as RequestInterceptor val: _RejectInterceptor] end
-    let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory)]
-    end where interceptors' = interceptors)
-    _IntegrationHelpers.run_test(h, router,
+    let router =
+      _IntegrationHelpers.build_router(
+        recover val
+          [(stallion.GET, "/", _HelloFactory)]
+        end
+        where interceptors' = interceptors)
+    _IntegrationHelpers.run_test(
+      h,
+      router,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "Forbidden by interceptor")
 
@@ -242,15 +245,22 @@ class \nodoc\ iso _TestInterceptPassIntegration is UnitTest
     h.long_test(10_000_000_000)
     let interceptors: Array[RequestInterceptor val] val =
       recover val [as RequestInterceptor val: _PassInterceptor] end
-    let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory)]
-    end where interceptors' = interceptors)
-    _IntegrationHelpers.run_test(h, router,
+    let router =
+      _IntegrationHelpers.build_router(
+        recover val
+          [(stallion.GET, "/", _HelloFactory)]
+        end
+        where interceptors' = interceptors)
+    _IntegrationHelpers.run_test(
+      h,
+      router,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "Hello from Hobby!")
 
 class \nodoc\ iso _TestInterceptGroupIntegration is UnitTest
-  """Interceptors on a route group reject before the handler runs."""
+  """
+  Interceptors on a route group reject before the handler runs.
+  """
   fun name(): String => "integration/interceptor route group"
   fun label(): String => "integration"
 
@@ -261,7 +271,9 @@ class \nodoc\ iso _TestInterceptGroupIntegration is UnitTest
     let builder = _RouterBuilder
     builder.add(stallion.GET, "/api/users", _HelloFactory, None, interceptors)
     let router = builder.build()
-    _IntegrationHelpers.run_test(h, router,
+    _IntegrationHelpers.run_test(
+      h,
+      router,
       "GET /api/users HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "Forbidden by interceptor")
 
@@ -273,15 +285,22 @@ class \nodoc\ iso _TestAppInterceptIntegration is UnitTest
     h.long_test(10_000_000_000)
     let interceptors: Array[RequestInterceptor val] val =
       recover val [as RequestInterceptor val: _RejectInterceptor] end
-    let router = _IntegrationHelpers.build_router(recover val
-      [(stallion.GET, "/", _HelloFactory)]
-    end where interceptors' = interceptors)
-    _IntegrationHelpers.run_test(h, router,
+    let router =
+      _IntegrationHelpers.build_router(
+        recover val
+          [(stallion.GET, "/", _HelloFactory)]
+        end
+        where interceptors' = interceptors)
+    _IntegrationHelpers.run_test(
+      h,
+      router,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "Forbidden by interceptor")
 
 class \nodoc\ iso _TestInterceptGroup404Integration is UnitTest
-  """Group request interceptor fires on 404 under the group's prefix."""
+  """
+  Group request interceptor fires on 404 under the group's prefix.
+  """
   fun name(): String => "integration/interceptor group 404"
   fun label(): String => "integration"
 
@@ -295,12 +314,16 @@ class \nodoc\ iso _TestInterceptGroup404Integration is UnitTest
     let router = builder.build()
     // Request to /api/nonexistent should hit the /api group's interceptor
     // and get rejected with 403 instead of 404
-    _IntegrationHelpers.run_test(h, router,
+    _IntegrationHelpers.run_test(
+      h,
+      router,
       "GET /api/nonexistent HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "Forbidden by interceptor")
 
 class \nodoc\ iso _TestInterceptGroup405Integration is UnitTest
-  """Group request interceptor fires on 405 under the group's prefix."""
+  """
+  Group request interceptor fires on 405 under the group's prefix.
+  """
   fun name(): String => "integration/interceptor group 405"
   fun label(): String => "integration"
 
@@ -314,17 +337,22 @@ class \nodoc\ iso _TestInterceptGroup405Integration is UnitTest
     let router = builder.build()
     // GET to POST-only /api/users should hit the /api group's interceptor
     // and get rejected with 403 instead of 405
-    _IntegrationHelpers.run_test(h, router,
+    _IntegrationHelpers.run_test(
+      h,
+      router,
       "GET /api/users HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "Forbidden by interceptor")
 
 // --- Helpers ---
-
 primitive \nodoc\ _InterceptorTestRequest
   fun apply(): stallion.Request val =>
     let mock_uri = URI(None, None, "/", None, None)
     let mock_headers: stallion.Headers val =
       recover val stallion.Headers end
     let mock_cookies = stallion.ParseCookies("")
-    stallion.Request(stallion.GET, mock_uri, stallion.HTTP11,
-      mock_headers, mock_cookies)
+    stallion.Request(
+      stallion.GET,
+      mock_uri,
+      stallion.HTTP11,
+      mock_headers,
+      mock_cookies)

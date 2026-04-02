@@ -5,6 +5,7 @@ GET_DEPENDENCIES_WITH := corral fetch
 CLEAN_DEPENDENCIES_WITH := corral clean
 COMPILE_WITH := corral run -- ponyc
 BUILD_DOCS_WITH := corral run -- pony-doc
+LINT_WITH := corral run -- pony-lint
 
 BUILD_DIR ?= build/$(config)
 SRC_DIR := $(PACKAGE)
@@ -75,6 +76,10 @@ $(docs_dir): $(SOURCE_FILES)
 
 docs: $(docs_dir)
 
+lint:
+	$(GET_DEPENDENCIES_WITH)
+	$(LINT_WITH) .
+
 TAGS:
 	ctags --recurse=yes $(SRC_DIR)
 
@@ -83,4 +88,4 @@ all: test
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-.PHONY: all examples clean integration-tests TAGS test unit-tests test-one
+.PHONY: all examples clean integration-tests lint TAGS test unit-tests test-one

@@ -1,0 +1,5 @@
+"""
+
+Static file serving example.
+"""
+

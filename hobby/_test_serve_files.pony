@@ -36,12 +36,13 @@ primitive \nodoc\ _TestServeFilesList
     test(_TestServeFilesHandlerBackpressure)
 
 // --- Test setup ---
-
 primitive \nodoc\ _ServeFilesTestSetup
   """
+
   Create a temporary directory with test files for ServeFiles integration
   tests. Idempotent — safe to call multiple times.
   """
+
   fun apply(env: Env): FilePath ? =>
     let file_auth = FileAuth(env.root)
     let root = FilePath(file_auth, "/tmp/hobby-test-serve")
@@ -54,14 +55,15 @@ primitive \nodoc\ _ServeFilesTestSetup
     _write_file(root, "style.css", "body { color: red; }")?
 
     // Large file for streaming tests (2 KB, exceeds chunk_threshold=1)
-    let large_content = recover val
-      let s = String(2048)
-      s.append("LARGE_FILE_MARKER:")
-      while s.size() < 2048 do
-        s.push('x')
+    let large_content =
+      recover val
+        let s = String(2048)
+        s.append("LARGE_FILE_MARKER:")
+        while s.size() < 2048 do
+          s.push('x')
+        end
+        s
       end
-      s
-    end
     _write_file(root, "large.txt", large_content)?
 
     // Subdirectory for directory test
@@ -78,15 +80,16 @@ primitive \nodoc\ _ServeFilesTestSetup
 
   fun _write_file(root: FilePath, name: String, content: String) ? =>
     let path = FilePath.from(root, name)?
-    let file = File(path)
-    file.set_length(0)
-    file.write(content)
-    file.dispose()
+    File(path)
+      .> set_length(0)
+      .> write(content)
+      .> dispose()
 
 // --- Integration tests ---
-
 class \nodoc\ iso _TestServeFilesSmallFile is UnitTest
-  """Small file served with correct Content-Type and body."""
+  """
+  Small file served with correct Content-Type and body.
+  """
   fun name(): String => "integration/serve-files/small file"
 
   fun label(): String => "integration"
@@ -94,10 +97,14 @@ class \nodoc\ iso _TestServeFilesSmallFile is UnitTest
   fun apply(h: TestHelper) =>
     try
       let root = _ServeFilesTestSetup(h.env)?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
         "Hello from test file")
     else
@@ -105,7 +112,9 @@ class \nodoc\ iso _TestServeFilesSmallFile is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesContentType is UnitTest
-  """Content-Type header matches file extension."""
+  """
+  Content-Type header matches file extension.
+  """
   fun name(): String => "integration/serve-files/content type"
 
   fun label(): String => "integration"
@@ -113,10 +122,14 @@ class \nodoc\ iso _TestServeFilesContentType is UnitTest
   fun apply(h: TestHelper) =>
     try
       let root = _ServeFilesTestSetup(h.env)?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/style.css HTTP/1.1\r\nHost: localhost\r\n\r\n",
         "text/css")
     else
@@ -124,7 +137,9 @@ class \nodoc\ iso _TestServeFilesContentType is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesLargeFile is UnitTest
-  """Large file streamed with chunked transfer encoding."""
+  """
+  Large file streamed with chunked transfer encoding.
+  """
   fun name(): String => "integration/serve-files/large file streaming"
 
   fun label(): String => "integration"
@@ -133,10 +148,14 @@ class \nodoc\ iso _TestServeFilesLargeFile is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let handler = ServeFiles(root where chunk_threshold = 1)
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler)]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", handler)]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/large.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
         "LARGE_FILE_MARKER:")
     else
@@ -144,7 +163,9 @@ class \nodoc\ iso _TestServeFilesLargeFile is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesMissing404 is UnitTest
-  """Missing file returns 404."""
+  """
+  Missing file returns 404.
+  """
   fun name(): String => "integration/serve-files/missing file 404"
 
   fun label(): String => "integration"
@@ -152,10 +173,14 @@ class \nodoc\ iso _TestServeFilesMissing404 is UnitTest
   fun apply(h: TestHelper) =>
     try
       let root = _ServeFilesTestSetup(h.env)?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/nonexistent.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
         "Not Found")
     else
@@ -163,7 +188,9 @@ class \nodoc\ iso _TestServeFilesMissing404 is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesTraversal404 is UnitTest
-  """Path traversal attempt returns 404."""
+  """
+  Path traversal attempt returns 404.
+  """
   fun name(): String => "integration/serve-files/path traversal 404"
 
   fun label(): String => "integration"
@@ -171,10 +198,14 @@ class \nodoc\ iso _TestServeFilesTraversal404 is UnitTest
   fun apply(h: TestHelper) =>
     try
       let root = _ServeFilesTestSetup(h.env)?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/sub/../../etc/passwd HTTP/1.1\r\nHost: localhost\r\n\r\n",
         "Not Found")
     else
@@ -182,7 +213,9 @@ class \nodoc\ iso _TestServeFilesTraversal404 is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesDirectory404 is UnitTest
-  """Requesting a directory without index.html returns 404."""
+  """
+  Requesting a directory without index.html returns 404.
+  """
   fun name(): String => "integration/serve-files/directory 404"
 
   fun label(): String => "integration"
@@ -190,10 +223,14 @@ class \nodoc\ iso _TestServeFilesDirectory404 is UnitTest
   fun apply(h: TestHelper) =>
     try
       let root = _ServeFilesTestSetup(h.env)?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/subdir HTTP/1.1\r\nHost: localhost\r\n\r\n",
         "Not Found")
     else
@@ -201,7 +238,9 @@ class \nodoc\ iso _TestServeFilesDirectory404 is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesLargeFileHTTP10 is UnitTest
-  """HTTP/1.0 client requesting a large file gets 505."""
+  """
+  HTTP/1.0 client requesting a large file gets 505.
+  """
   fun name(): String => "integration/serve-files/large file HTTP 1.0 505"
 
   fun label(): String => "integration"
@@ -210,10 +249,14 @@ class \nodoc\ iso _TestServeFilesLargeFileHTTP10 is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let handler = ServeFiles(root where chunk_threshold = 1)
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler)]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", handler)]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/large.txt HTTP/1.0\r\nHost: localhost\r\n\r\n",
         "HTTP Version Not Supported")
     else
@@ -221,7 +264,9 @@ class \nodoc\ iso _TestServeFilesLargeFileHTTP10 is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesHeadSmallFile is UnitTest
-  """HEAD for small file: Content-Length header present, body absent."""
+  """
+  HEAD for small file: Content-Length header present, body absent.
+  """
   fun name(): String => "integration/serve-files/HEAD small file"
 
   fun label(): String => "integration"
@@ -229,19 +274,26 @@ class \nodoc\ iso _TestServeFilesHeadSmallFile is UnitTest
   fun apply(h: TestHelper) =>
     try
       let root = _ServeFilesTestSetup(h.env)?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
       // Headers go through stallion.Headers which lowercases names.
-      _HeadIntegrationHelpers.run_head_test(h, router,
+      _HeadIntegrationHelpers.run_head_test(
+        h,
+        router,
         "HEAD /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
-        "content-length: 20", "Hello from test file")
+        "content-length: 20",
+        "Hello from test file")
     else
       h.fail("test setup failed")
     end
 
 class \nodoc\ iso _TestServeFilesHeadLargeFile is UnitTest
-  """HEAD for large file: Content-Length from stat, body absent."""
+  """
+  HEAD for large file: Content-Length from stat, body absent.
+  """
   fun name(): String => "integration/serve-files/HEAD large file"
 
   fun label(): String => "integration"
@@ -250,21 +302,27 @@ class \nodoc\ iso _TestServeFilesHeadLargeFile is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let handler = ServeFiles(root where chunk_threshold = 1)
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler)]
-      end)
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", handler)]
+          end)
       // Headers go through stallion.Headers which lowercases names.
-      _HeadIntegrationHelpers.run_head_test(h, router,
+      _HeadIntegrationHelpers.run_head_test(
+        h,
+        router,
         "HEAD /static/large.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
-        "content-length: 2048", "LARGE_FILE_MARKER:")
+        "content-length: 2048",
+        "LARGE_FILE_MARKER:")
     else
       h.fail("test setup failed")
     end
 
 // --- Cache header helpers ---
-
 primitive \nodoc\ _ServeFilesTestETag
-  """Compute the expected ETag for a test file."""
+  """
+  Compute the expected ETag for a test file.
+  """
   fun apply(root: FilePath, name': String): String ? =>
     let path = FilePath.from(root, name')?
     let info = FileInfo(path)?
@@ -275,12 +333,13 @@ primitive \nodoc\ _ServeFilesTestETag
     let path = FilePath.from(root, name')?
     let info = FileInfo(path)?
     (let mod_secs, _) = info.modified_time
-    _HttpDate(mod_secs)
+    _HTTPDate(mod_secs)
 
 // --- Cache header integration tests ---
-
 class \nodoc\ iso _TestServeFilesCacheHeadersPresent is UnitTest
-  """GET response includes ETag header."""
+  """
+  GET response includes ETag header.
+  """
   fun name(): String => "integration/serve-files/cache headers present"
 
   fun label(): String => "integration"
@@ -289,11 +348,15 @@ class \nodoc\ iso _TestServeFilesCacheHeadersPresent is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "hello.txt")?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
       // stallion.Headers lowercases header names
-      _IntegrationHelpers.run_test(h, router,
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
         "etag: " + etag)
     else
@@ -301,7 +364,9 @@ class \nodoc\ iso _TestServeFilesCacheHeadersPresent is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesETag304 is UnitTest
-  """GET with matching If-None-Match returns 304."""
+  """
+  GET with matching If-None-Match returns 304.
+  """
   fun name(): String => "integration/serve-files/ETag 304"
 
   fun label(): String => "integration"
@@ -310,10 +375,14 @@ class \nodoc\ iso _TestServeFilesETag304 is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "hello.txt")?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n" +
           "If-None-Match: " + etag + "\r\n\r\n",
         "304 Not Modified")
@@ -322,7 +391,9 @@ class \nodoc\ iso _TestServeFilesETag304 is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesIfModifiedSince304 is UnitTest
-  """GET with matching If-Modified-Since returns 304."""
+  """
+  GET with matching If-Modified-Since returns 304.
+  """
   fun name(): String => "integration/serve-files/If-Modified-Since 304"
 
   fun label(): String => "integration"
@@ -331,10 +402,14 @@ class \nodoc\ iso _TestServeFilesIfModifiedSince304 is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let last_mod = _ServeFilesTestETag.last_modified(root, "hello.txt")?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n" +
           "If-Modified-Since: " + last_mod + "\r\n\r\n",
         "304 Not Modified")
@@ -343,7 +418,9 @@ class \nodoc\ iso _TestServeFilesIfModifiedSince304 is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesETagMismatch200 is UnitTest
-  """GET with non-matching If-None-Match returns 200 with body."""
+  """
+  GET with non-matching If-None-Match returns 200 with body.
+  """
   fun name(): String => "integration/serve-files/ETag mismatch 200"
 
   fun label(): String => "integration"
@@ -351,10 +428,14 @@ class \nodoc\ iso _TestServeFilesETagMismatch200 is UnitTest
   fun apply(h: TestHelper) =>
     try
       let root = _ServeFilesTestSetup(h.env)?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n" +
           "If-None-Match: W/\"0-0-0\"\r\n\r\n",
         "Hello from test file")
@@ -363,7 +444,9 @@ class \nodoc\ iso _TestServeFilesETagMismatch200 is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesHeadCacheHeaders is UnitTest
-  """HEAD response includes ETag header, body absent."""
+  """
+  HEAD response includes ETag header, body absent.
+  """
   fun name(): String => "integration/serve-files/HEAD cache headers"
 
   fun label(): String => "integration"
@@ -372,18 +455,25 @@ class \nodoc\ iso _TestServeFilesHeadCacheHeaders is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "hello.txt")?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _HeadIntegrationHelpers.run_head_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _HeadIntegrationHelpers.run_head_test(
+        h,
+        router,
         "HEAD /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
-        "etag: " + etag, "Hello from test file")
+        "etag: " + etag,
+        "Hello from test file")
     else
       h.fail("test setup failed")
     end
 
 class \nodoc\ iso _TestServeFilesHead304 is UnitTest
-  """HEAD with matching If-None-Match returns 304."""
+  """
+  HEAD with matching If-None-Match returns 304.
+  """
   fun name(): String => "integration/serve-files/HEAD ETag 304"
 
   fun label(): String => "integration"
@@ -392,10 +482,14 @@ class \nodoc\ iso _TestServeFilesHead304 is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "hello.txt")?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "HEAD /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n" +
           "If-None-Match: " + etag + "\r\n\r\n",
         "304 Not Modified")
@@ -404,7 +498,9 @@ class \nodoc\ iso _TestServeFilesHead304 is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesCacheControlCustom is UnitTest
-  """Custom cache_control value appears in response."""
+  """
+  Custom cache_control value appears in response.
+  """
   fun name(): String => "integration/serve-files/custom cache-control"
 
   fun label(): String => "integration"
@@ -412,12 +508,18 @@ class \nodoc\ iso _TestServeFilesCacheControlCustom is UnitTest
   fun apply(h: TestHelper) =>
     try
       let root = _ServeFilesTestSetup(h.env)?
-      let handler = ServeFiles(root
-        where cache_control = "private, max-age=600")
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler)]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let handler =
+        ServeFiles(
+          root
+          where cache_control = "private, max-age=600")
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", handler)]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
         "cache-control: private, max-age=600")
     else
@@ -425,7 +527,9 @@ class \nodoc\ iso _TestServeFilesCacheControlCustom is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesCacheControlDisabled is UnitTest
-  """cache_control = None omits Cache-Control header."""
+  """
+  cache_control = None omits Cache-Control header.
+  """
   fun name(): String => "integration/serve-files/cache-control disabled"
 
   fun label(): String => "integration"
@@ -434,41 +538,68 @@ class \nodoc\ iso _TestServeFilesCacheControlDisabled is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let handler = ServeFiles(root where cache_control = None)
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler)]
-      end)
-      _ServeFilesCacheControlDisabledHelper.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", handler)]
+          end)
+      _ServeFilesCacheControlDisabledHelper.run_test(
+        h,
+        router,
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
-        "Hello from test file", "cache-control:")
+        "Hello from test file",
+        "cache-control:")
     else
       h.fail("test setup failed")
     end
 
 primitive \nodoc\ _ServeFilesCacheControlDisabledHelper
   """
+
   Run a test that checks for a required string AND verifies a forbidden
   string is absent.
   """
-  fun run_test(h: TestHelper, router: _Router val,
-    request: String, expected: String, forbidden: String)
+
+  fun run_test(
+    h: TestHelper,
+    router: _Router val,
+    request: String,
+    expected: String,
+    forbidden: String)
   =>
     h.long_test(5_000_000_000)
     let host = _TestHost()
     let config = stallion.ServerConfig(host, "0")
     let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
-    _TestIntegrationListener(auth, config, router, h,
-      {(h': TestHelper, port: String,
+    _TestIntegrationListener(
+      auth,
+      config,
+      router,
+      h,
+      {(h': TestHelper,
+        port: String,
         listener: _TestIntegrationListener) =>
-        _TestNoCacheControlClient(connect_auth, host, port, h',
-          request, expected, forbidden, listener)
+        _TestNoCacheControlClient(
+          connect_auth,
+          host,
+          port,
+          h',
+          request,
+          expected,
+          forbidden,
+          listener)
       })
 
-actor \nodoc\ _TestNoCacheControlClient is (lori.TCPConnectionActor & lori.ClientLifecycleEventReceiver)
+actor \nodoc\ _TestNoCacheControlClient is
+  (lori.TCPConnectionActor &
+    lori.ClientLifecycleEventReceiver)
   """
+
   TCP client that checks a required string is present and a forbidden
   string is absent.
   """
+
   var _tcp_connection: lori.TCPConnection = lori.TCPConnection.none()
   let _h: TestHelper
   let _request: String
@@ -477,8 +608,14 @@ actor \nodoc\ _TestNoCacheControlClient is (lori.TCPConnectionActor & lori.Clien
   let _listener: _TestIntegrationListener
   var _response: String iso = recover iso String end
 
-  new create(auth: lori.TCPConnectAuth, host: String, port: String,
-    h: TestHelper, request: String, expected: String, forbidden: String,
+  new create(
+    auth: lori.TCPConnectAuth,
+    host: String,
+    port: String,
+    h: TestHelper,
+    request: String,
+    expected: String,
+    forbidden: String,
     listener: _TestIntegrationListener)
   =>
     _h = h
@@ -486,7 +623,9 @@ actor \nodoc\ _TestNoCacheControlClient is (lori.TCPConnectionActor & lori.Clien
     _expected = expected
     _forbidden = forbidden
     _listener = listener
-    _tcp_connection = lori.TCPConnection.client(auth, host, port, "", this, this)
+    _tcp_connection =
+      lori.TCPConnection.client(
+        auth, host, port, "", this, this)
 
   fun ref _connection(): lori.TCPConnection => _tcp_connection
 
@@ -497,7 +636,8 @@ actor \nodoc\ _TestNoCacheControlClient is (lori.TCPConnectionActor & lori.Clien
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains(_expected) then
-      _h.assert_false(response_str.contains(_forbidden),
+      _h.assert_false(
+        response_str.contains(_forbidden),
         "Response must not contain: " + _forbidden)
       _tcp_connection.close()
       _listener.dispose()
@@ -512,7 +652,9 @@ actor \nodoc\ _TestNoCacheControlClient is (lori.TCPConnectionActor & lori.Clien
     _h.complete(false)
 
 class \nodoc\ iso _TestServeFilesLargeFileCacheHeaders is UnitTest
-  """Large file streaming response includes ETag header."""
+  """
+  Large file streaming response includes ETag header.
+  """
   fun name(): String => "integration/serve-files/large file cache headers"
 
   fun label(): String => "integration"
@@ -522,10 +664,14 @@ class \nodoc\ iso _TestServeFilesLargeFileCacheHeaders is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "large.txt")?
       let handler = ServeFiles(root where chunk_threshold = 1)
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler)]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", handler)]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/large.txt HTTP/1.1\r\nHost: localhost\r\n\r\n",
         "etag: " + etag)
     else
@@ -534,9 +680,11 @@ class \nodoc\ iso _TestServeFilesLargeFileCacheHeaders is UnitTest
 
 class \nodoc\ iso _TestServeFilesLargeFileETag304 is UnitTest
   """
+
   Large file with matching If-None-Match returns 304 (conditional check
   happens before size branch).
   """
+
   fun name(): String => "integration/serve-files/large file ETag 304"
 
   fun label(): String => "integration"
@@ -546,10 +694,14 @@ class \nodoc\ iso _TestServeFilesLargeFileETag304 is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "large.txt")?
       let handler = ServeFiles(root where chunk_threshold = 1)
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler)]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", handler)]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/large.txt HTTP/1.1\r\nHost: localhost\r\n" +
           "If-None-Match: " + etag + "\r\n\r\n",
         "304 Not Modified")
@@ -559,9 +711,11 @@ class \nodoc\ iso _TestServeFilesLargeFileETag304 is UnitTest
 
 class \nodoc\ iso _TestServeFilesETagPrecedence is UnitTest
   """
+
   If-None-Match takes precedence over If-Modified-Since per RFC 7232 section 3.
   Matching ETag + non-matching If-Modified-Since still returns 304.
   """
+
   fun name(): String => "integration/serve-files/ETag precedence"
 
   fun label(): String => "integration"
@@ -570,11 +724,15 @@ class \nodoc\ iso _TestServeFilesETagPrecedence is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "hello.txt")?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
       // Matching ETag but non-matching If-Modified-Since
-      _IntegrationHelpers.run_test(h, router,
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/hello.txt HTTP/1.1\r\nHost: localhost\r\n" +
           "If-None-Match: " + etag + "\r\n" +
           "If-Modified-Since: Thu, 01 Jan 1970 00:00:00 GMT\r\n\r\n",
@@ -584,9 +742,10 @@ class \nodoc\ iso _TestServeFilesETagPrecedence is UnitTest
     end
 
 // --- Directory index tests ---
-
 class \nodoc\ iso _TestServeFilesDirectoryIndex is UnitTest
-  """Directory with index.html serves the index file content."""
+  """
+  Directory with index.html serves the index file content.
+  """
   fun name(): String => "integration/serve-files/directory index"
 
   fun label(): String => "integration"
@@ -594,10 +753,14 @@ class \nodoc\ iso _TestServeFilesDirectoryIndex is UnitTest
   fun apply(h: TestHelper) =>
     try
       let root = _ServeFilesTestSetup(h.env)?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/indexed HTTP/1.1\r\nHost: localhost\r\n\r\n",
         "<h1>Index</h1>")
     else
@@ -605,7 +768,9 @@ class \nodoc\ iso _TestServeFilesDirectoryIndex is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesDirectoryIndexContentType is UnitTest
-  """Directory index response has text/html Content-Type."""
+  """
+  Directory index response has text/html Content-Type.
+  """
   fun name(): String => "integration/serve-files/directory index content type"
 
   fun label(): String => "integration"
@@ -613,10 +778,14 @@ class \nodoc\ iso _TestServeFilesDirectoryIndexContentType is UnitTest
   fun apply(h: TestHelper) =>
     try
       let root = _ServeFilesTestSetup(h.env)?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/indexed HTTP/1.1\r\nHost: localhost\r\n\r\n",
         "text/html")
     else
@@ -624,7 +793,9 @@ class \nodoc\ iso _TestServeFilesDirectoryIndexContentType is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesDirectoryIndexCacheHeaders is UnitTest
-  """Directory index response has ETag based on index.html metadata."""
+  """
+  Directory index response has ETag based on index.html metadata.
+  """
   fun name(): String => "integration/serve-files/directory index cache headers"
 
   fun label(): String => "integration"
@@ -633,10 +804,14 @@ class \nodoc\ iso _TestServeFilesDirectoryIndexCacheHeaders is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "indexed/index.html")?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/indexed HTTP/1.1\r\nHost: localhost\r\n\r\n",
         "etag: " + etag)
     else
@@ -644,7 +819,9 @@ class \nodoc\ iso _TestServeFilesDirectoryIndexCacheHeaders is UnitTest
     end
 
 class \nodoc\ iso _TestServeFilesDirectoryIndexHead is UnitTest
-  """HEAD for directory index: Content-Length present, body absent."""
+  """
+  HEAD for directory index: Content-Length present, body absent.
+  """
   fun name(): String => "integration/serve-files/HEAD directory index"
 
   fun label(): String => "integration"
@@ -652,18 +829,25 @@ class \nodoc\ iso _TestServeFilesDirectoryIndexHead is UnitTest
   fun apply(h: TestHelper) =>
     try
       let root = _ServeFilesTestSetup(h.env)?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _HeadIntegrationHelpers.run_head_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _HeadIntegrationHelpers.run_head_test(
+        h,
+        router,
         "HEAD /static/indexed HTTP/1.1\r\nHost: localhost\r\n\r\n",
-        "content-length:", "<h1>Index</h1>")
+        "content-length:",
+        "<h1>Index</h1>")
     else
       h.fail("test setup failed")
     end
 
 class \nodoc\ iso _TestServeFilesDirectoryIndex304 is UnitTest
-  """Directory index with matching If-None-Match returns 304."""
+  """
+  Directory index with matching If-None-Match returns 304.
+  """
   fun name(): String => "integration/serve-files/directory index 304"
 
   fun label(): String => "integration"
@@ -672,10 +856,14 @@ class \nodoc\ iso _TestServeFilesDirectoryIndex304 is UnitTest
     try
       let root = _ServeFilesTestSetup(h.env)?
       let etag = _ServeFilesTestETag(root, "indexed/index.html")?
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", ServeFiles(root))]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", ServeFiles(root))]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/indexed HTTP/1.1\r\nHost: localhost\r\n" +
           "If-None-Match: " + etag + "\r\n\r\n",
         "304 Not Modified")
@@ -684,9 +872,10 @@ class \nodoc\ iso _TestServeFilesDirectoryIndex304 is UnitTest
     end
 
 // --- Custom content types ---
-
 class \nodoc\ iso _TestServeFilesCustomContentType is UnitTest
-  """Custom content type mapping is used for file responses."""
+  """
+  Custom content type mapping is used for file responses.
+  """
   fun name(): String => "integration/serve-files/custom content type"
 
   fun label(): String => "integration"
@@ -696,10 +885,14 @@ class \nodoc\ iso _TestServeFilesCustomContentType is UnitTest
       let root = _ServeFilesTestSetup(h.env)?
       let types = ContentTypes.add("custom", "application/x-custom")
       let handler = ServeFiles(root where content_types = types)
-      let router = _IntegrationHelpers.build_router(recover val
-        [(stallion.GET, "/static/*filepath", handler)]
-      end)
-      _IntegrationHelpers.run_test(h, router,
+      let router =
+        _IntegrationHelpers.build_router(
+          recover val
+            [(stallion.GET, "/static/*filepath", handler)]
+          end)
+      _IntegrationHelpers.run_test(
+        h,
+        router,
         "GET /static/image.custom HTTP/1.1\r\nHost: localhost\r\n\r\n",
         "application/x-custom")
     else
@@ -707,9 +900,10 @@ class \nodoc\ iso _TestServeFilesCustomContentType is UnitTest
     end
 
 // --- FileStreamer pause/resume test ---
-
 class \nodoc\ iso _TestFileStreamerPauseResume is UnitTest
-  """Pause stops the read loop; resume restarts it through to completion."""
+  """
+  Pause stops the read loop; resume restarts it through to completion.
+  """
   fun name(): String => "integration/serve-files/file streamer pause resume"
 
   fun label(): String => "integration"
@@ -728,16 +922,22 @@ class \nodoc\ iso _TestFileStreamerPauseResume is UnitTest
     file.write(chunk)
     file.dispose()
 
-    let read_file: File iso = recover iso
-      File.open(FilePath(file_auth, "/tmp/hobby-test-pause-resume.bin"))
-    end
+    let read_file: File iso =
+      recover iso
+        File.open(
+          FilePath(
+            file_auth,
+            "/tmp/hobby-test-pause-resume.bin"))
+      end
     _PauseResumeTarget(h, consume read_file, path)
 
 actor \nodoc\ _PauseResumeTarget is _FileTarget
   """
+
   On first chunk, pauses the streamer. A short timer resumes it.
   Verifies that _file_done arrives after the pause/resume cycle.
   """
+
   let _h: TestHelper
   var _streamer: (_FileStreamer | None) = None
   let _timers: Timers
@@ -761,8 +961,11 @@ actor \nodoc\ _PauseResumeTarget is _FileTarget
       end
       // Resume after 100ms
       let resume_target: _PauseResumeTarget tag = this
-      let timer = Timer(
-        _PauseResumeNotify(resume_target), 100_000_000, 0)
+      let timer =
+        Timer(
+          _PauseResumeNotify(resume_target),
+          100_000_000,
+          0)
       _timers(consume timer)
     end
 
@@ -772,9 +975,12 @@ actor \nodoc\ _PauseResumeTarget is _FileTarget
     end
 
   be _file_done() =>
-    _h.assert_true(_chunks_received >= 2,
-      "expected multiple chunks, got " + _chunks_received.string())
-    _h.assert_true(_paused, "pause should have been triggered")
+    _h.assert_true(
+      _chunks_received >= 2,
+      "expected multiple chunks, got "
+        + _chunks_received.string())
+    _h.assert_true(
+      _paused, "pause should have been triggered")
     _timers.dispose()
     // Clean up temp file
     _path.remove()
@@ -791,9 +997,10 @@ class \nodoc\ iso _PauseResumeNotify is TimerNotify
     false
 
 // --- ServeFilesHandler backpressure test ---
-
 class \nodoc\ iso _TestServeFilesHandlerBackpressure is UnitTest
-  """throttled()/unthrottled() on _ServeFilesHandler pauses/resumes the streamer."""
+  """
+  throttled()/unthrottled() on _ServeFilesHandler pauses/resumes the streamer.
+  """
   fun name(): String =>
     "integration/serve-files/handler backpressure"
 
@@ -813,21 +1020,31 @@ class \nodoc\ iso _TestServeFilesHandlerBackpressure is UnitTest
     file.write(chunk)
     file.dispose()
 
-    let read_file: File iso = recover iso
-      File.open(FilePath(file_auth, "/tmp/hobby-test-bp-handler.bin"))
-    end
+    let read_file: File iso =
+      recover iso
+        File.open(
+          FilePath(
+            file_auth,
+            "/tmp/hobby-test-bp-handler.bin"))
+      end
     let mock = _BackpressureMockConnection(h, path)
     let headers: stallion.Headers val =
       recover val stallion.Headers end
-    let handler = _ServeFilesHandler(_MockHandlerContext(mock),
-      consume read_file, stallion.StatusOK, headers)
+    let handler =
+      _ServeFilesHandler(
+        _MockHandlerContext(mock),
+        consume read_file,
+        stallion.StatusOK,
+        headers)
     mock.set_handler(handler)
 
 actor \nodoc\ _BackpressureMockConnection is _ConnectionProtocol
   """
+
   Mock connection that throttles on first chunk and unthrottles after a timer.
   Verifies that chunks continue to arrive after unthrottling.
   """
+
   let _h: TestHelper
   let _path: FilePath
   let _timers: Timers
@@ -843,12 +1060,17 @@ actor \nodoc\ _BackpressureMockConnection is _ConnectionProtocol
   be set_handler(handler: _ServeFilesHandler) =>
     _handler = handler
 
-  be _handler_respond(token: U64, status: stallion.Status,
-    headers: (stallion.Headers val | None), body: ByteSeq)
+  be _handler_respond(
+    token: U64,
+    status: stallion.Status,
+    headers: (stallion.Headers val | None),
+    body: ByteSeq)
   =>
     None
 
-  be _handler_start_streaming(token: U64, status: stallion.Status,
+  be _handler_start_streaming(
+    token: U64,
+    status: stallion.Status,
     headers: (stallion.Headers val | None))
   =>
     None
@@ -862,8 +1084,11 @@ actor \nodoc\ _BackpressureMockConnection is _ConnectionProtocol
       end
       // Resume after 100ms
       let self: _BackpressureMockConnection tag = this
-      let timer = Timer(
-        _BackpressureResumeNotify(self), 100_000_000, 0)
+      let timer =
+        Timer(
+          _BackpressureResumeNotify(self),
+          100_000_000,
+          0)
       _timers(consume timer)
     end
 
@@ -873,9 +1098,12 @@ actor \nodoc\ _BackpressureMockConnection is _ConnectionProtocol
     end
 
   be _handler_finish(token: U64) =>
-    _h.assert_true(_chunks_received >= 2,
-      "expected multiple chunks, got " + _chunks_received.string())
-    _h.assert_true(_paused, "pause should have been triggered")
+    _h.assert_true(
+      _chunks_received >= 2,
+      "expected multiple chunks, got "
+        + _chunks_received.string())
+    _h.assert_true(
+      _paused, "pause should have been triggered")
     _timers.dispose()
     _path.remove()
     _h.complete(true)

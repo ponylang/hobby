@@ -2,6 +2,7 @@ use "files"
 
 actor _FileStreamer
   """
+
   Read a file in chunks and send them to a `_FileTarget`.
 
   Reads 64 KB chunks using self-directed `_read_next()` messages so the Pony
@@ -15,6 +16,7 @@ actor _FileStreamer
   off. The connection's `throttled()`/`unthrottled()` signals drive this —
   see `_ServeFilesHandler` for the wiring.
   """
+
   let _file: File
   let _target: _FileTarget tag
   var _disposed: Bool = false
@@ -39,11 +41,15 @@ actor _FileStreamer
     end
 
   be pause() =>
-    """Pause the read loop. No further chunks are sent until `resume()`."""
+    """
+    Pause the read loop. No further chunks are sent until `resume()`.
+    """
     _paused = true
 
   be resume() =>
-    """Resume the read loop after a `pause()`. No-op if not paused."""
+    """
+    Resume the read loop after a `pause()`. No-op if not paused.
+    """
     if _paused then
       _paused = false
       if not _disposed then
