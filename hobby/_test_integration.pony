@@ -1,8 +1,10 @@
 use "pony_test"
 use "collections"
+use "files"
 use "time"
 use stallion = "stallion"
 use lori = "lori"
+use ssl_net = "ssl/net"
 use "net"
 
 primitive \nodoc\ _TestIntegrationList
@@ -33,6 +35,9 @@ primitive \nodoc\ _TestIntegrationList
     test(_TestNormalCompletionWithTimeout)
     test(_TestOnClosedStreamingDispose)
     test(_TestMethodNotAllowed405)
+    test(_TestSSLBasicGet)
+    test(_TestSSLStreaming)
+    test(_TestSSLHandshakeFailure)
 
 // --- Test helpers ---
 primitive \nodoc\ _TestHost
@@ -122,7 +127,14 @@ actor \nodoc\ _TestIntegrationListener is lori.TCPListenerActor
   fun ref _listener(): lori.TCPListener => _tcp_listener
 
   fun ref _on_accept(fd: U32): lori.TCPConnectionActor =>
-    _Connection(_server_auth, fd, _config, _router, _timers, 0)
+    _Connection(
+      _server_auth,
+      fd,
+      _config,
+      _router,
+      _timers,
+      0,
+      _h.env.out)
 
   fun ref _on_listening() =>
     try
@@ -836,7 +848,14 @@ actor \nodoc\ _TestTimeoutListener is lori.TCPListenerActor
 
   fun ref _on_accept(fd: U32): lori.TCPConnectionActor =>
     // 500ms timeout in nanoseconds
-    _Connection(_server_auth, fd, _config, _router, _timers, 500_000_000)
+    _Connection(
+      _server_auth,
+      fd,
+      _config,
+      _router,
+      _timers,
+      500_000_000,
+      _h.env.out)
 
   fun ref _on_listening() =>
     try
@@ -1514,4 +1533,352 @@ class \nodoc\ iso _TestMethodNotAllowed405 is UnitTest
       router,
       "GET /echo HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "allow: POST")
+
+// --- SSL test helpers ---
+primitive \nodoc\ _TestSSLContext
+  fun apply(h: TestHelper): ssl_net.SSLContext val ? =>
+    let file_auth = FileAuth(h.env.root)
+    recover val
+      ssl_net.SSLContext
+        .> set_authority(
+          FilePath(file_auth, "assets/cert.pem"))?
+        .> set_cert(
+          FilePath(file_auth, "assets/cert.pem"),
+          FilePath(file_auth, "assets/key.pem"))?
+        .> set_client_verify(false)
+        .> set_server_verify(false)
+    end
+
+actor \nodoc\ _TestSSLClient is
+  (lori.TCPConnectionActor &
+    lori.ClientLifecycleEventReceiver)
+  """
+  SSL-aware TCP client for HTTPS integration tests.
+  """
+  var _tcp_connection: lori.TCPConnection =
+    lori.TCPConnection.none()
+  let _h: TestHelper
+  let _request: String
+  let _expected: String
+  let _listener: _TestSSLIntegrationListener
+  var _response: String iso = recover iso String end
+
+  new create(
+    auth: lori.TCPConnectAuth,
+    ssl_ctx: ssl_net.SSLContext val,
+    host: String,
+    port: String,
+    h: TestHelper,
+    request: String,
+    expected: String,
+    listener: _TestSSLIntegrationListener)
+  =>
+    _h = h
+    _request = request
+    _expected = expected
+    _listener = listener
+    _tcp_connection =
+      lori.TCPConnection.ssl_client(
+        auth, ssl_ctx, host, port, "", this, this)
+
+  fun ref _connection(): lori.TCPConnection =>
+    _tcp_connection
+
+  fun ref _on_connected() =>
+    _tcp_connection.send(_request)
+
+  fun ref _on_received(data: Array[U8] iso) =>
+    _response.append(consume data)
+    let response_str: String val = _response.clone()
+    if response_str.contains(_expected) then
+      _tcp_connection.close()
+      _listener.dispose()
+      _h.complete(true)
+    end
+
+  fun ref _on_closed() => None
+
+  fun ref _on_connection_failure(
+    reason: lori.ConnectionFailureReason)
+  =>
+    _h.fail("SSL connection failed")
+    _listener.dispose()
+    _h.complete(false)
+
+actor \nodoc\ _TestSSLIntegrationListener
+  is lori.TCPListenerActor
+  var _tcp_listener: lori.TCPListener =
+    lori.TCPListener.none()
+  let _server_auth: lori.TCPServerAuth
+  let _config: stallion.ServerConfig
+  let _router: _Router val
+  let _timers: Timers tag
+  let _h: TestHelper
+  let _ssl_ctx: ssl_net.SSLContext val
+  let _run_client:
+    {(TestHelper, String,
+      _TestSSLIntegrationListener)} val
+
+  new create(
+    auth: lori.TCPListenAuth,
+    config: stallion.ServerConfig,
+    router: _Router val,
+    ssl_ctx: ssl_net.SSLContext val,
+    h: TestHelper,
+    run_client:
+      {(TestHelper, String,
+        _TestSSLIntegrationListener)} val)
+  =>
+    _server_auth = lori.TCPServerAuth(auth)
+    _config = config
+    _router = router
+    _ssl_ctx = ssl_ctx
+    _timers = Timers
+    _h = h
+    _run_client = run_client
+    _tcp_listener =
+      lori.TCPListener(
+        auth, config.host, config.port, this)
+
+  fun ref _listener(): lori.TCPListener => _tcp_listener
+
+  fun ref _on_accept(fd: U32): lori.TCPConnectionActor =>
+    _Connection(
+      _server_auth,
+      fd,
+      _config,
+      _router,
+      _timers,
+      0,
+      _h.env.out,
+      _ssl_ctx)
+
+  fun ref _on_listening() =>
+    try
+      (_, let port) = _tcp_listener.local_address().name()?
+      _run_client(_h, port, this)
+    else
+      _h.fail("could not get listener port")
+      _h.complete(false)
+    end
+
+  fun ref _on_listen_failure() =>
+    _h.fail("SSL listener failed to start")
+    _h.complete(false)
+
+  be dispose() =>
+    _tcp_listener.close()
+    _timers.dispose()
+
+primitive \nodoc\ _SSLIntegrationHelpers
+  fun run_ssl_test(
+    h: TestHelper,
+    router: _Router val,
+    request: String,
+    expected: String)
+  =>
+    h.long_test(5_000_000_000)
+    let host = _TestHost()
+    let config = stallion.ServerConfig(host, "0")
+    let auth = lori.TCPListenAuth(h.env.root)
+    let connect_auth = lori.TCPConnectAuth(h.env.root)
+    let ssl_ctx =
+      try
+        _TestSSLContext(h)?
+      else
+        h.fail("could not create SSL context")
+        h.complete(false)
+        return
+      end
+    _TestSSLIntegrationListener(
+      auth,
+      config,
+      router,
+      ssl_ctx,
+      h,
+      {(h': TestHelper,
+        port: String,
+        listener: _TestSSLIntegrationListener)
+        (ssl_ctx, connect_auth, host)
+      =>
+        _TestSSLClient(
+          connect_auth,
+          ssl_ctx,
+          host,
+          port,
+          h',
+          request,
+          expected,
+          listener)
+      })
+
+// --- SSL integration tests ---
+class \nodoc\ iso _TestSSLBasicGet is UnitTest
+  """
+  Basic HTTPS GET returns 200 + body.
+  """
+  fun name(): String => "integration/ssl basic GET"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let router =
+      _IntegrationHelpers.build_router(
+        recover val
+          [(stallion.GET, "/", _HelloFactory)]
+        end)
+    _SSLIntegrationHelpers.run_ssl_test(
+      h,
+      router,
+      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "Hello from Hobby!")
+
+class \nodoc\ iso _TestSSLStreaming is UnitTest
+  """
+  HTTPS streaming response delivers chunks.
+  """
+  fun name(): String => "integration/ssl streaming"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    let router =
+      _IntegrationHelpers.build_router(
+        recover val
+          [ (stallion.GET, "/stream",
+            _StreamingFactory) ]
+        end)
+    _SSLIntegrationHelpers.run_ssl_test(
+      h,
+      router,
+      "GET /stream HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "0\r\n\r\n")
+
+class \nodoc\ iso _TestSSLHandshakeFailure is UnitTest
+  """
+  A plain TCP client connecting to an SSL listener triggers a
+  handshake failure. The server survives and a subsequent SSL
+  client succeeds.
+  """
+  fun name(): String =>
+    "integration/ssl handshake failure"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    h.long_test(5_000_000_000)
+    let host = _TestHost()
+    let config = stallion.ServerConfig(host, "0")
+    let auth = lori.TCPListenAuth(h.env.root)
+    let connect_auth = lori.TCPConnectAuth(h.env.root)
+    let ssl_ctx =
+      try
+        _TestSSLContext(h)?
+      else
+        h.fail("could not create SSL context")
+        h.complete(false)
+        return
+      end
+    let router =
+      _IntegrationHelpers.build_router(
+        recover val
+          [(stallion.GET, "/", _HelloFactory)]
+        end)
+    _TestSSLIntegrationListener(
+      auth,
+      config,
+      router,
+      ssl_ctx,
+      h,
+      {(h': TestHelper,
+        port: String,
+        listener: _TestSSLIntegrationListener)
+        (ssl_ctx, connect_auth, host)
+      =>
+        // First: plain TCP client triggers handshake failure
+        _PlainTCPThenSSLClient(
+          connect_auth,
+          ssl_ctx,
+          host,
+          port,
+          h',
+          listener)
+      })
+
+actor \nodoc\ _PlainTCPThenSSLClient is
+  (lori.TCPConnectionActor &
+    lori.ClientLifecycleEventReceiver)
+  """
+  Sends a plain HTTP request to an SSL listener (triggering a
+  handshake failure), then connects with a proper SSL client to
+  verify the server survived.
+  """
+  var _tcp_connection: lori.TCPConnection =
+    lori.TCPConnection.none()
+  let _connect_auth: lori.TCPConnectAuth
+  let _ssl_ctx: ssl_net.SSLContext val
+  let _host: String
+  let _port: String
+  let _h: TestHelper
+  let _listener: _TestSSLIntegrationListener
+
+  new create(
+    connect_auth: lori.TCPConnectAuth,
+    ssl_ctx: ssl_net.SSLContext val,
+    host: String,
+    port: String,
+    h: TestHelper,
+    listener: _TestSSLIntegrationListener)
+  =>
+    _connect_auth = connect_auth
+    _ssl_ctx = ssl_ctx
+    _host = host
+    _port = port
+    _h = h
+    _listener = listener
+    // Connect as plain TCP — no SSL
+    _tcp_connection =
+      lori.TCPConnection.client(
+        connect_auth, host, port, "", this, this)
+
+  fun ref _connection(): lori.TCPConnection =>
+    _tcp_connection
+
+  fun ref _on_connected() =>
+    // Send garbage to an SSL listener
+    _tcp_connection.send(
+      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+
+  fun ref _on_received(data: Array[U8] iso) =>
+    // SSL listener will likely close us — ignore data
+    None
+
+  fun ref _on_closed() =>
+    // Plain connection was closed (expected). Now connect
+    // with SSL to verify the server survived.
+    _TestSSLClient(
+      _connect_auth,
+      _ssl_ctx,
+      _host,
+      _port,
+      _h,
+      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "Hello from Hobby!",
+      _listener)
+
+  fun ref _on_connection_failure(
+    reason: lori.ConnectionFailureReason)
+  =>
+    // Connection failure is also acceptable — the SSL
+    // listener may reject before we connect. Proceed to
+    // the SSL follow-up.
+    _TestSSLClient(
+      _connect_auth,
+      _ssl_ctx,
+      _host,
+      _port,
+      _h,
+      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+      "Hello from Hobby!",
+      _listener)
 

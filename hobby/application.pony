@@ -1,5 +1,6 @@
 use stallion = "stallion"
 use lori = "lori"
+use ssl_net = "ssl/net"
 
 class iso Application
   """
@@ -7,7 +8,8 @@ class iso Application
   The public API for the Hobby web framework.
 
   Register routes via `.>` method chaining (`get`, `post`, etc.), then call
-  `serve()` to freeze the routes and start listening.
+  `serve()` (HTTP) or `serve_ssl()` (HTTPS) to freeze the routes and start
+  listening.
 
   ```pony
   use hobby = "hobby"
@@ -41,8 +43,8 @@ class iso Application
   Route methods are `fun ref` — automatic receiver recovery allows calling
   them on an `iso` receiver since all arguments are `val`. Use `.>` to chain
   route calls (it discards the method's return and passes the receiver
-  through). Call `.serve()` last — it consumes the Application and returns
-  the routes.
+  through). Call `.serve()` (HTTP) or `.serve_ssl()` (HTTPS) last — it
+  consumes the Application and returns the routes.
   """
 
   embed _routes: Array[_RouteDefinition]
@@ -264,7 +266,7 @@ class iso Application
   =>
     """
 
-    Freeze routes, validate configuration, and start listening.
+    Freeze routes, validate configuration, and start listening over HTTP.
 
     Consumes the Application — no further route registration is possible
     after this call. Returns `Serving` on success or `ConfigError` if
@@ -275,21 +277,70 @@ class iso Application
     Defaults to 30 seconds. Pass `None` to disable the timeout. When a
     handler fails to respond within the timeout, the framework sends 504
     Gateway Timeout (or closes the connection for active streams).
+
+    For HTTPS, use `serve_ssl()` instead.
     """
 
     let self: Application ref = consume this
+    match \exhaustive\ self._build(handler_timeout)
+    | (let router: _Router val, let timeout_ns: U64) =>
+      _Listener(auth, config, router, out, timeout_ns)
+      Serving
+    | let err: ConfigError => err
+    end
 
+  fun iso serve_ssl(
+    auth: lori.TCPListenAuth,
+    config: stallion.ServerConfig,
+    out: OutStream,
+    ssl_ctx: ssl_net.SSLContext val,
+    handler_timeout: (U64 | None) = 30_000)
+    : ServeResult
+  =>
+    """
+
+    Freeze routes, validate configuration, and start listening over
+    HTTPS.
+
+    Identical to `serve()` except connections use TLS via the provided
+    `SSLContext`. The context must be configured with a certificate and
+    private key before calling this method. If the context is
+    misconfigured (e.g., no certificate set), `serve_ssl()` still returns
+    `Serving` but every connection will fail at TLS handshake time —
+    these failures are logged as "Hobby: connection failed (SSL
+    handshake)".
+
+    Consumes the Application — no further route registration is possible
+    after this call.
+    """
+
+    let self: Application ref = consume this
+    match \exhaustive\ self._build(handler_timeout)
+    | (let router: _Router val, let timeout_ns: U64) =>
+      _Listener.ssl(
+        auth, config, router, out, timeout_ns, ssl_ctx)
+      Serving
+    | let err: ConfigError => err
+    end
+
+  fun ref _build(
+    handler_timeout: (U64 | None))
+    : ((_Router val, U64) | ConfigError)
+  =>
     // Validate group configuration before building
-    match _ValidateGroups(self._group_infos)
+    match _ValidateGroups(_group_infos)
     | let err: ConfigError => return err
     end
 
-    // Build app-level request interceptors as a val array (or None if empty)
-    let app_interceptors: (Array[RequestInterceptor val] val | None) =
-      if self._app_interceptors.size() > 0 then
+    // Build app-level request interceptors as a val array (or None
+    // if empty)
+    let app_interceptors:
+      (Array[RequestInterceptor val] val | None)
+    =
+      if _app_interceptors.size() > 0 then
         let gs_iso: Array[RequestInterceptor val] iso =
           recover iso Array[RequestInterceptor val] end
-        for g in self._app_interceptors.values() do
+        for g in _app_interceptors.values() do
           gs_iso.push(g)
         end
         consume gs_iso
@@ -297,14 +348,15 @@ class iso Application
         None
       end
 
-    // Build app-level response interceptors as a val array (or None if empty)
+    // Build app-level response interceptors as a val array (or None
+    // if empty)
     let app_response_interceptors:
       (Array[ResponseInterceptor val] val | None)
     =
-      if self._app_response_interceptors.size() > 0 then
+      if _app_response_interceptors.size() > 0 then
         let ri_iso: Array[ResponseInterceptor val] iso =
           recover iso Array[ResponseInterceptor val] end
-        for ri in self._app_response_interceptors.values() do
+        for ri in _app_response_interceptors.values() do
           ri_iso.push(ri)
         end
         consume ri_iso
@@ -319,7 +371,7 @@ class iso Application
       "", app_interceptors, app_response_interceptors)
 
     // Register group-level interceptors on their prefix nodes
-    for gi in self._group_infos.values() do
+    for gi in _group_infos.values() do
       builder.add_interceptors(
         gi.prefix,
         gi.interceptors,
@@ -327,7 +379,7 @@ class iso Application
     end
 
     // Register routes with per-route interceptors only
-    for r in self._routes.values() do
+    for r in _routes.values() do
       builder.add(
         r.method,
         r.path,
@@ -336,7 +388,8 @@ class iso Application
         r.interceptors)
     end
 
-    // Check for tree-level errors (e.g., conflicting param or wildcard names)
+    // Check for tree-level errors (e.g., conflicting param or
+    // wildcard names)
     match builder.first_error()
     | let err: ConfigError => return err
     end
@@ -350,5 +403,4 @@ class iso Application
         0
       end
 
-    _Listener(auth, config, router, out, timeout_ns)
-    Serving
+    (router, timeout_ns)

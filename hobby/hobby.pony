@@ -182,10 +182,64 @@ requests. After `StreamingStarted`, call `send_chunk()` to send data and
 
 ## Handler Timeout
 
-`Application.serve()` accepts an optional `handler_timeout` parameter
-(in milliseconds, default 30 seconds). When a handler fails to respond
-within the timeout, the framework sends 504 Gateway Timeout. Pass `None`
-to disable the timeout.
+`Application.serve()` and `serve_ssl()` accept an optional
+`handler_timeout` parameter (in milliseconds, default 30 seconds). When
+a handler fails to respond within the timeout, the framework sends 504
+Gateway Timeout. Pass `None` to disable the timeout.
+
+## HTTPS
+
+Use `serve_ssl()` instead of `serve()` to listen over TLS. Pass an
+`SSLContext val` configured with a certificate and private key:
+
+```pony
+use "files"
+use hobby = "hobby"
+use stallion = "stallion"
+use lori = "lori"
+use ssl_net = "ssl/net"
+
+actor Main
+  new create(env: Env) =>
+    let auth = lori.TCPListenAuth(env.root)
+    let file_auth = FileAuth(env.root)
+    let sslctx =
+      try
+        recover val
+          ssl_net.SSLContext
+            .> set_authority(
+              FilePath(file_auth, "cert.pem"))?
+            .> set_cert(
+              FilePath(file_auth, "cert.pem"),
+              FilePath(file_auth, "key.pem"))?
+            .> set_client_verify(false)
+            .> set_server_verify(false)
+        end
+      else
+        env.err.print("Unable to set up SSL context")
+        return
+      end
+
+    match
+      hobby.Application
+        .> get("/", {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Hello over HTTPS!")
+        } val)
+        .serve_ssl(
+          auth,
+          stallion.ServerConfig("0.0.0.0", "8443"),
+          env.out,
+          sslctx)
+    | let err: hobby.ConfigError =>
+      env.err.print(err.message)
+    end
+```
+
+If the `SSLContext` is misconfigured (e.g., no certificate set),
+`serve_ssl()` returns `Serving` but every connection fails at TLS
+handshake time. These failures are logged to the `OutStream` passed
+to `serve_ssl()`.
 
 ## Static File Serving
 
@@ -219,7 +273,7 @@ resolves to a directory, `ServeFiles` automatically serves `index.html`.
 
 ## Imports
 
-Users import up to four packages:
+Users import up to five packages:
 
 - **`hobby`**: Application, BodyNotNeeded, ConfigError, ContentTypes,
   CookieSigningKey, HandlerContext, HandlerFactory, HandlerReceiver,
@@ -230,6 +284,8 @@ Users import up to four packages:
 - **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig,
   ChunkedNotSupported)
 - **`lori`**: `TCPListenAuth(env.root)` for network access
-- **`files`**: `FilePath`, `FileAuth` (only needed when using `ServeFiles`)
+- **`ssl/net`**: `SSLContext` (only needed when using `serve_ssl()`)
+- **`files`**: `FilePath`, `FileAuth` (needed for `ServeFiles` and
+  `serve_ssl()` certificate loading)
 """
 

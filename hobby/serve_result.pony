@@ -1,13 +1,14 @@
 primitive Serving
   """
-  Returned by `Application.serve()` when the server started successfully.
+  Returned by `Application.serve()` or `Application.serve_ssl()` when
+  the server started successfully.
 
   The listener is running and accepting connections.
   """
 class val ConfigError
   """
-  Returned by `Application.serve()` when a configuration error prevented
-  the server from starting.
+  Returned by `Application.serve()` or `Application.serve_ssl()` when
+  a configuration error prevented the server from starting.
 
   Contains a human-readable description of the error. Common causes:
   - Overlapping group prefixes (two groups with the same prefix)
@@ -23,6 +24,7 @@ class val ConfigError
 
 type ServeResult is (Serving | ConfigError)
   """
-  The result of `Application.serve()`: either the server started
-  (`Serving`) or a configuration error was detected (`ConfigError`).
+  The result of `Application.serve()` or `Application.serve_ssl()`:
+  either the server started (`Serving`) or a configuration error was
+  detected (`ConfigError`).
   """

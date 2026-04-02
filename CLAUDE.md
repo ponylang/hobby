@@ -28,10 +28,10 @@ The `ssl` option is required — Stallion transitively depends on the `ssl` pack
 
 ## Dependencies
 
-- **Stallion** (0.5.2): HTTP/1.x server built on lori. Provides `HTTPServerActor`, `HTTPServer`, `Responder`, `ResponseBuilder`, `Request`, `ServerConfig`, `Status`, `Method`, `Headers`, `Header`, `StartChunkedResponseResult`, `StreamingStarted`, `AlreadyResponded`, `ChunkedNotSupported`. Also provides cookie support (`RequestCookie`, `RequestCookies`, `ParseCookies`, `SetCookie`, `SetCookieBuilder`, `SetCookieBuildError`, `SameSite`/`SameSiteStrict`/`SameSiteLax`/`SameSiteNone`) and content negotiation (`MediaType`, `NoAcceptableType`, `ContentNegotiationResult`, `ContentNegotiation`).
+- **Stallion** (0.5.4): HTTP/1.x server built on lori. Provides `HTTPServerActor`, `HTTPServer`, `Responder`, `ResponseBuilder`, `Request`, `ServerConfig`, `Status`, `Method`, `Headers`, `Header`, `StartChunkedResponseResult`, `StreamingStarted`, `AlreadyResponded`, `ChunkedNotSupported`. Also provides cookie support (`RequestCookie`, `RequestCookies`, `ParseCookies`, `SetCookie`, `SetCookieBuilder`, `SetCookieBuildError`, `SameSite`/`SameSiteStrict`/`SameSiteLax`/`SameSiteNone`) and content negotiation (`MediaType`, `NoAcceptableType`, `ContentNegotiationResult`, `ContentNegotiation`). `HTTPServer.ssl()` constructor for TLS connections; `on_start_failure(reason)` callback on `HTTPServerActor` for SSL handshake failures.
 - **lori** (transitive via Stallion): TCP layer. Provides `TCPListenerActor`, `TCPListener`, `TCPConnectionActor`, `TCPConnection`, auth types.
 - **uri** (transitive via Stallion): URI parsing. Used to read `request.uri.path`.
-- **ssl** (2.0.1): SSL/TLS and cryptography. Also available transitively via Stallion. Direct dependency for signed cookie code — provides `ssl/crypto` subpackage (`HmacSha256`, `ConstantTimeCompare`, `RandBytes`). Requires an SSL version flag at build time (`ssl=3.0.x`, `ssl=1.1.x`, or `ssl=libressl`).
+- **ssl** (2.0.1): SSL/TLS and cryptography. Also available transitively via Stallion. Direct dependency for signed cookie code (`ssl/crypto` subpackage: `HmacSha256`, `ConstantTimeCompare`, `RandBytes`) and HTTPS support (`ssl/net` subpackage: `SSLContext`). Requires an SSL version flag at build time (`ssl=3.0.x`, `ssl=1.1.x`, or `ssl=libressl`).
 
 ## Architecture
 
@@ -39,10 +39,10 @@ The `ssl` option is required — Stallion transitively depends on the `ssl` pack
 
 Users interact with these types:
 
-- **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_request_interceptor()` for app-level request interceptors, `add_response_interceptor()` for app-level response interceptors. Route methods accept optional `response_interceptors` parameter. `serve()` consumes the Application, validates configuration, freezes routes into an immutable router, and starts listening. Returns `ServeResult` — `Serving` on success or `ConfigError` with a description of the problem. `handler_timeout` parameter on `serve()` controls inactivity timeout (default 30 seconds, `None` to disable).
-- **`Serving`** (`primitive`): Returned by `serve()` when the server started successfully.
-- **`ConfigError`** (`class val`): Returned by `serve()` when a configuration error prevented startup. Carries a `message: String` describing the error. Detected errors: overlapping group prefixes, empty group prefix, special characters in group prefix, conflicting param names, conflicting wildcard names.
-- **`ServeResult`** (type alias): `(Serving | ConfigError)`. Return type of `serve()`.
+- **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_request_interceptor()` for app-level request interceptors, `add_response_interceptor()` for app-level response interceptors. Route methods accept optional `response_interceptors` parameter. `serve()` starts an HTTP listener; `serve_ssl()` starts an HTTPS listener with an `SSLContext val`. Both consume the Application, validate configuration, freeze routes into an immutable router, and return `ServeResult`. Shared validation/build logic lives in `_build()`. `handler_timeout` parameter controls inactivity timeout (default 30 seconds, `None` to disable).
+- **`Serving`** (`primitive`): Returned by `serve()` or `serve_ssl()` when the server started successfully.
+- **`ConfigError`** (`class val`): Returned by `serve()` or `serve_ssl()` when a configuration error prevented startup. Carries a `message: String` describing the error. Detected errors: overlapping group prefixes, empty group prefix, special characters in group prefix, conflicting param names, conflicting wildcard names.
+- **`ServeResult`** (type alias): `(Serving | ConfigError)`. Return type of `serve()` and `serve_ssl()`.
 - **`RouteGroup`** (`class iso`): Groups routes under a shared prefix and optional response interceptors. Constructor accepts `response_interceptors` parameter. Supports nesting via `group()`. Consumed by `Application.group()` or outer `RouteGroup.group()`.
 - **`RequestInterceptor`** (`interface val`): Synchronous request gate. `apply(request: Request box): InterceptResult` returns `InterceptPass` or `InterceptRespond`. The return type forces an explicit decision — the compiler won't accept an interceptor that forgets to decide. The first interceptor that responds wins.
 - **`InterceptResult`** (type alias): `(InterceptPass | InterceptRespond)`. Return type for request interceptors.
@@ -66,8 +66,8 @@ Users interact with these types:
 
 ### Internal layers
 
-- **`_Listener`** (`actor`): Implements `lori.TCPListenerActor`. Accepts TCP connections and spawns `_Connection` actors. Creates a shared `Timers` actor for handler timeout management.
-- **`_Connection`** (`actor`): Implements `stallion.HTTPServerActor` and `_ConnectionProtocol`. State machine: `_Idle` → `_HandlerInProgress` → `_Streaming`. Matches on `(_RouteMatch | _RouteMiss | _MethodNotAllowed)` from router lookup. On match: runs request interceptors, calls factory, receives handler responses via protocol behaviors. On miss: runs accumulated request interceptors (may short-circuit), then sends 404 with accumulated response interceptors. On method-not-allowed: runs accumulated interceptors, then sends 405 with `Allow` header. Manages handler timeout via interval-based timer.
+- **`_Listener`** (`actor`): Implements `lori.TCPListenerActor`. Accepts TCP connections and spawns `_Connection` actors. Creates a shared `Timers` actor for handler timeout management. Two constructors: `create` for HTTP, `ssl` for HTTPS (stores `SSLContext val`). Passes `_out` and `_ssl_ctx` to each `_Connection`. Listening message includes protocol indicator (`HTTP` or `HTTPS`).
+- **`_Connection`** (`actor`): Implements `stallion.HTTPServerActor` and `_ConnectionProtocol`. State machine: `_Idle` → `_HandlerInProgress` → `_Streaming`. Matches on `(_RouteMatch | _RouteMiss | _MethodNotAllowed)` from router lookup. On match: runs request interceptors, calls factory, receives handler responses via protocol behaviors. On miss: runs accumulated request interceptors (may short-circuit), then sends 404 with accumulated response interceptors. On method-not-allowed: runs accumulated interceptors, then sends 405 with `Allow` header. Manages handler timeout via interval-based timer. Accepts optional `ssl_ctx` parameter — when present, creates `HTTPServer.ssl()` for TLS connections. Implements `on_start_failure` to log SSL handshake failures via `_out: OutStream`.
 - **`_ConnectionProtocol`** (`trait tag`): Protocol behaviors that `RequestHandler` sends to `_Connection`.
 - **`_BufferedResponse`** (`class ref`): Mutable response buffer for response interceptors. Response interceptors modify status, headers, and body via `ResponseContext`; `_build()` serializes to wire and auto-adds Content-Length from the final body.
 - **`_RunRequestInterceptors`** (`primitive`): Runs request interceptors in order. Returns `InterceptRespond` on first short-circuit, `None` if all pass.
@@ -91,7 +91,8 @@ Users interact with these types:
 - **Actor-per-request handler model**: Each request's handler factory can spawn an actor that does async work and responds when ready. The connection waits for a response via protocol behaviors. This enables database queries, external service calls, and other async patterns without blocking the connection.
 - **Factory returns `(HandlerReceiver tag | None)`**: Inline handlers return None; async handlers return the actor's tag for dispose/throttle signals. No timing gap for lifecycle signals.
 - **Response buffering for response interceptors**: Responses are buffered in `_BufferedResponse` before going to the wire. Response interceptors modify status, headers, and body via `ResponseContext`. Content-Length is computed automatically by `_build()` from the final body after all interceptors run. For streaming, interceptors run but mutations are no-ops (headers/status already on wire).
-- **Route methods are `fun ref`**: Auto receiver recovery handles calling them on the `iso` Application since all arguments are `val`. `serve()` is `fun iso` and uses `consume this`.
+- **Separate `serve()` and `serve_ssl()`**: Follows the Stallion pattern (`HTTPServer.create` vs `HTTPServer.ssl`). `serve_ssl()` requires `SSLContext val` — you can't accidentally start HTTPS without a context or HTTP when you meant HTTPS. Shared validation/build logic lives in `_build()`, called by both methods after `consume this`.
+- **Route methods are `fun ref`**: Auto receiver recovery handles calling them on the `iso` Application since all arguments are `val`. `serve()` and `serve_ssl()` are `fun iso` and use `consume this`.
 - **Single shared path tree**: One segment trie for all HTTP methods. Handlers are keyed by method at leaf nodes. Interceptors live on shared path nodes and are method-independent.
 - **Eager segment splitting**: `_SplitSegments` splits the normalized path into an `Array[String] val` once, and the trie walks it by index. Skips empty segments, normalizing double slashes.
 - **Build/lookup separation**: Mutable `_BuildNode ref` tree for construction, frozen into immutable `_TreeNode val` tree for lookup. `freeze()` pre-computes accumulated interceptor arrays from root to each node, so lookup is zero-allocation.
@@ -117,6 +118,9 @@ Users interact with these types:
 ## File Layout
 
 ```
+assets/
+  cert.pem                    - Self-signed test certificate (not for production)
+  key.pem                     - Self-signed test private key (not for production)
 docs/
   interceptor-guide.md        - Writing Request Interceptors tutorial guide
 hobby/
