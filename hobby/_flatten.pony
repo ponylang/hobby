@@ -1,3 +1,70 @@
+primitive _SplitSegments
+  """
+  Split a normalized path into an array of path segments.
+
+  Strips the leading slash and splits on `/`, skipping empty segments
+  (which normalizes double slashes). `/api/users/:id` → `["api", "users",
+  ":id"]`. `/` → `[]`. `/api//users` → `["api", "users"]`.
+  """
+  fun apply(path: String): Array[String] val =>
+    if path.size() <= 1 then
+      return recover val Array[String] end
+    end
+    recover val
+      let segments = Array[String]
+      var start: USize = 1  // skip leading '/'
+      try
+        while start < path.size() do
+          // Find next '/'
+          var end_pos = start
+          while (end_pos < path.size()) and (path(end_pos)? != '/') do
+            end_pos = end_pos + 1
+          end
+          if end_pos > start then
+            segments.push(path.trim(start, end_pos))
+          end
+          start = end_pos + 1
+        end
+      else
+        _Unreachable()
+      end
+      segments
+    end
+
+primitive _JoinRemainingSegments
+  """
+  Join segments from a start index onward with `/` separators.
+
+  Used to reconstruct the captured value for wildcard parameters.
+  """
+  fun apply(segments: Array[String] val, from: USize,
+    size_hint: USize = 0): String
+  =>
+    if from >= segments.size() then
+      return ""
+    end
+    try
+      if (from + 1) == segments.size() then
+        return segments(from)?
+      end
+    else
+      _Unreachable()
+    end
+    recover val
+      let s = String(size_hint)
+      var i = from
+      try
+        while i < segments.size() do
+          if i > from then s.push('/') end
+          s.append(segments(i)?)
+          i = i + 1
+        end
+      else
+        _Unreachable()
+      end
+      s
+    end
+
 primitive _JoinPath
   """
   Join a group prefix with a route path.

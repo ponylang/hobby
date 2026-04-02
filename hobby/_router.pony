@@ -30,8 +30,9 @@ class ref _RouterBuilder
     """
     let normalized = _NormalizePath(path)
     let method_key: String val = method.string()
-    _root.insert(normalized, method_key, factory, response_interceptors,
-      interceptors, _errors)
+    let segments = _SplitSegments(normalized)
+    _root._insert_segments(segments, 0, method_key, factory,
+      response_interceptors, interceptors, _errors)
 
   fun ref add_interceptors(path: String,
     interceptors: (Array[RequestInterceptor val] val | None),
@@ -54,7 +55,8 @@ class ref _RouterBuilder
       return
     end
     let normalized = _NormalizePath(path)
-    _root._ensure_path(normalized, 0, interceptors, response_interceptors)
+    let segments = _SplitSegments(normalized)
+    _root._ensure_path(segments, 0, interceptors, response_interceptors)
 
   fun ref build(): _Router val =>
     """Freeze the builder into an immutable router."""
@@ -78,7 +80,7 @@ class ref _RouterBuilder
 
 class val _Router
   """
-  Immutable radix tree router with a single shared path tree.
+  Immutable segment trie router with a single shared path tree.
 
   Handlers are keyed by HTTP method at leaf nodes. Interceptors live on
   shared path nodes and are method-independent. `lookup()` finds the matching
@@ -103,7 +105,8 @@ class val _Router
     let normalized = _NormalizePath(path)
     let method_key: String val = method.string()
     let is_head = method is stallion.HEAD
-    _root.lookup(normalized, method_key, is_head)
+    let segments = _SplitSegments(normalized)
+    _root.lookup(segments, method_key, is_head, normalized.size())
 
 primitive _NormalizePath
   """Strip trailing slash (except root `/`)."""
@@ -121,28 +124,27 @@ primitive _NormalizePath
 
 class ref _BuildNode
   """
-  Mutable radix tree node for route construction.
+  Mutable segment trie node for route construction.
 
   Used by `_RouterBuilder` during route registration, then frozen into a
-  `_TreeNode val` for immutable lookup. Each node carries:
+  `_TreeNode val` for immutable lookup. Each node represents one path
+  segment. Children are keyed by full segment name. Each node carries:
   - Path-level interceptors (from groups or app-level registration)
   - Method-keyed handler entries (from route registration)
-  - Static children and param/wildcard children for tree structure
+  - Static children, param child, and wildcard entries for tree structure
   """
-  var _prefix: String = ""
   var _interceptors: (Array[RequestInterceptor val] val | None) = None
-  var _response_interceptors: (Array[ResponseInterceptor val] val | None) = None
+  var _response_interceptors:
+    (Array[ResponseInterceptor val] val | None) = None
   var _param_name: String = ""
-  embed _children: Map[U8, _BuildNode ref] = Map[U8, _BuildNode ref]
+  embed _children: Map[String, _BuildNode ref] =
+    Map[String, _BuildNode ref]
   var _param_child: (_BuildNode ref | None) = None
   embed _method_entries: Map[String, _BuildMethodEntry ref] =
     Map[String, _BuildMethodEntry ref]
   embed _wildcard_entries: Map[String, _BuildMethodEntry ref] =
     Map[String, _BuildMethodEntry ref]
   var _wildcard_name: String = ""
-
-  new create(prefix: String = "") =>
-    _prefix = prefix
 
   fun ref _set_interceptors(
     interceptors: (Array[RequestInterceptor val] val | None),
@@ -161,182 +163,79 @@ class ref _BuildNode
       _ConcatResponseInterceptors(_response_interceptors,
         response_interceptors)
 
-  fun ref insert(path: String, method: String, factory: HandlerFactory,
+  fun ref _insert_segments(segments: Array[String] val, idx: USize,
+    method: String, factory: HandlerFactory,
     response_interceptors: (Array[ResponseInterceptor val] val | None),
     interceptors: (Array[RequestInterceptor val] val | None),
     errors: Array[String] ref)
   =>
-    """Insert a route path into this subtree."""
-    _insert(path, 0, method, factory, response_interceptors, interceptors,
-      errors)
-
-  fun ref _ensure_path(path: String, offset: USize,
-    interceptors: (Array[RequestInterceptor val] val | None),
-    response_interceptors: (Array[ResponseInterceptor val] val | None))
-  =>
-    """
-    Traverse or create nodes to reach the given path and set interceptors.
-
-    Uses the same prefix-matching logic as insert to handle post-split node
-    structure correctly.
-    """
-    if offset >= path.size() then
-      _set_interceptors(interceptors, response_interceptors)
-      return
-    end
-
-    try
-      let c = path(offset)?
-      // Only handle static paths for group interceptors (no : or * in group prefixes)
-      match try _children(c)? end
-      | let child: _BuildNode ref =>
-        let common = _Paths.common_prefix_len(child._prefix,
-          path.trim(offset))
-        if common == child._prefix.size() then
-          child._ensure_path(path, offset + common, interceptors,
-            response_interceptors)
-        else
-          // Split the child node at the divergence point
-          let new_parent = _BuildNode(child._prefix.trim(0, common))
-          let old_suffix = child._prefix.trim(common)
-          child._prefix = old_suffix
-          try
-            new_parent._children(old_suffix(0)?) = child
-          else
-            _Unreachable()
-          end
-          if (offset + common) >= path.size() then
-            new_parent._set_interceptors(interceptors, response_interceptors)
-          else
-            new_parent._ensure_path(path, offset + common, interceptors,
-              response_interceptors)
-          end
-          _children(c) = new_parent
-        end
-      else
-        // No existing child — create the path
-        let remaining = path.trim(offset)
-        let child = _BuildNode(remaining)
-        child._set_interceptors(interceptors, response_interceptors)
-        _children(c) = child
-      end
-    else
-      _Unreachable()
-    end
-
-  fun ref _insert(path: String, offset: USize, method: String,
-    factory: HandlerFactory,
-    response_interceptors: (Array[ResponseInterceptor val] val | None),
-    interceptors: (Array[RequestInterceptor val] val | None),
-    errors: Array[String] ref)
-  =>
-    if offset >= path.size() then
+    """Insert a route by walking the segment array."""
+    if idx >= segments.size() then
       _method_entries(method) = _BuildMethodEntry(factory,
         interceptors, response_interceptors)
       return
     end
 
-    try
-      let c = path(offset)?
-      if c == ':' then
-        _insert_param(path, offset, method, factory, response_interceptors,
-          interceptors, errors)
-      elseif c == '*' then
-        _wildcard_entries(method) = _BuildMethodEntry(factory,
-          interceptors, response_interceptors)
-        _wildcard_name = path.trim(offset + 1)
+    let segment = try segments(idx)? else _Unreachable(); return end
+    let first = try segment(0)? else _Unreachable(); return end
+
+    if first == ':' then
+      let name = segment.trim(1)
+      let child = match _param_child
+      | let existing: _BuildNode ref => existing
       else
-        _insert_static(path, offset, method, factory, response_interceptors,
-          interceptors, errors)
+        let c: _BuildNode ref = _BuildNode
+        _param_child = c
+        c
       end
+      if (child._param_name.size() > 0) and (child._param_name != name) then
+        errors.push(
+          "Conflicting param names at the same path position: ':" +
+          child._param_name + "' vs ':" + name +
+          "'. All methods at the same path must use the same " +
+          "param name.")
+      end
+      child._param_name = name
+      child._insert_segments(segments, idx + 1, method, factory,
+        response_interceptors, interceptors, errors)
+    elseif first == '*' then
+      _wildcard_entries(method) = _BuildMethodEntry(factory,
+        interceptors, response_interceptors)
+      _wildcard_name = segment.trim(1)
     else
-      _Unreachable()
+      let child = try _children(segment)? else
+        let c: _BuildNode ref = _BuildNode
+        _children(segment) = c
+        c
+      end
+      child._insert_segments(segments, idx + 1, method, factory,
+        response_interceptors, interceptors, errors)
     end
 
-  fun ref _insert_param(path: String, offset: USize, method: String,
-    factory: HandlerFactory,
-    response_interceptors: (Array[ResponseInterceptor val] val | None),
+  fun ref _ensure_path(segments: Array[String] val, idx: USize,
     interceptors: (Array[RequestInterceptor val] val | None),
-    errors: Array[String] ref)
+    response_interceptors: (Array[ResponseInterceptor val] val | None))
   =>
-    let name_end = _Paths.find_char(path, '/', offset + 1)
-    let name = path.trim(offset + 1, name_end)
-    let child = match _param_child
-    | let existing: _BuildNode ref => existing
-    else
-      let c = _BuildNode
-      _param_child = c
+    """
+    Traverse or create nodes to reach the given path and set interceptors.
+    """
+    if idx >= segments.size() then
+      _set_interceptors(interceptors, response_interceptors)
+      return
+    end
+
+    let segment = try segments(idx)? else _Unreachable(); return end
+    let child = try _children(segment)? else
+      let c: _BuildNode ref = _BuildNode
+      _children(segment) = c
       c
     end
-    if (child._param_name.size() > 0) and (child._param_name != name) then
-      errors.push(
-        "Conflicting param names at the same path position: ':" +
-        child._param_name + "' vs ':" + name +
-        "'. All methods at the same path must use the same param name.")
-    end
-    child._param_name = name
-    if name_end >= path.size() then
-      child._method_entries(method) = _BuildMethodEntry(factory,
-        interceptors, response_interceptors)
-    else
-      child._insert(path, name_end, method, factory, response_interceptors,
-        interceptors, errors)
-    end
-
-  fun ref _insert_static(path: String, offset: USize, method: String,
-    factory: HandlerFactory,
-    response_interceptors: (Array[ResponseInterceptor val] val | None),
-    interceptors: (Array[RequestInterceptor val] val | None),
-    errors: Array[String] ref)
-  =>
-    try
-      let c = path(offset)?
-      match try _children(c)? end
-      | let child: _BuildNode ref =>
-        let common = _Paths.common_prefix_len(child._prefix,
-          path.trim(offset))
-        if common == child._prefix.size() then
-          child._insert(path, offset + common, method, factory,
-            response_interceptors, interceptors, errors)
-        else
-          // Split the child node at the divergence point
-          let new_parent = _BuildNode(child._prefix.trim(0, common))
-          let old_suffix = child._prefix.trim(common)
-          child._prefix = old_suffix
-          try
-            new_parent._children(old_suffix(0)?) = child
-          else
-            _Unreachable()
-          end
-          // Route through _insert so special characters (`:`, `*`) in the
-          // remaining suffix are parsed instead of stored as literal prefix.
-          new_parent._insert(path, offset + common, method, factory,
-            response_interceptors, interceptors, errors)
-          _children(c) = new_parent
-        end
-      else
-        // No existing child for this character
-        let remaining = path.trim(offset)
-        let special = _Paths.find_special(remaining)
-        if special < remaining.size() then
-          let child = _BuildNode(remaining.trim(0, special))
-          child._insert(path, offset + special, method, factory,
-            response_interceptors, interceptors, errors)
-          _children(c) = child
-        else
-          let child = _BuildNode(remaining)
-          child._method_entries(method) = _BuildMethodEntry(factory,
-            interceptors, response_interceptors)
-          _children(c) = child
-        end
-      end
-    else
-      _Unreachable()
-    end
+    child._ensure_path(segments, idx + 1, interceptors,
+      response_interceptors)
 
   fun box freeze(
-    parent_interceptors: (Array[RequestInterceptor val] val | None),
-    parent_response_interceptors:
+    accumulated_interceptors: (Array[RequestInterceptor val] val | None),
+    accumulated_response_interceptors:
       (Array[ResponseInterceptor val] val | None))
     : _TreeNode val
   =>
@@ -347,31 +246,26 @@ class ref _BuildNode
     Per-route interceptors in method entries are concatenated with the
     accumulated path interceptors at freeze time, so lookup is zero-allocation.
     """
-    // Accumulate this node's interceptors with parent's
-    let accumulated_interceptors =
-      _ConcatInterceptors(parent_interceptors, _interceptors)
-    let accumulated_response_interceptors =
-      _ConcatResponseInterceptors(parent_response_interceptors,
+    // Accumulate this node's interceptors with ancestors'
+    let new_accumulated =
+      _ConcatInterceptors(accumulated_interceptors, _interceptors)
+    let new_accumulated_response =
+      _ConcatResponseInterceptors(accumulated_response_interceptors,
         _response_interceptors)
 
-    // Freeze children — only propagate this node's interceptors to sub-path
-    // children (key == '/'). Children at other keys share a character prefix
-    // but are in different path segments (e.g., /api-docs is not under /api).
-    let frozen_children: Array[(U8, _TreeNode val)] iso =
-      recover iso Array[(U8, _TreeNode val)] end
+    // Freeze children — all children unconditionally receive this node's
+    // accumulated interceptors (every child is at a segment boundary).
+    let frozen_children: Map[String, _TreeNode val] iso =
+      recover iso Map[String, _TreeNode val] end
     for (key, child) in _children.pairs() do
-      if key == '/' then
-        frozen_children.push((key, child.freeze(accumulated_interceptors,
-          accumulated_response_interceptors)))
-      else
-        frozen_children.push((key, child.freeze(parent_interceptors,
-          parent_response_interceptors)))
-      end
+      frozen_children(key) =
+        child.freeze(new_accumulated, new_accumulated_response)
     end
-    // Param child is always a sub-segment — gets full accumulated
+
+    // Param child gets full accumulated
     let frozen_param: (_TreeNode val | None) = match _param_child
     | let child: _BuildNode box =>
-      child.freeze(accumulated_interceptors, accumulated_response_interceptors)
+      child.freeze(new_accumulated, new_accumulated_response)
     else
       None
     end
@@ -382,9 +276,9 @@ class ref _BuildNode
       recover iso Map[String, _MethodEntry val] end
     for (method, entry) in _method_entries.pairs() do
       let final_interceptors =
-        _ConcatInterceptors(accumulated_interceptors, entry.interceptors)
+        _ConcatInterceptors(new_accumulated, entry.interceptors)
       let final_response_interceptors =
-        _ConcatResponseInterceptors(accumulated_response_interceptors,
+        _ConcatResponseInterceptors(new_accumulated_response,
           entry.response_interceptors)
       frozen_method_entries(method) = _MethodEntry(entry.factory,
         final_interceptors, final_response_interceptors)
@@ -394,17 +288,16 @@ class ref _BuildNode
       recover iso Map[String, _MethodEntry val] end
     for (method, entry) in _wildcard_entries.pairs() do
       let final_interceptors =
-        _ConcatInterceptors(accumulated_interceptors, entry.interceptors)
+        _ConcatInterceptors(new_accumulated, entry.interceptors)
       let final_response_interceptors =
-        _ConcatResponseInterceptors(accumulated_response_interceptors,
+        _ConcatResponseInterceptors(new_accumulated_response,
           entry.response_interceptors)
       frozen_wildcard_entries(method) = _MethodEntry(entry.factory,
         final_interceptors, final_response_interceptors)
     end
 
-    _TreeNode._create(_prefix,
-      parent_interceptors, parent_response_interceptors,
-      accumulated_interceptors, accumulated_response_interceptors,
+    _TreeNode._create(
+      new_accumulated, new_accumulated_response,
       _param_name, consume frozen_children, frozen_param,
       consume frozen_method_entries, consume frozen_wildcard_entries,
       _wildcard_name)
@@ -434,56 +327,40 @@ class ref _BuildMethodEntry
 
 class val _TreeNode
   """
-  Immutable radix tree node for route lookup.
+  Immutable segment trie node for route lookup.
 
-  Produced by freezing a `_BuildNode`. Each node stores two levels of
-  pre-computed interceptors: parent-level (from ancestors only) and
-  accumulated (parent + own). This separation is needed because
-  interceptors are segment-scoped — a node's own interceptors only apply
-  to sub-paths (children at '/'), not to sibling routes that share a
-  character prefix (children at other keys like '-').
+  Produced by freezing a `_BuildNode`. Each node stores pre-computed
+  accumulated interceptors (from root through this node). In a segment
+  trie, every child is at a segment boundary, so the accumulated
+  interceptors propagate unconditionally to all children.
 
   Method entries store final interceptor arrays (accumulated + per-route,
   concatenated at freeze time). Lookup is zero-allocation for both hits
   and misses.
   """
-  let _prefix: String
-  // Interceptors from ancestor nodes only — for misses on sibling paths
-  let _parent_interceptors:
-    (Array[RequestInterceptor val] val | None)
-  let _parent_response_interceptors:
-    (Array[ResponseInterceptor val] val | None)
-  // Interceptors accumulated through this node — for sub-path matches/misses
   let _accumulated_interceptors:
     (Array[RequestInterceptor val] val | None)
   let _accumulated_response_interceptors:
     (Array[ResponseInterceptor val] val | None)
   let _param_name: String
-  let _children: Array[(U8, _TreeNode val)] val
+  let _children: Map[String, _TreeNode val] val
   let _param_child: (_TreeNode val | None)
   let _method_entries: Map[String, _MethodEntry val] val
   let _wildcard_entries: Map[String, _MethodEntry val] val
   let _wildcard_name: String
 
-  new val _create(prefix: String,
-    parent_interceptors':
-      (Array[RequestInterceptor val] val | None),
-    parent_response_interceptors':
-      (Array[ResponseInterceptor val] val | None),
+  new val _create(
     accumulated_interceptors':
       (Array[RequestInterceptor val] val | None),
     accumulated_response_interceptors':
       (Array[ResponseInterceptor val] val | None),
     param_name: String,
-    children: Array[(U8, _TreeNode val)] iso,
+    children: Map[String, _TreeNode val] iso,
     param_child: (_TreeNode val | None),
     method_entries: Map[String, _MethodEntry val] iso,
     wildcard_entries: Map[String, _MethodEntry val] iso,
     wildcard_name: String)
   =>
-    _prefix = prefix
-    _parent_interceptors = parent_interceptors'
-    _parent_response_interceptors = parent_response_interceptors'
     _accumulated_interceptors = accumulated_interceptors'
     _accumulated_response_interceptors = accumulated_response_interceptors'
     _param_name = param_name
@@ -493,11 +370,12 @@ class val _TreeNode
     _wildcard_entries = consume wildcard_entries
     _wildcard_name = wildcard_name
 
-  fun lookup(path: String, method_key: String, is_head: Bool):
+  fun lookup(segments: Array[String] val, method_key: String,
+    is_head: Bool, path_size: USize):
     (_RouteMatch | _RouteMiss | _MethodNotAllowed)
   =>
     """Find a matching route for the given path and method."""
-    match _lookup(path, 0, method_key, is_head)
+    match _lookup(segments, 0, method_key, is_head, path_size)
     | (let entry: _MethodEntry val, let p: Array[(String, String)] val) =>
       let frozen: Map[String, String] val = recover val
         let m = Map[String, String]
@@ -512,8 +390,8 @@ class val _TreeNode
     | let na: _MethodNotAllowed => na
     end
 
-  fun _lookup(path: String, offset: USize, method_key: String,
-    is_head: Bool):
+  fun _lookup(segments: Array[String] val, idx: USize,
+    method_key: String, is_head: Bool, path_size: USize):
     ((_MethodEntry val, Array[(String, String)] val) |
       _RouteMiss | _MethodNotAllowed)
   =>
@@ -525,7 +403,7 @@ class val _TreeNode
     Params are built bottom-up: the leaf returns an empty val array, and each
     param level prepends its parameter to the child's val result.
     """
-    if offset >= path.size() then
+    if idx >= segments.size() then
       match _resolve_or_405(method_key, is_head, _method_entries)
       | let entry: _MethodEntry val =>
         return (entry, _EmptyParams())
@@ -545,25 +423,20 @@ class val _TreeNode
 
     // Try static children first (highest priority)
     try
-      let c = path(offset)?
-      for (key, child) in _children.values() do
-        if key == c then
-          if _Paths.starts_with(path, offset, child._prefix) then
-            match child._lookup(path, offset + child._prefix.size(),
-              method_key, is_head)
-            | (let entry: _MethodEntry val,
-               let p: Array[(String, String)] val) =>
-              return (entry, p)
-            | let na: _MethodNotAllowed =>
-              // Save but continue — a lower-priority branch may match
-              if method_not_allowed is None then
-                method_not_allowed = na
-              end
-            | let miss: _RouteMiss =>
-              deepest_miss = miss
-            end
+      let segment = segments(idx)?
+      try
+        let child = _children(segment)?
+        match child._lookup(segments, idx + 1, method_key, is_head,
+          path_size)
+        | (let entry: _MethodEntry val,
+           let p: Array[(String, String)] val) =>
+          return (entry, p)
+        | let na: _MethodNotAllowed =>
+          if method_not_allowed is None then
+            method_not_allowed = na
           end
-          break
+        | let miss: _RouteMiss =>
+          deepest_miss = miss
         end
       end
     else
@@ -573,43 +446,48 @@ class val _TreeNode
     // Try parameter child (second priority)
     match _param_child
     | let child: _TreeNode val =>
-      let value_end = _Paths.find_char(path, '/', offset)
-      if value_end > offset then
-        let value = path.trim(offset, value_end)
-        match child._lookup(path, value_end, method_key, is_head)
-        | (let entry: _MethodEntry val,
-           let child_params: Array[(String, String)] val) =>
-          let with_param: Array[(String, String)] val = recover val
-            let a = Array[(String, String)]
-            a.push((child._param_name, value))
-            for (k, v) in child_params.values() do
-              a.push((k, v))
+      try
+        let segment = segments(idx)?
+        // _SplitSegments never produces empty segments, but guard defensively
+        if segment.size() > 0 then
+          match child._lookup(segments, idx + 1, method_key, is_head,
+            path_size)
+          | (let entry: _MethodEntry val,
+             let child_params: Array[(String, String)] val) =>
+            let with_param: Array[(String, String)] val = recover val
+              let a = Array[(String, String)]
+              a.push((child._param_name, segment))
+              for (k, v) in child_params.values() do
+                a.push((k, v))
+              end
+              a
             end
-            a
-          end
-          return (entry, with_param)
-        | let na: _MethodNotAllowed =>
-          if method_not_allowed is None then
-            method_not_allowed = na
-          end
-        | let miss: _RouteMiss =>
-          // Keep whichever miss traversed deeper (has richer interceptors).
-          match deepest_miss
-          | let prev: _RouteMiss =>
-            if miss._interceptor_count() > prev._interceptor_count() then
+            return (entry, with_param)
+          | let na: _MethodNotAllowed =>
+            if method_not_allowed is None then
+              method_not_allowed = na
+            end
+          | let miss: _RouteMiss =>
+            // Keep whichever miss traversed deeper (has richer interceptors).
+            match deepest_miss
+            | let prev: _RouteMiss =>
+              if miss._interceptor_count() > prev._interceptor_count() then
+                deepest_miss = miss
+              end
+            else
               deepest_miss = miss
             end
-          else
-            deepest_miss = miss
           end
         end
+      else
+        _Unreachable()
       end
     end
 
     // Try wildcard (lowest priority)
     match _resolve_or_405(method_key, is_head, _wildcard_entries)
     | let entry: _MethodEntry val =>
-      let remainder = path.trim(offset)
+      let remainder = _JoinRemainingSegments(segments, idx, path_size)
       let wildcard_params: Array[(String, String)] val = recover val
         let a = Array[(String, String)]
         a.push((_wildcard_name, remainder))
@@ -629,21 +507,11 @@ class val _TreeNode
     | let na: _MethodNotAllowed => return na
     end
 
-    // Interceptor selection for the miss depends on whether the remaining
-    // path is a sub-path (starts with '/') or a sibling route sharing a
-    // character prefix (starts with non-'/'). Sub-paths get accumulated
-    // interceptors; siblings get parent-only interceptors.
     match deepest_miss
     | let miss: _RouteMiss => miss
     else
-      let at_segment_boundary = try path(offset)? == '/' else true end
-      if at_segment_boundary then
-        _RouteMiss(_accumulated_response_interceptors,
-          _accumulated_interceptors)
-      else
-        _RouteMiss(_parent_response_interceptors,
-          _parent_interceptors)
-      end
+      _RouteMiss(_accumulated_response_interceptors,
+        _accumulated_interceptors)
     end
 
   fun _resolve_or_405(method_key: String, is_head: Bool,
@@ -693,67 +561,6 @@ class val _TreeNode
 // --- Shared constants ---
 
 primitive _EmptyParams
-  """Empty params array for leaf returns — avoids allocation at each recursion level."""
+  """Empty params array returned at leaf nodes. Intermediate recursion levels don't allocate params — only the leaf does."""
   fun apply(): Array[(String, String)] val =>
     recover val Array[(String, String)] end
-
-// --- Path utilities ---
-
-primitive _Paths
-  fun find_char(s: String box, c: U8, from: USize = 0): USize =>
-    """Find the first occurrence of `c` in `s` starting at `from`."""
-    var i = from
-    try
-      while i < s.size() do
-        if s(i)? == c then return i end
-        i = i + 1
-      end
-    else
-      _Unreachable()
-    end
-    s.size()
-
-  fun find_special(s: String box): USize =>
-    """Find the first `:` or `*` in `s`."""
-    var i: USize = 0
-    try
-      while i < s.size() do
-        let c = s(i)?
-        if (c == ':') or (c == '*') then return i end
-        i = i + 1
-      end
-    else
-      _Unreachable()
-    end
-    s.size()
-
-  fun common_prefix_len(a: String box, b: String box): USize =>
-    var i: USize = 0
-    let limit = a.size().min(b.size())
-    try
-      while i < limit do
-        if a(i)? != b(i)? then break end
-        i = i + 1
-      end
-    else
-      _Unreachable()
-    end
-    i
-
-  fun starts_with(path: String box, offset: USize,
-    prefix: String box): Bool
-  =>
-    """Check if `path` at `offset` starts with `prefix`."""
-    if (offset + prefix.size()) > path.size() then
-      return false
-    end
-    var i: USize = 0
-    try
-      while i < prefix.size() do
-        if path(offset + i)? != prefix(i)? then return false end
-        i = i + 1
-      end
-    else
-      _Unreachable()
-    end
-    true

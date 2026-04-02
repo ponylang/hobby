@@ -72,7 +72,7 @@ Users interact with these types:
 - **`_HandlerTimeoutNotify`** (`class iso is TimerNotify`): Sends `_handler_timeout(token)` to `_Connection` on each interval fire.
 - **`_Router`** (`class val`): Immutable single shared path tree router. Handlers are keyed by HTTP method at leaf nodes. Interceptors are path-scoped on shared nodes.
 - **`_RouterBuilder`** (`class ref`): Mutable builder. `add()` registers routes, `add_interceptors()` tags path nodes with group/app interceptors. `build()` freezes into `_Router`.
-- **`_BuildNode`** / **`_TreeNode`** (`class ref` / `class val`): Mutable build-time and immutable lookup-time radix tree nodes. Each node carries path-level interceptors and method-keyed handler entries.
+- **`_BuildNode`** / **`_TreeNode`** (`class ref` / `class val`): Mutable build-time and immutable lookup-time segment trie nodes. Each node represents one path segment. Children are keyed by full segment name (`Map[String, ...]`). Each node carries path-level interceptors and method-keyed handler entries.
 - **`_MethodEntry`** (`class val`): Handler factory + final pre-computed interceptor arrays for a specific HTTP method at a path node.
 - **`_BuildMethodEntry`** (`class ref`): Mutable method entry during construction, before freeze-time interceptor concatenation.
 - **`_RouteMatch`** (`class val`): Successful lookup result — factory, interceptors, params.
@@ -89,17 +89,19 @@ Users interact with these types:
 - **Factory returns `(HandlerReceiver tag | None)`**: Inline handlers return None; async handlers return the actor's tag for dispose/throttle signals. No timing gap for lifecycle signals.
 - **Response buffering for response interceptors**: Responses are buffered in `_BufferedResponse` before going to the wire. Response interceptors modify status, headers, and body via `ResponseContext`. Content-Length is computed automatically by `_build()` from the final body after all interceptors run. For streaming, interceptors run but mutations are no-ops (headers/status already on wire).
 - **Route methods are `fun ref`**: Auto receiver recovery handles calling them on the `iso` Application since all arguments are `val`. `serve()` is `fun iso` and uses `consume this`.
-- **Single shared path tree**: One radix tree for all HTTP methods. Handlers are keyed by method at leaf nodes. Interceptors live on shared path nodes and are method-independent. Replaces the old per-method tree map.
+- **Single shared path tree**: One segment trie for all HTTP methods. Handlers are keyed by method at leaf nodes. Interceptors live on shared path nodes and are method-independent.
+- **Eager segment splitting**: `_SplitSegments` splits the normalized path into an `Array[String] val` once, and the trie walks it by index. Skips empty segments, normalizing double slashes.
 - **Build/lookup separation**: Mutable `_BuildNode ref` tree for construction, frozen into immutable `_TreeNode val` tree for lookup. `freeze()` pre-computes accumulated interceptor arrays from root to each node, so lookup is zero-allocation.
 - **Lookup priority: static > param > wildcard**: During lookup, static children are tried first, then the param child, then the wildcard. If a higher-priority branch fails (returns miss or method-not-allowed), lookup falls back to the next branch. A match from any branch is returned immediately. This priority means `/users/new` (static) beats `/users/:id` (param), and `/files/:id` (param) beats `/files/*path` (wildcard).
 - **Trailing slash normalization**: `/users/` and `/users` match the same route.
+- **Double slash normalization**: `_SplitSegments` skips empty segments, so `//` collapses to `/`. Matches the security consensus (nginx, Apache, Go, Rails, Phoenix all normalize).
 - **Group info preservation**: Route groups are flattened into routes when consumed by `group()`, but group metadata (prefix + interceptors) is preserved separately as `_GroupInfo` entries. `Application.serve()` registers group interceptors on tree path nodes via `add_interceptors()`, and registers routes with per-route interceptors only via `add()`.
 - **Overlapping group prefix rejection**: Two groups registering interceptors on the same prefix is a configuration error detected at `serve()` time via `_ValidateGroups`, returned as `ConfigError`.
-- **Segment-boundary scoping**: A node's own interceptors only propagate to children at segment boundaries (child key `'/'`) and param children, not to children sharing a character prefix (e.g., `/api` interceptors don't leak to `/api-docs`). `_TreeNode` stores both parent-level and accumulated interceptors; `_RouteMiss` uses parent interceptors when the remaining path starts with a non-`'/'` character.
+- **Segment-level interceptor scoping**: In a segment trie, every child is at a segment boundary. Interceptors propagate unconditionally from parent to all children. `/api` and `/api-docs` are distinct children of the root — no leakage possible by construction.
 - **Interval-based handler timeout**: Uses a repeating timer that checks a `_last_handler_activity` timestamp rather than cancel+recreate on every chunk. Avoids per-chunk timer allocation overhead during streaming.
 - **Pipelined request buffering**: Requests arriving during `_HandlerInProgress` or `_Streaming` are buffered and drained when the handler completes.
 - **HEAD via split handling**: `RequestHandler.start_streaming()` returns `BodyNotNeeded` for HEAD (local check). `_Connection` uses `is_head` when building buffered responses for the wire (suppresses body, preserves Content-Length).
-- **HEAD→GET fallback**: When no explicit HEAD handler exists at a leaf, `_resolve_method` in `_TreeNode` checks the HEAD key first then falls back to GET — single traversal, no second lookup.
+- **HEAD→GET fallback**: When no explicit HEAD handler exists at a leaf, `_resolve_or_405` in `_TreeNode` checks the HEAD key first then falls back to GET — single traversal, no second lookup.
 - **Backpressure forwarding**: `_Connection` forwards `on_throttled()`/`on_unthrottled()` to the handler actor when one is registered.
 - **Directory index auto-serving**: When a request resolves to a directory, `ServeFiles` tries `index.html`. Content type is derived from the resolved filesystem path.
 - **Request interceptors run before the handler**: Interceptors execute in `_Connection._dispatch` after route lookup. An interceptor short-circuit sends the response (with response interceptors applied) without creating the handler.
@@ -140,7 +142,7 @@ hobby/
   _handler_timeout.pony       - Handler timeout timer notify (internal)
   _connection.pony             - Connection actor (internal)
   _listener.pony               - Listener actor (internal)
-  _router.pony                 - Router + radix tree (internal)
+  _router.pony                 - Router + segment trie (internal)
   _route_match.pony            - Route match + route miss result types (internal)
   _route_definition.pony       - Route definition for building (internal)
   _method_entry.pony           - Per-method handler entry at tree leaf (internal)
@@ -150,7 +152,7 @@ hobby/
   _serve_files_handler.pony    - ServeFiles handler actor (internal)
   _http_date.pony              - RFC 7231 HTTP-date formatting (internal)
   _etag.pony                   - Weak ETag computation and matching (internal)
-  _flatten.pony                - Path joining, array concatenation, overlap detection, prefix validation (internal)
+  _flatten.pony                - Segment splitting, path joining, array concatenation, overlap detection, prefix validation (internal)
   _mort.pony                   - _Unreachable primitive (internal)
   _test.pony                   - Test runner
   _test_router.pony            - Router property-based + example tests

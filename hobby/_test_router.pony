@@ -18,14 +18,6 @@ primitive \nodoc\ _TestRouterList
     test(_TestOverlappingPrefixes)
     test(_TestWildcardSingleSegment)
     test(_TestTrailingSlashNormalization)
-    test(_TestSplitThenParam)
-    test(_TestSplitThenWildcard)
-    test(_TestSplitThenMultipleParams)
-    test(_TestSplitParamThenStatic)
-    test(_TestSplitAtSegmentBoundary)
-    test(_TestSplitMidSegmentParam)
-    test(_TestDeepNestedParamSharedPrefix)
-    test(_TestStaticPrefixFallsBackToParam)
     test(Property1UnitTest[
       (Array[USize] val, Array[USize] val)](
       _PropertyInsertionOrderInvariance))
@@ -54,7 +46,11 @@ primitive \nodoc\ _TestRouterList
     test(_Test405FallsBackToLowerPriorityMatch)
     test(_Test405FallsBackStaticToParam)
     test(_Test405AllowHeaderScopedToEntryType)
-    test(_TestEmptyParamSegmentSkipped)
+    test(_TestDoubleSlashNormalization)
+    test(_TestWildcardDoubleSlashNormalization)
+    test(_TestSplitSegmentsEdgeCases)
+    test(Property1UnitTest[String](_PropertySplitJoinRoundTrip))
+    test(_TestJoinRemainingSegments)
     test(_TestRoutesBeforeInterceptors)
     test(_TestMethodNotAllowedCarriesInterceptors)
 
@@ -389,339 +385,6 @@ class \nodoc\ iso _TestTrailingSlashNormalization is UnitTest
     | let _: _RouteMatch => None
     | let _: _RouteMiss =>
       h.fail("expected match for /users/ (trailing slash)")
-    end
-
-class \nodoc\ iso _TestSplitThenParam is UnitTest
-  """
-  Param route added after a static route with shared prefix is parsed.
-
-  Regression: _insert_static stored the remaining suffix as a literal prefix
-  instead of routing through _insert, so `:id` was never parsed as a param.
-  """
-  fun name(): String => "router/split then param"
-
-  fun apply(h: TestHelper) =>
-    let login_factory: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "login")
-    } val
-    let user_factory: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "user")
-    } val
-    let builder = _RouterBuilder
-    // Static route first — creates a single node with long prefix
-    builder.add(stallion.POST, "/a/b/c/login", login_factory, None)
-    // Param route second — triggers split; remaining suffix contains `:id`
-    builder.add(stallion.POST, "/a/b/c/user/:id/filter", user_factory, None)
-    let router = builder.build()
-
-    // The static route still works
-    match router.lookup(stallion.POST, "/a/b/c/login")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](login_factory, m.factory)
-    | let _: _RouteMiss =>
-      h.fail("expected match for /a/b/c/login")
-    end
-
-    // The param route works and extracts the parameter
-    match router.lookup(stallion.POST, "/a/b/c/user/42/filter")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](user_factory, m.factory)
-      try
-        h.assert_eq[String]("42", m.params("id")?)
-      else
-        h.fail("param 'id' not found")
-      end
-    | let _: _RouteMiss =>
-      h.fail("expected match for /a/b/c/user/42/filter")
-    end
-
-class \nodoc\ iso _TestSplitThenWildcard is UnitTest
-  """Wildcard route added after a static route with shared prefix is parsed."""
-  fun name(): String => "router/split then wildcard"
-
-  fun apply(h: TestHelper) =>
-    let exact_factory: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "exact")
-    } val
-    let catch_all_factory: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "catch-all")
-    } val
-    let builder = _RouterBuilder
-    // Static route first
-    builder.add(stallion.GET, "/static/page", exact_factory, None)
-    // Wildcard route second — triggers split; remaining suffix contains `*`
-    builder.add(stallion.GET, "/static/*rest", catch_all_factory, None)
-    let router = builder.build()
-
-    match router.lookup(stallion.GET, "/static/page")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](exact_factory, m.factory)
-    | let _: _RouteMiss =>
-      h.fail("expected match for /static/page")
-    end
-
-    match router.lookup(stallion.GET, "/static/other/deep/path")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](catch_all_factory, m.factory)
-      try
-        h.assert_eq[String]("other/deep/path", m.params("rest")?)
-      else
-        h.fail("wildcard param 'rest' not found")
-      end
-    | let _: _RouteMiss =>
-      h.fail("expected match for /static/other/deep/path")
-    end
-
-class \nodoc\ iso _TestSplitThenMultipleParams is UnitTest
-  """Multiple params in the suffix after a split are all parsed correctly."""
-  fun name(): String => "router/split then multiple params"
-
-  fun apply(h: TestHelper) =>
-    let static_factory: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "static")
-    } val
-    let param_factory: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "params")
-    } val
-    let builder = _RouterBuilder
-    builder.add(stallion.GET, "/api/v1/health", static_factory, None)
-    builder.add(stallion.GET, "/api/v1/:resource/:id", param_factory, None)
-    let router = builder.build()
-
-    match router.lookup(stallion.GET, "/api/v1/health")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](static_factory, m.factory)
-    | let _: _RouteMiss =>
-      h.fail("expected match for /api/v1/health")
-    end
-
-    match router.lookup(stallion.GET, "/api/v1/users/99")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](param_factory, m.factory)
-      try
-        h.assert_eq[String]("users", m.params("resource")?)
-      else
-        h.fail("param 'resource' not found")
-      end
-      try
-        h.assert_eq[String]("99", m.params("id")?)
-      else
-        h.fail("param 'id' not found")
-      end
-    | let _: _RouteMiss =>
-      h.fail("expected match for /api/v1/users/99")
-    end
-
-class \nodoc\ iso _TestSplitParamThenStatic is UnitTest
-  """Param route first, then static with shared prefix — both resolve."""
-  fun name(): String => "router/split param then static"
-
-  fun apply(h: TestHelper) =>
-    let param_factory: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "param")
-    } val
-    let static_factory: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "static")
-    } val
-    let builder = _RouterBuilder
-    // Param route first
-    builder.add(stallion.POST, "/a/b/c/user/:id/filter", param_factory, None)
-    // Static route second — triggers split from the other direction
-    builder.add(stallion.POST, "/a/b/c/login", static_factory, None)
-    let router = builder.build()
-
-    match router.lookup(stallion.POST, "/a/b/c/login")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](static_factory, m.factory)
-    | let _: _RouteMiss =>
-      h.fail("expected match for /a/b/c/login")
-    end
-
-    match router.lookup(stallion.POST, "/a/b/c/user/42/filter")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](param_factory, m.factory)
-      try
-        h.assert_eq[String]("42", m.params("id")?)
-      else
-        h.fail("param 'id' not found")
-      end
-    | let _: _RouteMiss =>
-      h.fail("expected match for /a/b/c/user/42/filter")
-    end
-
-class \nodoc\ iso _TestSplitAtSegmentBoundary is UnitTest
-  """Split where common prefix ends exactly at a `/` boundary."""
-  fun name(): String => "router/split at segment boundary"
-
-  fun apply(h: TestHelper) =>
-    let list_factory: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "list")
-    } val
-    let detail_factory: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "detail")
-    } val
-    let builder = _RouterBuilder
-    builder.add(stallion.GET, "/items/list", list_factory, None)
-    builder.add(stallion.GET, "/items/:id", detail_factory, None)
-    let router = builder.build()
-
-    match router.lookup(stallion.GET, "/items/list")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](list_factory, m.factory)
-    | let _: _RouteMiss =>
-      h.fail("expected match for /items/list")
-    end
-
-    match router.lookup(stallion.GET, "/items/42")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](detail_factory, m.factory)
-      try
-        h.assert_eq[String]("42", m.params("id")?)
-      else
-        h.fail("param 'id' not found")
-      end
-    | let _: _RouteMiss =>
-      h.fail("expected match for /items/42")
-    end
-
-class \nodoc\ iso _TestSplitMidSegmentParam is UnitTest
-  """
-  Split where divergence is mid-segment, and the new suffix starts with
-  static text before reaching a param.
-  """
-  fun name(): String => "router/split mid-segment param"
-
-  fun apply(h: TestHelper) =>
-    let index_factory: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "index")
-    } val
-    let item_factory: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "item")
-    } val
-    let builder = _RouterBuilder
-    // "index" and "item" share "i" then diverge mid-segment
-    builder.add(stallion.GET, "/prefix/index", index_factory, None)
-    builder.add(stallion.GET, "/prefix/item/:id", item_factory, None)
-    let router = builder.build()
-
-    match router.lookup(stallion.GET, "/prefix/index")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](index_factory, m.factory)
-    | let _: _RouteMiss =>
-      h.fail("expected match for /prefix/index")
-    end
-
-    match router.lookup(stallion.GET, "/prefix/item/7")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](item_factory, m.factory)
-      try
-        h.assert_eq[String]("7", m.params("id")?)
-      else
-        h.fail("param 'id' not found")
-      end
-    | let _: _RouteMiss =>
-      h.fail("expected match for /prefix/item/7")
-    end
-
-class \nodoc\ iso _TestDeepNestedParamSharedPrefix is UnitTest
-  """Deeply nested param routes sharing a long common prefix all resolve."""
-  fun name(): String => "router/deep nested param shared prefix"
-
-  fun apply(h: TestHelper) =>
-    let fa: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "a")
-    } val
-    let fb: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "b")
-    } val
-    let fc: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "c")
-    } val
-    let builder = _RouterBuilder
-    builder.add(stallion.GET, "/x/y/z/alpha", fa, None)
-    builder.add(stallion.GET, "/x/y/z/a/:id", fb, None)
-    builder.add(stallion.GET, "/x/y/z/a/:id/sub/:sid", fc, None)
-    let router = builder.build()
-
-    match router.lookup(stallion.GET, "/x/y/z/alpha")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](fa, m.factory)
-    | let _: _RouteMiss =>
-      h.fail("expected match for /x/y/z/alpha")
-    end
-
-    match router.lookup(stallion.GET, "/x/y/z/a/10")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](fb, m.factory)
-      try
-        h.assert_eq[String]("10", m.params("id")?)
-      else
-        h.fail("param 'id' not found")
-      end
-    | let _: _RouteMiss =>
-      h.fail("expected match for /x/y/z/a/10")
-    end
-
-    match router.lookup(stallion.GET, "/x/y/z/a/10/sub/20")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](fc, m.factory)
-      try
-        h.assert_eq[String]("10", m.params("id")?)
-      else
-        h.fail("param 'id' not found")
-      end
-      try
-        h.assert_eq[String]("20", m.params("sid")?)
-      else
-        h.fail("param 'sid' not found")
-      end
-    | let _: _RouteMiss =>
-      h.fail("expected match for /x/y/z/a/10/sub/20")
-    end
-
-class \nodoc\ iso _TestStaticPrefixFallsBackToParam is UnitTest
-  """
-  When a static child's prefix matches as a prefix of the remaining path
-  but the subtree doesn't match, lookup falls back to the param child.
-
-  Regression: _RouteMiss from a static child must not block param fallback.
-  `/users/new` and `/users/:id` — a lookup for `/users/newsletter` enters
-  the `new` static child (since "newsletter" starts with "new") but fails.
-  The param child `:id` should still match.
-  """
-  fun name(): String => "router/static prefix falls back to param"
-
-  fun apply(h: TestHelper) =>
-    let static_factory: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "static")
-    } val
-    let param_factory: HandlerFactory = {(ctx) =>
-      RequestHandler(consume ctx).respond(stallion.StatusOK, "param")
-    } val
-    let builder = _RouterBuilder
-    builder.add(stallion.GET, "/users/new", static_factory, None)
-    builder.add(stallion.GET, "/users/:id", param_factory, None)
-    let router = builder.build()
-
-    // Exact static match still works
-    match router.lookup(stallion.GET, "/users/new")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](static_factory, m.factory)
-    | let _: _RouteMiss =>
-      h.fail("expected match for /users/new")
-    end
-
-    // "newsletter" starts with "new" — must fall back to param
-    match router.lookup(stallion.GET, "/users/newsletter")
-    | let m: _RouteMatch =>
-      h.assert_is[HandlerFactory](param_factory, m.factory)
-      try
-        h.assert_eq[String]("newsletter", m.params("id")?)
-      else
-        h.fail("param 'id' not found")
-      end
-    | let _: _RouteMiss =>
-      h.fail("expected param match for /users/newsletter (backtrack from static)")
     end
 
 class \nodoc\ iso _TestParamPriorityOverWildcard is UnitTest
@@ -1346,9 +1009,9 @@ class \nodoc\ iso _TestInterceptorSegmentBoundary is UnitTest
   """
   Group interceptors at /api must NOT leak to /api-docs.
 
-  A radix tree node for /api has children at '/' (sub-paths like /api/users)
-  and '-' (sibling routes like /api-docs). Only sub-path children should
-  inherit the group's interceptors.
+  In the segment trie, `/api` and `/api-docs` are distinct children of the
+  root node (`"api"` vs `"api-docs"`). Interceptors registered on the `/api`
+  node propagate only to its children, not to sibling segments.
   """
   fun name(): String => "router/interceptor segment boundary"
 
@@ -1560,9 +1223,12 @@ class \nodoc\ iso _TestSharedParamNameConsistent is UnitTest
       h.fail("expected match for POST /users/42")
     end
 
-class \nodoc\ iso _TestEmptyParamSegmentSkipped is UnitTest
-  """Empty param segment (/users//details) does not match the param child."""
-  fun name(): String => "router/empty param segment skipped"
+class \nodoc\ iso _TestDoubleSlashNormalization is UnitTest
+  """
+  Double slashes are normalized: `/users//42/details` matches
+  `/users/:id/details` with `id` = `"42"`.
+  """
+  fun name(): String => "router/double slash normalization"
 
   fun apply(h: TestHelper) =>
     let builder = _RouterBuilder
@@ -1581,12 +1247,67 @@ class \nodoc\ iso _TestEmptyParamSegmentSkipped is UnitTest
       h.fail("expected match for /users/42/details")
     end
 
-    // Empty segment — param child requires value_end > offset
+    // Double slash normalized: /users//42/details → segments
+    // ["users", "42", "details"]
+    match router.lookup(stallion.GET, "/users//42/details")
+    | let m: _RouteMatch =>
+      try
+        h.assert_eq[String]("42", m.params("id")?)
+      else
+        h.fail("param 'id' not found")
+      end
+    else
+      h.fail("expected match for /users//42/details (double slash normalized)")
+    end
+
+    // /users//details is 2 segments ["users", "details"] — misses the
+    // 3-segment route /users/:id/details
     match router.lookup(stallion.GET, "/users//details")
-    | let _: _RouteMatch =>
-      h.fail("empty param segment should not match")
     | let _: _RouteMiss => None
+    | let _: _RouteMatch =>
+      h.fail("/users//details should miss (only 2 segments)")
     | let _: _MethodNotAllowed => None
+    end
+
+class \nodoc\ iso _TestWildcardDoubleSlashNormalization is UnitTest
+  """
+  Wildcard captures normalize double slashes in the captured value.
+
+  A request for `/files/a//b/c` produces a wildcard value of `"a/b/c"`,
+  not `"a//b/c"`, because `_SplitSegments` skips empty segments before
+  the wildcard remainder is reconstructed.
+  """
+  fun name(): String => "router/wildcard double slash normalization"
+
+  fun apply(h: TestHelper) =>
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/files/*path", _NoOpFactory, None)
+    let router = builder.build()
+
+    // Double slash in wildcard portion — normalized in captured value
+    match router.lookup(stallion.GET, "/files/a//b/c")
+    | let m: _RouteMatch =>
+      try
+        h.assert_eq[String]("a/b/c", m.params("path")?,
+          "wildcard should normalize double slash to single")
+      else
+        h.fail("wildcard param 'path' not found")
+      end
+    else
+      h.fail("expected match for /files/a//b/c")
+    end
+
+    // Triple slash
+    match router.lookup(stallion.GET, "/files/x///y")
+    | let m: _RouteMatch =>
+      try
+        h.assert_eq[String]("x/y", m.params("path")?,
+          "wildcard should normalize triple slash")
+      else
+        h.fail("wildcard param 'path' not found")
+      end
+    else
+      h.fail("expected match for /files/x///y")
     end
 
 class \nodoc\ iso _TestMethodNotAllowed is UnitTest
@@ -1711,6 +1432,132 @@ class \nodoc\ iso _TestWildcardHeadFallback is UnitTest
     else
       h.fail("HEAD should fall back to GET wildcard")
     end
+
+// --- _SplitSegments / _JoinRemainingSegments tests ---
+
+class \nodoc\ iso _TestSplitSegmentsEdgeCases is UnitTest
+  """
+  `_SplitSegments` edge cases: root, empty, single segment, double slashes,
+  triple slashes, param/wildcard markers, and registration-path normalization.
+  """
+  fun name(): String => "router/split segments edge cases"
+
+  fun apply(h: TestHelper) =>
+    // Root path → empty
+    let root = _SplitSegments("/")
+    h.assert_eq[USize](0, root.size(), "/ should produce 0 segments")
+
+    // Empty string → empty
+    let empty = _SplitSegments("")
+    h.assert_eq[USize](0, empty.size(), "empty should produce 0 segments")
+
+    // Single segment
+    let single = _SplitSegments("/users")
+    h.assert_eq[USize](1, single.size())
+    try
+      h.assert_eq[String]("users", single(0)?)
+    else
+      h.fail("single segment access failed")
+    end
+
+    // Multi-segment
+    let multi = _SplitSegments("/api/v1/users")
+    h.assert_eq[USize](3, multi.size())
+    try
+      h.assert_eq[String]("api", multi(0)?)
+      h.assert_eq[String]("v1", multi(1)?)
+      h.assert_eq[String]("users", multi(2)?)
+    else
+      h.fail("multi segment access failed")
+    end
+
+    // Double slash → empty segment skipped
+    let double = _SplitSegments("/api//users")
+    h.assert_eq[USize](2, double.size(),
+      "double slash should collapse to 2 segments")
+    try
+      h.assert_eq[String]("api", double(0)?)
+      h.assert_eq[String]("users", double(1)?)
+    else
+      h.fail("double slash segment access failed")
+    end
+
+    // Triple slash
+    let triple = _SplitSegments("/a///b")
+    h.assert_eq[USize](2, triple.size(),
+      "triple slash should collapse to 2 segments")
+    try
+      h.assert_eq[String]("a", triple(0)?)
+      h.assert_eq[String]("b", triple(1)?)
+    else
+      h.fail("triple slash segment access failed")
+    end
+
+    // Param and wildcard markers are preserved as segment content
+    let params = _SplitSegments("/users/:id/posts/*rest")
+    h.assert_eq[USize](4, params.size())
+    try
+      h.assert_eq[String](":id", params(1)?)
+      h.assert_eq[String]("*rest", params(3)?)
+    else
+      h.fail("param/wildcard segment access failed")
+    end
+
+class \nodoc\ iso _PropertySplitJoinRoundTrip is Property1[String]
+  """
+  Splitting a static path into segments and joining them all back produces
+  the original path without the leading slash.
+  """
+  fun name(): String => "router/property/split join round-trip"
+
+  fun gen(): Generator[String] => _GenStaticPath()
+
+  fun property(path: String, h: PropertyHelper) =>
+    let segments = _SplitSegments(path)
+    let rejoined = _JoinRemainingSegments(segments, 0)
+    // _SplitSegments strips the leading '/'; _JoinRemainingSegments
+    // does not add it back. So "/" + rejoined == path.
+    h.assert_eq[String](path, "/" + rejoined)
+
+class \nodoc\ iso _TestJoinRemainingSegments is UnitTest
+  """
+  `_JoinRemainingSegments` edge cases: past-end index, single segment,
+  multiple segments, and mid-array start.
+  """
+  fun name(): String => "router/join remaining segments"
+
+  fun apply(h: TestHelper) =>
+    let segments: Array[String] val =
+      recover val ["api"; "v1"; "users"; "42"] end
+
+    // from >= size → empty string
+    h.assert_eq[String]("",
+      _JoinRemainingSegments(segments, 10),
+      "past-end should return empty")
+    h.assert_eq[String]("",
+      _JoinRemainingSegments(segments, 4),
+      "at-size should return empty")
+
+    // Empty array → empty string
+    let empty: Array[String] val = recover val Array[String] end
+    h.assert_eq[String]("",
+      _JoinRemainingSegments(empty, 0),
+      "empty array should return empty")
+
+    // Single remaining segment (fast path, no allocation)
+    h.assert_eq[String]("42",
+      _JoinRemainingSegments(segments, 3),
+      "single remaining should return that segment")
+
+    // Multiple remaining segments
+    h.assert_eq[String]("v1/users/42",
+      _JoinRemainingSegments(segments, 1),
+      "join from index 1")
+
+    // All segments from start
+    h.assert_eq[String]("api/v1/users/42",
+      _JoinRemainingSegments(segments, 0),
+      "join all segments")
 
 class \nodoc\ iso _TestRoutesBeforeInterceptors is UnitTest
   """

@@ -77,7 +77,7 @@ Register the factory: `.>get("/data", {(ctx)(db) => MyHandler(consume ctx, db)} 
 
 ## Routing
 
-Routes use a radix tree with two kinds of dynamic segments:
+Routes use a segment trie with two kinds of dynamic segments:
 
 - **Named parameters** (`:name`): match a single path segment.
   `/users/:id` matches `/users/42` but not `/users/42/posts`.
