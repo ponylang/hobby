@@ -2,6 +2,7 @@ use stallion = "stallion"
 
 class ref _BufferedResponse
   """
+
   Mutable response buffer for response interceptor modification.
 
   Created by `_Connection` when a response is produced (from handler, request
@@ -14,26 +15,36 @@ class ref _BufferedResponse
   Content-Length header is already present (from explicit user headers or an
   interceptor), `_build()` does not override it.
   """
+
   var status: stallion.Status
   embed headers: Array[(String, String)]
   var body: (ByteSeq | None)
   let is_streaming: Bool
   let is_head: Bool
 
-  new ref _standard(status': stallion.Status, body': ByteSeq,
+  new ref _standard(
+    status': stallion.Status,
+    body': ByteSeq,
     is_head': Bool)
   =>
-    """Create a buffered response for a simple respond() call."""
+    """
+    Create a buffered response for a simple respond() call.
+    """
     status = status'
     headers = Array[(String, String)]
     body = body'
     is_streaming = false
     is_head = is_head'
 
-  new ref _with_headers(status': stallion.Status,
-    hdrs: stallion.Headers val, body': ByteSeq, is_head': Bool)
+  new ref _with_headers(
+    status': stallion.Status,
+    hdrs: stallion.Headers val,
+    body': ByteSeq,
+    is_head': Bool)
   =>
-    """Create a buffered response with explicit headers."""
+    """
+    Create a buffered response with explicit headers.
+    """
     status = status'
     headers = Array[(String, String)]
     for hdr in hdrs.values() do
@@ -46,7 +57,9 @@ class ref _BufferedResponse
   new ref _from_intercept_respond(respond: InterceptRespond ref,
     is_head': Bool)
   =>
-    """Create a buffered response from an interceptor short-circuit."""
+    """
+    Create a buffered response from an interceptor short-circuit.
+    """
     status = respond._response_status()
     headers = Array[(String, String)]
     var i: USize = 0
@@ -63,7 +76,9 @@ class ref _BufferedResponse
     is_head = is_head'
 
   new ref _streaming_complete(status': stallion.Status, is_head': Bool) =>
-    """Create a buffered response for response interceptors on stream finish."""
+    """
+    Create a buffered response for response interceptors on stream finish.
+    """
     status = status'
     headers = Array[(String, String)]
     body = None
@@ -72,6 +87,7 @@ class ref _BufferedResponse
 
   fun box _build(): Array[U8] val =>
     """
+
     Serialize this buffered response into HTTP bytes for the wire.
 
     For non-streaming responses, auto-adds Content-Length from the final body
@@ -79,6 +95,7 @@ class ref _BufferedResponse
     response interceptors, so interceptors that call `set_body()` get correct
     Content-Length automatically.
     """
+
     let builder = stallion.ResponseBuilder(status)
     for (name, value) in headers.values() do
       builder.add_header(name, value)
@@ -94,12 +111,13 @@ class ref _BufferedResponse
         end
       end
       if not has_content_length then
-        let body_size: USize = match body
-        | let s: String val => s.size()
-        | let a: Array[U8] val => a.size()
-        else
-          0
-        end
+        let body_size: USize =
+          match body
+          | let s: String val => s.size()
+          | let a: Array[U8] val => a.size()
+          else
+            0
+          end
         builder.add_header("content-length", body_size.string())
       end
     end

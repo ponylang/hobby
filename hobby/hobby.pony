@@ -1,4 +1,5 @@
 """
+
 # Hobby
 
 A simple HTTP web framework for Pony, powered by
@@ -19,11 +20,11 @@ actor Main
     let auth = lori.TCPListenAuth(env.root)
     match
       hobby.Application
-        .>get("/", {(ctx) =>
+        .> get("/", {(ctx) =>
           hobby.RequestHandler(consume ctx)
             .respond(stallion.StatusOK, "Hello!")
         } val)
-        .>get("/greet/:name", {(ctx) =>
+        .> get("/greet/:name", {(ctx) =>
           let handler = hobby.RequestHandler(consume ctx)
           try
             handler.respond(stallion.StatusOK,
@@ -73,7 +74,8 @@ actor MyHandler is hobby.HandlerReceiver
   be unthrottled() => None
 ```
 
-Register the factory: `.>get("/data", {(ctx)(db) => MyHandler(consume ctx, db)} val)`
+Register the factory:
+`.> get("/data", {(ctx)(db) => MyHandler(consume ctx, db)} val)`
 
 ## Routing
 
@@ -96,13 +98,13 @@ An interceptor returns `InterceptPass` to let the request through or
 ```pony
 let auth: Array[hobby.RequestInterceptor val] val =
   recover val [as hobby.RequestInterceptor val: AuthInterceptor] end
-app.>get("/private", private_factory where interceptors = auth)
+app.> get("/private", private_factory where interceptors = auth)
 ```
 
 Application-level interceptors run on every request, including 404s:
 
 ```pony
-app.>add_request_interceptor(RequiredHeadersInterceptor(
+app.> add_request_interceptor(RequiredHeadersInterceptor(
   recover val ["accept"] end))
 ```
 
@@ -122,8 +124,8 @@ class val CorsInterceptor is hobby.ResponseInterceptor
 Register at the application, group, or route level:
 
 ```pony
-app.>add_response_interceptor(CorsInterceptor)
-app.>get("/cached", handler
+app.> add_response_interceptor(CorsInterceptor)
+app.> get("/cached", handler
   where response_interceptors = cache_interceptors)
 ```
 
@@ -138,9 +140,9 @@ Group related routes under a shared prefix and interceptors with `RouteGroup`:
 let auth: Array[hobby.RequestInterceptor val] val =
   recover val [as hobby.RequestInterceptor val: AuthInterceptor] end
 let api = hobby.RouteGroup("/api" where interceptors = auth)
-api.>get("/users", users_factory)
-api.>get("/users/:id", user_factory)
-app.>group(consume api)
+api.> get("/users", users_factory)
+api.> get("/users/:id", user_factory)
+app.> group(consume api)
 ```
 
 Groups can be nested — inner groups inherit the outer group's prefix and
@@ -205,7 +207,7 @@ actor Main
     let root = FilePath(FileAuth(env.root), "./public")
     match
       hobby.Application
-        .>get("/static/*filepath", hobby.ServeFiles(root))
+        .> get("/static/*filepath", hobby.ServeFiles(root))
         .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
     | let err: hobby.ConfigError =>
       env.err.print(err.message)
@@ -230,3 +232,4 @@ Users import up to four packages:
 - **`lori`**: `TCPListenAuth(env.root)` for network access
 - **`files`**: `FilePath`, `FileAuth` (only needed when using `ServeFiles`)
 """
+

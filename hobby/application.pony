@@ -3,6 +3,7 @@ use lori = "lori"
 
 class iso Application
   """
+
   The public API for the Hobby web framework.
 
   Register routes via `.>` method chaining (`get`, `post`, etc.), then call
@@ -18,11 +19,11 @@ class iso Application
       let auth = lori.TCPListenAuth(env.root)
       match
         hobby.Application
-          .>get("/", {(ctx) =>
+          .> get("/", {(ctx) =>
             hobby.RequestHandler(consume ctx)
               .respond(stallion.StatusOK, "Hello!")
           } val)
-          .>get("/greet/:name", {(ctx) =>
+          .> get("/greet/:name", {(ctx) =>
             let handler = hobby.RequestHandler(consume ctx)
             try
               handler.respond(stallion.StatusOK,
@@ -43,6 +44,7 @@ class iso Application
   through). Call `.serve()` last — it consumes the Application and returns
   the routes.
   """
+
   embed _routes: Array[_RouteDefinition]
   embed _app_interceptors: Array[RequestInterceptor val]
   embed _app_response_interceptors: Array[ResponseInterceptor val]
@@ -54,81 +56,162 @@ class iso Application
     _app_response_interceptors = Array[ResponseInterceptor val]
     _group_infos = Array[_GroupInfo]
 
-  fun ref get(path: String, factory: HandlerFactory,
-    interceptors: (Array[RequestInterceptor val] val | None) = None,
-    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
-  =>
-    """Register a GET route."""
-    _routes.push(
-      _RouteDefinition(stallion.GET, path, factory, response_interceptors,
-        interceptors))
-
-  fun ref post(path: String, factory: HandlerFactory,
-    interceptors: (Array[RequestInterceptor val] val | None) = None,
-    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
-  =>
-    """Register a POST route."""
-    _routes.push(
-      _RouteDefinition(stallion.POST, path, factory, response_interceptors,
-        interceptors))
-
-  fun ref put(path: String, factory: HandlerFactory,
-    interceptors: (Array[RequestInterceptor val] val | None) = None,
-    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
-  =>
-    """Register a PUT route."""
-    _routes.push(
-      _RouteDefinition(stallion.PUT, path, factory, response_interceptors,
-        interceptors))
-
-  fun ref delete(path: String, factory: HandlerFactory,
-    interceptors: (Array[RequestInterceptor val] val | None) = None,
-    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
-  =>
-    """Register a DELETE route."""
-    _routes.push(
-      _RouteDefinition(stallion.DELETE, path, factory, response_interceptors,
-        interceptors))
-
-  fun ref patch(path: String, factory: HandlerFactory,
-    interceptors: (Array[RequestInterceptor val] val | None) = None,
-    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
-  =>
-    """Register a PATCH route."""
-    _routes.push(
-      _RouteDefinition(stallion.PATCH, path, factory, response_interceptors,
-        interceptors))
-
-  fun ref head(path: String, factory: HandlerFactory,
-    interceptors: (Array[RequestInterceptor val] val | None) = None,
-    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
-  =>
-    """Register a HEAD route."""
-    _routes.push(
-      _RouteDefinition(stallion.HEAD, path, factory, response_interceptors,
-        interceptors))
-
-  fun ref options(path: String, factory: HandlerFactory,
-    interceptors: (Array[RequestInterceptor val] val | None) = None,
-    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
-  =>
-    """Register an OPTIONS route."""
-    _routes.push(
-      _RouteDefinition(stallion.OPTIONS, path, factory, response_interceptors,
-        interceptors))
-
-  fun ref route(method: stallion.Method, path: String,
+  fun ref get(
+    path: String,
     factory: HandlerFactory,
-    interceptors: (Array[RequestInterceptor val] val | None) = None,
-    response_interceptors: (Array[ResponseInterceptor val] val | None) = None)
+    interceptors:
+      (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors:
+      (Array[ResponseInterceptor val] val | None) = None)
   =>
-    """Register a route with an arbitrary HTTP method."""
+    """
+    Register a GET route.
+    """
     _routes.push(
-      _RouteDefinition(method, path, factory, response_interceptors,
+      _RouteDefinition(
+        stallion.GET,
+        path,
+        factory,
+        response_interceptors,
+        interceptors))
+
+  fun ref post(
+    path: String,
+    factory: HandlerFactory,
+    interceptors:
+      (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors:
+      (Array[ResponseInterceptor val] val | None) = None)
+  =>
+    """
+    Register a POST route.
+    """
+    _routes.push(
+      _RouteDefinition(
+        stallion.POST,
+        path,
+        factory,
+        response_interceptors,
+        interceptors))
+
+  fun ref put(
+    path: String,
+    factory: HandlerFactory,
+    interceptors:
+      (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors:
+      (Array[ResponseInterceptor val] val | None) = None)
+  =>
+    """
+    Register a PUT route.
+    """
+    _routes.push(
+      _RouteDefinition(
+        stallion.PUT,
+        path,
+        factory,
+        response_interceptors,
+        interceptors))
+
+  fun ref delete(
+    path: String,
+    factory: HandlerFactory,
+    interceptors:
+      (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors:
+      (Array[ResponseInterceptor val] val | None) = None)
+  =>
+    """
+    Register a DELETE route.
+    """
+    _routes.push(
+      _RouteDefinition(
+        stallion.DELETE,
+        path,
+        factory,
+        response_interceptors,
+        interceptors))
+
+  fun ref patch(
+    path: String,
+    factory: HandlerFactory,
+    interceptors:
+      (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors:
+      (Array[ResponseInterceptor val] val | None) = None)
+  =>
+    """
+    Register a PATCH route.
+    """
+    _routes.push(
+      _RouteDefinition(
+        stallion.PATCH,
+        path,
+        factory,
+        response_interceptors,
+        interceptors))
+
+  fun ref head(
+    path: String,
+    factory: HandlerFactory,
+    interceptors:
+      (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors:
+      (Array[ResponseInterceptor val] val | None) = None)
+  =>
+    """
+    Register a HEAD route.
+    """
+    _routes.push(
+      _RouteDefinition(
+        stallion.HEAD,
+        path,
+        factory,
+        response_interceptors,
+        interceptors))
+
+  fun ref options(
+    path: String,
+    factory: HandlerFactory,
+    interceptors:
+      (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors:
+      (Array[ResponseInterceptor val] val | None) = None)
+  =>
+    """
+    Register an OPTIONS route.
+    """
+    _routes.push(
+      _RouteDefinition(
+        stallion.OPTIONS,
+        path,
+        factory,
+        response_interceptors,
+        interceptors))
+
+  fun ref route(
+    method: stallion.Method,
+    path: String,
+    factory: HandlerFactory,
+    interceptors:
+      (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors:
+      (Array[ResponseInterceptor val] val | None) = None)
+  =>
+    """
+    Register a route with an arbitrary HTTP method.
+    """
+    _routes.push(
+      _RouteDefinition(
+        method,
+        path,
+        factory,
+        response_interceptors,
         interceptors))
 
   fun ref add_request_interceptor(interceptor: RequestInterceptor val) =>
     """
+
     Add an application-level request interceptor.
 
     Request interceptors run before the handler on every request. Application
@@ -138,10 +221,12 @@ class iso Application
 
     App-level interceptors also run on 404 responses where no route matched.
     """
+
     _app_interceptors.push(interceptor)
 
   fun ref add_response_interceptor(interceptor: ResponseInterceptor val) =>
     """
+
     Add an application-level response interceptor.
 
     Response interceptors run after the handler responds, before the response
@@ -152,10 +237,12 @@ class iso Application
     App-level response interceptors also run on 404 responses where no route
     matched.
     """
+
     _app_response_interceptors.push(interceptor)
 
   fun ref group(g: RouteGroup iso) =>
     """
+
     Consume a route group, flattening its routes into this application.
 
     The group's prefix is applied to each of its routes. Group-level
@@ -163,16 +250,20 @@ class iso Application
     registered on path nodes, not concatenated onto routes. The group is
     consumed — no further registration on it is possible.
     """
-    let g_ref: RouteGroup ref = consume g
-    g_ref._collect_group_infos(_group_infos)
-    g_ref._flatten_routes_into(_routes)
 
-  fun iso serve(auth: lori.TCPListenAuth, config: stallion.ServerConfig,
+    (consume g)
+      .> _collect_group_infos(_group_infos)
+      .> _flatten_routes_into(_routes)
+
+  fun iso serve(
+    auth: lori.TCPListenAuth,
+    config: stallion.ServerConfig,
     out: OutStream,
     handler_timeout: (U64 | None) = 30_000)
     : ServeResult
   =>
     """
+
     Freeze routes, validate configuration, and start listening.
 
     Consumes the Application — no further route registration is possible
@@ -185,6 +276,7 @@ class iso Application
     handler fails to respond within the timeout, the framework sends 504
     Gateway Timeout (or closes the connection for active streams).
     """
+
     let self: Application ref = consume this
 
     // Validate group configuration before building
@@ -207,7 +299,8 @@ class iso Application
 
     // Build app-level response interceptors as a val array (or None if empty)
     let app_response_interceptors:
-      (Array[ResponseInterceptor val] val | None) =
+      (Array[ResponseInterceptor val] val | None)
+    =
       if self._app_response_interceptors.size() > 0 then
         let ri_iso: Array[ResponseInterceptor val] iso =
           recover iso Array[ResponseInterceptor val] end
@@ -222,18 +315,25 @@ class iso Application
     let builder = _RouterBuilder
 
     // Register app-level interceptors on the root node
-    builder.add_interceptors("", app_interceptors, app_response_interceptors)
+    builder.add_interceptors(
+      "", app_interceptors, app_response_interceptors)
 
     // Register group-level interceptors on their prefix nodes
     for gi in self._group_infos.values() do
-      builder.add_interceptors(gi.prefix, gi.interceptors,
+      builder.add_interceptors(
+        gi.prefix,
+        gi.interceptors,
         gi.response_interceptors)
     end
 
     // Register routes with per-route interceptors only
     for r in self._routes.values() do
-      builder.add(r.method, r.path, r.factory,
-        r.response_interceptors, r.interceptors)
+      builder.add(
+        r.method,
+        r.path,
+        r.factory,
+        r.response_interceptors,
+        r.interceptors)
     end
 
     // Check for tree-level errors (e.g., conflicting param names)
@@ -243,11 +343,12 @@ class iso Application
     let router: _Router val = builder.build()
 
     // Convert millisecond timeout to nanoseconds
-    let timeout_ns: U64 = match handler_timeout
-    | let ms: U64 => ms * 1_000_000
-    else
-      0
-    end
+    let timeout_ns: U64 =
+      match handler_timeout
+      | let ms: U64 => ms * 1_000_000
+      else
+        0
+      end
 
     _Listener(auth, config, router, out, timeout_ns)
     Serving

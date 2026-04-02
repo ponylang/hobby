@@ -9,21 +9,25 @@ actor _ServeFilesHandler is (HandlerReceiver & _FileTarget)
   Implements `HandlerReceiver` for lifecycle notifications and `_FileTarget`
   for receiving file data from the streamer.
   """
+
   embed _handler: RequestHandler
   var _streamer: (_FileStreamer | None) = None
 
-  new create(ctx: HandlerContext iso, file: File iso,
+  new create(
+    ctx: HandlerContext iso,
+    file: File iso,
     status: stallion.Status,
     headers: (stallion.Headers val | None))
   =>
     _handler = RequestHandler(consume ctx)
-    match _handler.start_streaming(status, headers)
+    match \exhaustive\ _handler.start_streaming(status, headers)
     | StreamingStarted =>
       _streamer = _FileStreamer(consume file, this)
     | stallion.ChunkedNotSupported =>
       // Shouldn't happen — ServeFiles checked inline. Clean up.
       file.dispose()
-      _handler.respond(stallion.StatusHTTPVersionNotSupported,
+      _handler.respond(
+        stallion.StatusHTTPVersionNotSupported,
         "HTTP Version Not Supported")
     | BodyNotNeeded =>
       // HEAD — already responded, just clean up file

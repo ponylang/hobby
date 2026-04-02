@@ -9,6 +9,15 @@ interface tag HandlerReceiver
   - `throttled()`: TCP send buffer is full; pause chunk production.
   - `unthrottled()`: TCP send buffer drained; resume chunk production.
   """
+
   be dispose()
+
   be throttled()
+    """
+    TCP send buffer is full. Pause producing chunks until `unthrottled()`.
+    """
+
   be unthrottled()
+    """
+    TCP send buffer drained. Resume producing chunks.
+    """

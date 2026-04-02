@@ -4,7 +4,6 @@ primitive Serving
 
   The listener is running and accepting connections.
   """
-
 class val ConfigError
   """
   Returned by `Application.serve()` when a configuration error prevented

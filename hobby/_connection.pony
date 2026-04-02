@@ -14,6 +14,7 @@ type _PendingRequest is
 
 actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
   """
+
   Internal connection actor that handles a single HTTP connection.
 
   Implements Stallion's `HTTPServerActor` to receive HTTP events and
@@ -21,14 +22,13 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
   runs through: request interceptors (synchronous) → handler factory →
   handler actor (async) → response interceptors (synchronous) → wire.
   """
+
   var _http: stallion.HTTPServer = stallion.HTTPServer.none()
   let _router: _Router val
   let _timers: Timers tag
   let _timeout_ns: U64
   var _body: Array[U8] iso = recover iso Array[U8] end
   var _has_body: Bool = false
-
-  // Per-request state
   var _current_token: U64 = 0
   var _handler: (HandlerReceiver tag | None) = None
   var _handler_timer: (Timer tag | None) = None
@@ -42,9 +42,13 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
   var _is_head: Bool = false
   embed _pending_requests: Array[_PendingRequest]
 
-  new create(auth: lori.TCPServerAuth, fd: U32,
-    config: stallion.ServerConfig, router: _Router val,
-    timers: Timers tag, timeout_ns: U64)
+  new create(
+    auth: lori.TCPServerAuth,
+    fd: U32,
+    config: stallion.ServerConfig,
+    router: _Router val,
+    timers: Timers tag,
+    timeout_ns: U64)
   =>
     _router = router
     _timers = timers
@@ -55,12 +59,12 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
   fun ref _http_connection(): stallion.HTTPServer => _http
 
   // --- HTTP lifecycle callbacks ---
-
   fun ref on_body_chunk(data: Array[U8] val) =>
     _has_body = true
     _body.append(data)
 
-  fun ref on_request_complete(request': stallion.Request val,
+  fun ref on_request_complete(
+    request': stallion.Request val,
     responder: stallion.Responder)
   =>
     let body: Array[U8] val =
@@ -110,31 +114,37 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
     end
 
   // --- Request processing ---
-
-  fun ref _process_request(request': stallion.Request val,
-    responder: stallion.Responder, body: Array[U8] val)
+  fun ref _process_request(
+    request': stallion.Request val,
+    responder: stallion.Responder,
+    body: Array[U8] val)
   =>
     let path = request'.uri.path
     let is_head = request'.method is stallion.HEAD
 
     // Single lookup — HEAD→GET fallback is handled inside the router
-    match _router.lookup(request'.method, path)
+    match \exhaustive\ _router.lookup(request'.method, path)
     | let m: _RouteMatch =>
       _dispatch(request', responder, body, m, is_head)
     | let na: _MethodNotAllowed =>
       // Path exists but method not allowed — run interceptors then send 405
       match _RunRequestInterceptors(request', na.interceptors)
       | let respond: InterceptRespond =>
-        let buf = _BufferedResponse._from_intercept_respond(respond, is_head)
+        let buf =
+          _BufferedResponse._from_intercept_respond(
+            respond, is_head)
         let ctx = ResponseContext._create(buf, request')
         _RunResponseInterceptors(ctx, na.response_interceptors)
         responder.respond(buf._build())
         return
       end
-      let allow_value: String val = ", ".join(
-        na.allowed_methods.values())
-      let buf = _BufferedResponse._standard(
-        stallion.StatusMethodNotAllowed, "Method Not Allowed", is_head)
+      let allow_value: String val =
+        ", ".join(na.allowed_methods.values())
+      let buf =
+        _BufferedResponse._standard(
+          stallion.StatusMethodNotAllowed,
+          "Method Not Allowed",
+          is_head)
       buf.headers.push(("allow", allow_value))
       let ctx = ResponseContext._create(buf, request')
       _RunResponseInterceptors(ctx, na.response_interceptors)
@@ -143,7 +153,9 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
       // Run request interceptors from the traversal — may short-circuit
       match _RunRequestInterceptors(request', miss.interceptors)
       | let respond: InterceptRespond =>
-        let buf = _BufferedResponse._from_intercept_respond(respond, is_head)
+        let buf =
+          _BufferedResponse._from_intercept_respond(
+            respond, is_head)
         let ctx = ResponseContext._create(buf, request')
         _RunResponseInterceptors(ctx, miss.response_interceptors)
         responder.respond(buf._build())
@@ -151,21 +163,27 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
       end
       // No interceptor short-circuit — send 404 with accumulated response
       // interceptors
-      let buf = _BufferedResponse._standard(
-        stallion.StatusNotFound, "Not Found", is_head)
+      let buf =
+        _BufferedResponse._standard(
+          stallion.StatusNotFound, "Not Found", is_head)
       let ctx = ResponseContext._create(buf, request')
       _RunResponseInterceptors(ctx, miss.response_interceptors)
       responder.respond(buf._build())
     end
 
-  fun ref _dispatch(request': stallion.Request val,
-    responder: stallion.Responder, body: Array[U8] val,
-    m: _RouteMatch, is_head: Bool)
+  fun ref _dispatch(
+    request': stallion.Request val,
+    responder: stallion.Responder,
+    body: Array[U8] val,
+    m: _RouteMatch,
+    is_head: Bool)
   =>
     // Run request interceptors — short-circuit before creating handler state
     match _RunRequestInterceptors(request', m.interceptors)
     | let respond: InterceptRespond =>
-      let buf = _BufferedResponse._from_intercept_respond(respond, is_head)
+      let buf =
+        _BufferedResponse._from_intercept_respond(
+          respond, is_head)
       let ctx = ResponseContext._create(buf, request')
       _RunResponseInterceptors(ctx, m.response_interceptors)
       responder.respond(buf._build())
@@ -182,10 +200,16 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
 
     let conn_tag: _ConnectionProtocol tag = this
 
-    let handler_ctx: HandlerContext iso = recover iso
-      HandlerContext._create(request', m.params, body,
-        conn_tag, token, is_head)
-    end
+    let handler_ctx: HandlerContext iso =
+      recover iso
+        HandlerContext._create(
+          request',
+          m.params,
+          body,
+          conn_tag,
+          token,
+          is_head)
+      end
 
     let handler_receiver = m.factory(consume handler_ctx)
     _handler = handler_receiver
@@ -194,32 +218,41 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
 
     // Start timeout timer (if timeouts enabled)
     if _timeout_ns > 0 then
-      let timer = Timer(
-        _HandlerTimeoutNotify(this, token), _timeout_ns, _timeout_ns)
+      let timer =
+        Timer(
+          _HandlerTimeoutNotify(this, token),
+          _timeout_ns,
+          _timeout_ns)
       let timer_tag: Timer tag = timer
       _handler_timer = timer_tag
       _timers(consume timer)
     end
 
   // --- Handler protocol behaviors ---
-
-  be _handler_respond(token: U64, status: stallion.Status,
-    headers: (stallion.Headers val | None), body': ByteSeq)
+  be _handler_respond(
+    token: U64,
+    status: stallion.Status,
+    headers: (stallion.Headers val | None),
+    body': ByteSeq)
   =>
     if (_state isnt _HandlerInProgress) or (token != _current_token) then
       return
     end
 
-    let buf = match headers
-    | let h: stallion.Headers val =>
-      _BufferedResponse._with_headers(status, h, body', _is_head)
-    else
-      _BufferedResponse._standard(status, body', _is_head)
-    end
+    let buf =
+      match headers
+      | let h: stallion.Headers val =>
+        _BufferedResponse._with_headers(
+          status, h, body', _is_head)
+      else
+        _BufferedResponse._standard(status, body', _is_head)
+      end
 
     _run_after_and_send(buf)
 
-  be _handler_start_streaming(token: U64, status: stallion.Status,
+  be _handler_start_streaming(
+    token: U64,
+    status: stallion.Status,
     headers: (stallion.Headers val | None))
   =>
     if (_state isnt _HandlerInProgress) or (token != _current_token) then
@@ -235,9 +268,11 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
         _last_handler_activity = Time.nanos()
       | stallion.ChunkedNotSupported =>
         // Shouldn't happen — RequestHandler checked HTTP version
-        let buf = _BufferedResponse._standard(
-          stallion.StatusInternalServerError, "Internal Server Error",
-          _is_head)
+        let buf =
+          _BufferedResponse._standard(
+            stallion.StatusInternalServerError,
+            "Internal Server Error",
+            _is_head)
         _run_after_and_send(buf)
       | stallion.AlreadyResponded =>
         // Shouldn't happen — token validated
@@ -246,7 +281,9 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
     end
 
   be _handler_send_chunk(token: U64, data: ByteSeq) =>
-    if (_state isnt _Streaming) or (token != _current_token) then return end
+    if (_state isnt _Streaming) or (token != _current_token) then
+      return
+    end
     match _current_responder
     | let responder: stallion.Responder =>
       responder.send_chunk(data)
@@ -254,35 +291,46 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
     end
 
   be _handler_finish(token: U64) =>
-    if (_state isnt _Streaming) or (token != _current_token) then return end
+    if (_state isnt _Streaming) or (token != _current_token) then
+      return
+    end
     match _current_responder
     | let responder: stallion.Responder =>
       responder.finish_response()
     end
 
-    let status = match _streaming_status
-    | let s: stallion.Status => s
-    else
-      stallion.StatusOK
-    end
-    let buf = _BufferedResponse._streaming_complete(status, _is_head)
+    let status =
+      match _streaming_status
+      | let s: stallion.Status => s
+      else
+        stallion.StatusOK
+      end
+    let buf =
+      _BufferedResponse._streaming_complete(status, _is_head)
     _run_after_and_send(buf)
 
   be _handler_timeout(token: U64) =>
     if token != _current_token then return end
-    if (_state isnt _HandlerInProgress) and (_state isnt _Streaming) then
+    if (_state isnt _HandlerInProgress)
+      and (_state isnt _Streaming)
+    then
       return
     end
 
     // Check if handler was actually idle long enough
     let now = Time.nanos()
-    if (now - _last_handler_activity) < _timeout_ns then return end
+    if (now - _last_handler_activity) < _timeout_ns then
+      return
+    end
 
     match _state
     | _HandlerInProgress =>
       // Send 504 Gateway Timeout
-      let buf = _BufferedResponse._standard(
-        stallion.StatusGatewayTimeout, "Gateway Timeout", _is_head)
+      let buf =
+        _BufferedResponse._standard(
+          stallion.StatusGatewayTimeout,
+          "Gateway Timeout",
+          _is_head)
       // Dispose handler before cleanup
       match _handler
       | let h: HandlerReceiver tag => h.dispose()
@@ -307,12 +355,13 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
     end
 
   // --- Helpers ---
-
   fun ref _run_after_and_send(buf: _BufferedResponse ref) =>
     """
+
     Run response interceptors on the buffered response, send to wire,
     clean up.
     """
+
     match _current_request
     | let req: stallion.Request val =>
       let ctx = ResponseContext._create(buf, req)
@@ -344,7 +393,8 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
   fun ref _drain_pending() =>
     while (_state is _Idle) and (_pending_requests.size() > 0) do
       try
-        (let req, let resp, let body) = _pending_requests.shift()?
+        (let req, let resp, let body) =
+          _pending_requests.shift()?
         _process_request(req, resp, body)
       else
         _Unreachable()

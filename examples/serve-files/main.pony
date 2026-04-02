@@ -7,6 +7,7 @@ use lori = "lori"
 
 actor Main
   """
+
   Static file serving example.
 
   Starts an HTTP server on 0.0.0.0:8080 that serves files from a directory
@@ -24,6 +25,7 @@ actor Main
     curl http://localhost:8080/static/style.css
     curl http://localhost:8080/static/docs/
   """
+
   new create(env: Env) =>
     try
       let dir = env.args(1)?
@@ -32,11 +34,16 @@ actor Main
 
       match
         hobby.Application
-          .>get("/", {(ctx) =>
-            hobby.RequestHandler(consume ctx).respond(stallion.StatusOK,
-              "Visit /static/index.html to see a served file.")
-          } val)
-          .>get("/static/*filepath", hobby.ServeFiles(root))
+          .> get(
+            "/",
+            {(ctx) =>
+              hobby.RequestHandler(consume ctx)
+                .respond(
+                  stallion.StatusOK,
+                  "Visit /static/index.html"
+                    + " to see a served file.")
+            } val)
+          .> get("/static/*filepath", hobby.ServeFiles(root))
           .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
       | let err: hobby.ConfigError =>
         env.err.print(err.message)

@@ -6,6 +6,7 @@ use lori = "lori"
 
 actor Main
   """
+
   Streaming response example.
 
   Starts an HTTP server on 0.0.0.0:8080 with two routes:
@@ -20,33 +21,46 @@ actor Main
     curl http://localhost:8080/stream
     curl --head http://localhost:8080/stream
   """
+
   new create(env: Env) =>
     let auth = lori.TCPListenAuth(env.root)
     match
       hobby.Application
-        .>get("/", {(ctx) =>
-          hobby.RequestHandler(consume ctx).respond(stallion.StatusOK,
-            "Visit /stream to see a chunked streaming response.")
-        } val)
-        .>get("/stream", {(ctx) =>
-          StreamHandler(consume ctx)
-        } val)
+        .> get(
+          "/",
+          {(ctx) =>
+            hobby.RequestHandler(consume ctx)
+              .respond(
+                stallion.StatusOK,
+                "Visit /stream to see a chunked"
+                  + " streaming response.")
+          } val)
+        .> get(
+          "/stream",
+          {(ctx) =>
+            StreamHandler(consume ctx)
+          } val)
         .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
     | let err: hobby.ConfigError =>
       env.err.print(err.message)
     end
 
 actor StreamHandler is hobby.HandlerReceiver
-  """Starts streaming and sends 5 numbered chunks."""
+  """
+  Starts streaming and sends 5 numbered chunks.
+  """
   embed _handler: hobby.RequestHandler
 
   new create(ctx: hobby.HandlerContext iso) =>
     _handler = hobby.RequestHandler(consume ctx)
-    match _handler.start_streaming(stallion.StatusOK)
+    match \exhaustive\
+      _handler.start_streaming(stallion.StatusOK)
     | hobby.StreamingStarted => _send()
     | stallion.ChunkedNotSupported =>
-      _handler.respond(stallion.StatusOK,
-        "Chunked encoding not supported — upgrade to HTTP/1.1.")
+      _handler.respond(
+        stallion.StatusOK,
+        "Chunked encoding not supported"
+          + " — upgrade to HTTP/1.1.")
     | hobby.BodyNotNeeded => None
     end
 

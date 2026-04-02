@@ -169,9 +169,11 @@ class \nodoc\ iso _TestSignedCookieInvalidBase64 is UnitTest
 
 class \nodoc\ iso _TestSignedCookieKeyBoundary is UnitTest
   """
+
   The minimum key length is 32 bytes. A 31-byte key must be rejected;
   a 32-byte key must be accepted.
   """
+
 
   fun name(): String => "SignedCookie/key-boundary"
 
@@ -193,9 +195,11 @@ class \nodoc\ iso _TestSignedCookieKeyBoundary is UnitTest
 
 class \nodoc\ iso _TestSignedCookieRfc4231Vector is UnitTest
   """
+
   RFC 4231 Test Case 2: HMAC-SHA256 with "Jefe" key and "what do ya want
   for nothing?" data. Verifies our HMAC matches the known digest.
   """
+
 
   fun name(): String => "SignedCookie/rfc-4231-vector"
 
@@ -219,6 +223,7 @@ class \nodoc\ iso _TestSignedCookieRfc4231Vector is UnitTest
 
 class \nodoc\ iso _TestSignedCookieCrossLanguageVector is UnitTest
   """
+
   Cross-language test vector: a known key, value, and expected signed
   output verified against `openssl dgst -sha256 -hmac`.
 
@@ -235,8 +240,9 @@ class \nodoc\ iso _TestSignedCookieCrossLanguageVector is UnitTest
 
   Key: 32 bytes of 0xAB
   Value: "hello"
-  Expected signed output: "hello.7GT0SrIsQCeVHsMIKW5wg_p2huSb8nTFCUeO-QsJ_Ak="
+  Expected signed output: "hello.7GT0SrIsQCeVHsMIKW5wg_p2huSb8nTFCUeO-QsJ_Ak=
   """
+
 
   fun name(): String => "SignedCookie/cross-language-vector"
 
@@ -256,8 +262,10 @@ class \nodoc\ iso _TestSignedCookieCrossLanguageVector is UnitTest
 
 class \nodoc\ iso _PropSignedCookieRoundTrip is Property1[String]
   """
+
   For any printable ASCII value, sign then verify returns the original.
   """
+
 
   fun name(): String => "SignedCookie/prop-round-trip"
 
@@ -277,8 +285,10 @@ class \nodoc\ iso _PropSignedCookieRoundTrip is Property1[String]
 
 class \nodoc\ iso _PropSignedCookieDeterministic is Property1[String]
   """
+
   Signing the same value with the same key always produces the same output.
   """
+
 
   fun name(): String => "SignedCookie/prop-deterministic"
 
@@ -297,8 +307,10 @@ class \nodoc\ iso _PropSignedCookieDeterministic is Property1[String]
 class \nodoc\ iso _PropSignedCookieTamperDetection is
   Property1[(String, USize)]
   """
+
   Flipping any byte in a signed value causes verification to fail.
   """
+
 
   fun name(): String => "SignedCookie/prop-tamper-detection"
 
@@ -340,8 +352,10 @@ class \nodoc\ iso _PropSignedCookieTamperDetection is
 
 class \nodoc\ iso _PropSignedCookieKeyIndependence is Property1[String]
   """
+
   A value signed with one key does not verify with a different key.
   """
+
 
   fun name(): String => "SignedCookie/prop-key-independence"
 
@@ -363,11 +377,13 @@ class \nodoc\ iso _PropSignedCookieKeyIndependence is Property1[String]
 
 class \nodoc\ iso _PropSignedCookieCookieOctetValidity is Property1[String]
   """
+
   The separator and signature portion of a signed cookie contain only
   valid cookie-octet bytes (RFC 6265 section 4.1.1): US-ASCII excluding
   control characters, whitespace, double quote, comma, semicolon, and
   backslash. The value portion is the caller's responsibility.
   """
+
 
   fun name(): String => "SignedCookie/prop-cookie-octet-validity"
 
@@ -405,9 +421,11 @@ class \nodoc\ iso _PropSignedCookieCookieOctetValidity is Property1[String]
 
 class \nodoc\ iso _PropSignedCookieSignatureLength is Property1[String]
   """
+
   The signature portion (after the last `.`) is always 44 characters —
   the Base64-URL encoding of a 32-byte HMAC with padding.
   """
+
 
   fun name(): String => "SignedCookie/prop-signature-length"
 

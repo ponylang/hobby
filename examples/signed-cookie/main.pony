@@ -6,6 +6,7 @@ use lori = "lori"
 
 actor Main
   """
+
   Signed cookie example.
 
   Demonstrates signing and verifying cookie values using HMAC-SHA256 to
@@ -23,6 +24,7 @@ actor Main
     curl -c cookies.txt -b cookies.txt http://localhost:8080/clear
     curl -c cookies.txt -b cookies.txt http://localhost:8080/
   """
+
   new create(env: Env) =>
     let key =
       try hobby.CookieSigningKey.generate()?
@@ -31,59 +33,79 @@ actor Main
     let auth = lori.TCPListenAuth(env.root)
     match
       hobby.Application
-        .>get("/", {(ctx)(key) =>
-          let handler = hobby.RequestHandler(consume ctx)
-          // Read and verify the signed visit count from the cookie
-          let count: U64 =
-            match handler.request().cookies.get("visits")
-            | let raw: String =>
-              match \exhaustive\ hobby.SignedCookie.verify(key, raw)
-              | let value: String =>
-                try value.u64()? else 0 end
-              | let _: hobby.SignedCookieError => 0
+        .> get(
+          "/",
+          {(ctx)(key) =>
+            let handler =
+              hobby.RequestHandler(consume ctx)
+            // Read and verify the signed visit count
+            let count: U64 =
+              match handler.request().cookies.get("visits")
+              | let raw: String =>
+                match \exhaustive\
+                  hobby.SignedCookie.verify(key, raw)
+                | let value: String =>
+                  try value.u64()? else 0 end
+                | let _: hobby.SignedCookieError => 0
+                end
+              else
+                0
               end
-            else
-              0
-            end
-          let new_count: String val = (count + 1).string()
-          let signed = hobby.SignedCookie.sign(key, new_count)
-          // Build response headers with the signed cookie.
-          // Secure=false for localhost testing; use the default (true) in
-          // production.
-          let headers: stallion.Headers val =
-            recover val
-              let h = stallion.Headers
-              match stallion.SetCookieBuilder("visits", signed)
-                .with_path("/")
-                .with_secure(false)
-                .build()
-              | let sc: stallion.SetCookie val =>
-                h.add("Set-Cookie", sc.header_value())
+            let new_count: String val =
+              (count + 1).string()
+            let signed =
+              hobby.SignedCookie.sign(key, new_count)
+            // Build response headers with signed cookie.
+            // Secure=false for localhost testing; use the
+            // default (true) in production.
+            let headers: stallion.Headers val =
+              recover val
+                let h = stallion.Headers
+                match
+                  stallion.SetCookieBuilder(
+                    "visits", signed)
+                    .with_path("/")
+                    .with_secure(false)
+                    .build()
+                | let sc: stallion.SetCookie val =>
+                  h.add(
+                    "Set-Cookie",
+                    sc.header_value())
+                end
+                h
               end
-              h
-            end
-          handler.respond_with_headers(stallion.StatusOK, headers,
-            "Visit #" + new_count)
-        } val)
-        .>get("/clear", {(ctx) =>
-          let handler = hobby.RequestHandler(consume ctx)
-          // Clear the cookie by setting Max-Age=0
-          let headers: stallion.Headers val =
-            recover val
-              let h = stallion.Headers
-              match stallion.SetCookieBuilder("visits", "")
-                .with_path("/")
-                .with_max_age(0)
-                .with_secure(false)
-                .build()
-              | let sc: stallion.SetCookie val =>
-                h.add("Set-Cookie", sc.header_value())
+            handler.respond_with_headers(
+              stallion.StatusOK,
+              headers,
+              "Visit #" + new_count)
+          } val)
+        .> get(
+          "/clear",
+          {(ctx) =>
+            let handler =
+              hobby.RequestHandler(consume ctx)
+            // Clear the cookie by setting Max-Age=0
+            let headers: stallion.Headers val =
+              recover val
+                let h = stallion.Headers
+                match
+                  stallion.SetCookieBuilder("visits", "")
+                    .with_path("/")
+                    .with_max_age(0)
+                    .with_secure(false)
+                    .build()
+                | let sc: stallion.SetCookie val =>
+                  h.add(
+                    "Set-Cookie",
+                    sc.header_value())
+                end
+                h
               end
-              h
-            end
-          handler.respond_with_headers(stallion.StatusOK, headers,
-            "Visit counter cleared.")
-        } val)
+            handler.respond_with_headers(
+              stallion.StatusOK,
+              headers,
+              "Visit counter cleared.")
+          } val)
         .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
     | let err: hobby.ConfigError =>
       env.err.print(err.message)

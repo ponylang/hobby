@@ -6,6 +6,7 @@ use lori = "lori"
 
 actor Main
   """
+
   Async handler example.
 
   Demonstrates actor-based handlers that do async work before responding.
@@ -21,29 +22,39 @@ actor Main
     curl http://localhost:8080/
     curl http://localhost:8080/slow
   """
+
   new create(env: Env) =>
     let auth = lori.TCPListenAuth(env.root)
     let slow = SlowService
     match
       hobby.Application
-        .>get("/", {(ctx) =>
-          hobby.RequestHandler(consume ctx)
-            .respond(stallion.StatusOK, "Hello from Hobby!")
-        } val)
-        .>get("/slow", {(ctx)(slow) =>
-          SlowHandler(consume ctx, slow)
-        } val)
+        .> get(
+          "/",
+          {(ctx) =>
+            hobby.RequestHandler(consume ctx)
+              .respond(stallion.StatusOK, "Hello from Hobby!")
+          } val)
+        .> get(
+          "/slow",
+          {(ctx)(slow) =>
+            SlowHandler(consume ctx, slow)
+          } val)
         .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
     | let err: hobby.ConfigError =>
       env.err.print(err.message)
     end
 
 actor SlowService
-  """Simulates an async service via self-directed message."""
+  """
+  Simulates an async service via self-directed message.
+  """
   be query(requester: SlowHandler tag) =>
     requester.result("done after async work")
 
 actor SlowHandler is hobby.HandlerReceiver
+  """
+  Handles a request by delegating to a SlowService for async work.
+  """
   embed _handler: hobby.RequestHandler
 
   new create(ctx: hobby.HandlerContext iso, service: SlowService tag) =>

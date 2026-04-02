@@ -4,6 +4,7 @@ use stallion = "stallion"
 
 class val ServeFiles
   """
+
   Serve files from a directory on disk.
 
   Structurally matches `HandlerFactory` — pass directly to route methods.
@@ -17,24 +18,28 @@ class val ServeFiles
   small files are still served normally, but large files are rejected
   with 505 HTTP Version Not Supported to prevent memory exhaustion.
 
-  HEAD requests are optimized: the handler responds with `Content-Type` and
-  `Content-Length` headers without reading the file, regardless of file size.
+  HEAD requests are optimized: the handler responds with `Content-Type`
+  and `Content-Length` headers without reading the file, regardless of
+  file size.
 
   Responses include caching headers:
 
-  - **ETag**: Weak ETag computed from file metadata (`W/"<inode>-<size>-<mtime>"`).
-    On Windows, `FileInfo.inode` is always 0, reducing collision resistance
-    to size+mtime only.
-  - **Last-Modified**: RFC 7231 IMF-fixdate from the file's modification time.
+  - **ETag**: Weak ETag computed from file metadata
+    (`W/"<inode>-<size>-<mtime>"`). On Windows, `FileInfo.inode` is
+    always 0, reducing collision resistance to size+mtime only.
+  - **Last-Modified**: RFC 7231 IMF-fixdate from the file's modification
+    time.
   - **Cache-Control**: Configurable via the `cache_control` constructor
-    parameter. Defaults to `"public, max-age=3600"`. Pass `None` to omit.
+    parameter. Defaults to `"public, max-age=3600"`. Pass `None` to
+    omit.
 
   Conditional requests are supported per RFC 7232:
 
-  - `If-None-Match` is checked first (ETag comparison using weak matching).
+  - `If-None-Match` is checked first (ETag comparison using weak
+    matching).
   - `If-Modified-Since` is checked only when `If-None-Match` is absent.
-  - When either matches, the handler responds with 304 Not Modified (cache
-    headers included, no body).
+  - When either matches, the handler responds with 304 Not Modified
+    (cache headers included, no body).
 
   Custom content types can be added via the `content_types` parameter:
 
@@ -58,8 +63,11 @@ class val ServeFiles
       let auth = lori.TCPListenAuth(env.root)
       let root = FilePath(FileAuth(env.root), "./public")
       hobby.Application
-        .>get("/static/*filepath", hobby.ServeFiles(root))
-        .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+        .> get("/static/*filepath", hobby.ServeFiles(root))
+        .serve(
+          auth,
+          stallion.ServerConfig("0.0.0.0", "8080"),
+          env.out)
   ```
 
   Path traversal is prevented by Pony's `FilePath.from()`, which rejects
@@ -70,16 +78,20 @@ class val ServeFiles
   correct `text/html` content type and caching headers. If no `index.html`
   exists, the directory request returns 404.
   """
+
   let _root: FilePath
   let _chunk_threshold: USize
   let _cache_control: (String | None)
   let _content_types: ContentTypes
 
-  new val create(root: FilePath, chunk_threshold: USize = 1024,
+  new val create(
+    root: FilePath,
+    chunk_threshold: USize = 1024,
     cache_control: (String | None) = "public, max-age=3600",
     content_types: ContentTypes = ContentTypes)
   =>
     """
+
     Create a handler factory that serves files under `root`.
 
     `root` must have `FileLookup`, `FileStat`, and `FileRead` capabilities.
@@ -97,6 +109,7 @@ class val ServeFiles
     If the route uses a wildcard name other than `*filepath`, param lookup
     will fail and the handler will return 500. Always use `*filepath`.
     """
+
     _root = root
     _chunk_threshold = chunk_threshold * 1024
     _cache_control = cache_control
@@ -109,14 +122,16 @@ class val ServeFiles
     let params = ctx.params
 
     // Resolve the file action without consuming ctx
-    match _resolve(request, params)
+    match \exhaustive\ _resolve(request, params)
     | let r: _ServeInline =>
       _do_inline(consume ctx, r)
     | let r: _ServeStream =>
       _do_stream(consume ctx, r)
     end
 
-  fun _do_inline(ctx: HandlerContext iso, r: _ServeInline)
+  fun _do_inline(
+    ctx: HandlerContext iso,
+    r: _ServeInline)
     : (HandlerReceiver tag | None)
   =>
     let handler = RequestHandler(consume ctx)
@@ -128,72 +143,89 @@ class val ServeFiles
     end
     None
 
-  fun _do_stream(ctx: HandlerContext iso, r: _ServeStream)
+  fun _do_stream(
+    ctx: HandlerContext iso,
+    r: _ServeStream)
     : (HandlerReceiver tag | None)
   =>
-    let file_result: (File iso | None) = try
-      recover iso
-        let f = File.open(r.resolved)
-        if f.errno() isnt FileOK then error end
-        f
+    let file_result: (File iso | None) =
+      try
+        recover iso
+          let f = File.open(r.resolved)
+          if f.errno() isnt FileOK then error end
+          f
+        end
+      else
+        None
       end
-    else
-      None
-    end
     match consume file_result
     | let file: File iso =>
-      _ServeFilesHandler(consume ctx, consume file, r.status, r.headers)
+      _ServeFilesHandler(
+        consume ctx, consume file, r.status, r.headers)
     else
       RequestHandler(consume ctx).respond(
-        stallion.StatusInternalServerError, "Internal Server Error")
+        stallion.StatusInternalServerError,
+        "Internal Server Error")
       None
     end
 
-  fun _resolve(request: stallion.Request val,
+  fun _resolve(
+    request: stallion.Request val,
     params: Map[String, String] val)
     : (_ServeInline | _ServeStream)
   =>
     let is_head = request.method is stallion.HEAD
 
     // Extract wildcard param
-    let filepath = try
-      params("filepath")?
-    else
-      return _ServeInline._error(stallion.StatusInternalServerError,
-        "Internal Server Error")
-    end
+    let filepath =
+      try
+        params("filepath")?
+      else
+        return _ServeInline._error(
+          stallion.StatusInternalServerError,
+          "Internal Server Error")
+      end
 
     // Resolve path safely
-    var resolved = try
-      FilePath.from(_root, filepath)?
-    else
-      return _ServeInline._error(stallion.StatusNotFound, "Not Found")
-    end
+    var resolved =
+      try
+        FilePath.from(_root, filepath)?
+      else
+        return _ServeInline._error(
+          stallion.StatusNotFound, "Not Found")
+      end
 
     // Stat the file
-    var info = try
-      FileInfo(resolved)?
-    else
-      return _ServeInline._error(stallion.StatusNotFound, "Not Found")
-    end
+    var info =
+      try
+        FileInfo(resolved)?
+      else
+        return _ServeInline._error(
+          stallion.StatusNotFound, "Not Found")
+      end
 
     // Directory → try serving index.html
     if info.directory then
-      resolved = try
-        FilePath.from(resolved, "index.html")?
-      else
-        return _ServeInline._error(stallion.StatusNotFound, "Not Found")
-      end
-      info = try
-        FileInfo(resolved)?
-      else
-        return _ServeInline._error(stallion.StatusNotFound, "Not Found")
-      end
+      resolved =
+        try
+          FilePath.from(resolved, "index.html")?
+        else
+          return _ServeInline._error(
+            stallion.StatusNotFound, "Not Found")
+        end
+      info =
+        try
+          FileInfo(resolved)?
+        else
+          return _ServeInline._error(
+            stallion.StatusNotFound, "Not Found")
+        end
     end
 
     // After index fallback, non-file entries still 404
     if not info.file then
-      return _ServeInline._error(stallion.StatusNotFound, "Not Found")
+      return _ServeInline._error(
+        stallion.StatusNotFound, "Not Found")
     end
 
     let content_type = _content_types(Path.ext(resolved.path))
@@ -201,74 +233,85 @@ class val ServeFiles
     // Compute cache identifiers
     (let mod_secs, _) = info.modified_time
     let etag = _ETag(info.inode, info.size, mod_secs)
-    let last_modified = _HttpDate(mod_secs)
+    let last_modified = _HTTPDate(mod_secs)
 
     // Conditional request validation (RFC 7232 §3)
-    let not_modified = match request.headers.get("if-none-match")
-    | let inm: String => _ETag.matches(inm, etag)
-    else
-      match request.headers.get("if-modified-since")
-      | let ims: String => ims == last_modified
+    let not_modified =
+      match request.headers.get("if-none-match")
+      | let inm: String => _ETag.matches(inm, etag)
       else
-        false
+        match request.headers.get("if-modified-since")
+        | let ims: String => ims == last_modified
+        else
+          false
+        end
       end
-    end
 
     if not_modified then
-      let headers = recover val
-        let h = stallion.Headers
-          .>set("ETag", etag)
-          .>set("Last-Modified", last_modified)
-        match _cache_control
-        | let cc: String => h.>set("Cache-Control", cc)
+      let headers =
+        recover val
+          let h = stallion.Headers
+            .> set("ETag", etag)
+            .> set("Last-Modified", last_modified)
+          match _cache_control
+          | let cc: String =>
+            h .> set("Cache-Control", cc)
+          end
+          h
         end
-        h
-      end
       return _ServeInline._with_headers(
         stallion.StatusNotModified, headers, "")
     end
 
     // HEAD optimization: headers only, skip file I/O
     if is_head then
-      let headers = recover val
-        let h = stallion.Headers
-          .>set("Content-Type", content_type)
-          .>set("Content-Length", info.size.string())
-          .>set("ETag", etag)
-          .>set("Last-Modified", last_modified)
-        match _cache_control
-        | let cc: String => h.>set("Cache-Control", cc)
+      let headers =
+        recover val
+          let h = stallion.Headers
+            .> set("Content-Type", content_type)
+            .> set("Content-Length", info.size.string())
+            .> set("ETag", etag)
+            .> set("Last-Modified", last_modified)
+          match _cache_control
+          | let cc: String =>
+            h .> set("Cache-Control", cc)
+          end
+          h
         end
-        h
-      end
-      return _ServeInline._with_headers(stallion.StatusOK, headers, "")
+      return _ServeInline._with_headers(
+        stallion.StatusOK, headers, "")
     end
 
     if info.size < _chunk_threshold then
       // Small file: read and respond inline
-      let file = try
-        let f = File.open(resolved)
-        if f.errno() isnt FileOK then error end
-        f
-      else
-        return _ServeInline._error(stallion.StatusInternalServerError,
-          "Internal Server Error")
-      end
+      let file =
+        try
+          let f = File.open(resolved)
+          if f.errno() isnt FileOK then error end
+          f
+        else
+          return _ServeInline._error(
+            stallion.StatusInternalServerError,
+            "Internal Server Error")
+        end
       let body = file.read(info.size)
       file.dispose()
       let body_size = body.size()
-      let headers = recover val
-        let h = stallion.Headers
-          .>set("Content-Type", content_type)
-          .>set("Content-Length", body_size.string())
-          .>set("ETag", etag)
-          .>set("Last-Modified", last_modified)
-        match _cache_control
-        | let cc: String => h.>set("Cache-Control", cc)
+      let headers =
+        recover val
+          let h = stallion.Headers
+            .> set("Content-Type", content_type)
+            .> set("Content-Length", body_size.string())
+            .> set("ETag", etag)
+            .> set("Last-Modified", last_modified)
+          match _cache_control
+          | let cc: String =>
+            h .> set("Cache-Control", cc)
+          end
+          h
         end
-        h
-      end
-      _ServeInline._with_headers(stallion.StatusOK, headers, consume body)
+      _ServeInline._with_headers(
+        stallion.StatusOK, headers, consume body)
     else
       // Large file: check HTTP version first
       if request.version is stallion.HTTP10 then
@@ -277,16 +320,18 @@ class val ServeFiles
           "HTTP Version Not Supported")
       end
 
-      let headers = recover val
-        let h = stallion.Headers
-          .>set("Content-Type", content_type)
-          .>set("ETag", etag)
-          .>set("Last-Modified", last_modified)
-        match _cache_control
-        | let cc: String => h.>set("Cache-Control", cc)
+      let headers =
+        recover val
+          let h = stallion.Headers
+            .> set("Content-Type", content_type)
+            .> set("ETag", etag)
+            .> set("Last-Modified", last_modified)
+          match _cache_control
+          | let cc: String =>
+            h .> set("Cache-Control", cc)
+          end
+          h
         end
-        h
-      end
 
       _ServeStream(resolved, stallion.StatusOK, headers)
     end
@@ -302,8 +347,10 @@ class val _ServeInline
     headers = None
     body = body'
 
-  new val _with_headers(status': stallion.Status,
-    headers': stallion.Headers val, body': ByteSeq)
+  new val _with_headers(
+    status': stallion.Status,
+    headers': stallion.Headers val,
+    body': ByteSeq)
   =>
     status = status'
     headers = headers'
@@ -314,7 +361,9 @@ class val _ServeStream
   let status: stallion.Status
   let headers: stallion.Headers val
 
-  new val create(resolved': FilePath, status': stallion.Status,
+  new val create(
+    resolved': FilePath,
+    status': stallion.Status,
     headers': stallion.Headers val)
   =>
     resolved = resolved'

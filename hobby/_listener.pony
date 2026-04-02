@@ -4,6 +4,7 @@ use stallion = "stallion"
 
 actor _Listener is lori.TCPListenerActor
   """
+
   Internal TCP listener that accepts connections and spawns connection actors.
 
   Created by `Application.serve()` with a frozen `_Router val`. Each accepted
@@ -13,6 +14,7 @@ actor _Listener is lori.TCPListenerActor
   Interceptors are carried by the router's path tree — the listener no longer
   needs to pass them through separately.
   """
+
   var _tcp_listener: lori.TCPListener = lori.TCPListener.none()
   let _server_auth: lori.TCPServerAuth
   let _config: stallion.ServerConfig
@@ -21,8 +23,12 @@ actor _Listener is lori.TCPListenerActor
   let _timers: Timers tag
   let _timeout_ns: U64
 
-  new create(auth: lori.TCPListenAuth, config: stallion.ServerConfig,
-    router: _Router val, out: OutStream, timeout_ns: U64)
+  new create(
+    auth: lori.TCPListenAuth,
+    config: stallion.ServerConfig,
+    router: _Router val,
+    out: OutStream,
+    timeout_ns: U64)
   =>
     _server_auth = lori.TCPServerAuth(auth)
     _config = config

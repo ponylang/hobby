@@ -2,6 +2,7 @@ use stallion = "stallion"
 
 interface val RequestInterceptor
   """
+
   Synchronous request interceptor that runs before the handler is created.
 
   Interceptors inspect the request and return `InterceptPass` to let it
@@ -14,4 +15,11 @@ interface val RequestInterceptor
   should do only cheap work (header checks, size limits). Expensive or
   async work belongs in the handler.
   """
+
   fun apply(request: stallion.Request box): InterceptResult
+    """
+
+    Evaluate the request. Return `InterceptPass` to continue to the handler,
+    or `InterceptRespond` to short-circuit with a response.
+    """
+
