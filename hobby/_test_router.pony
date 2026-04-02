@@ -55,6 +55,8 @@ primitive \nodoc\ _TestRouterList
     test(_TestJoinRemainingSegments)
     test(_TestRoutesBeforeInterceptors)
     test(_TestMethodNotAllowedCarriesInterceptors)
+    test(_TestWildcardNameConflictReturnsError)
+    test(_TestSharedWildcardNameConsistent)
 
 // --- Generators ---
 primitive \nodoc\ _GenPathSegment
@@ -2085,4 +2087,69 @@ class \nodoc\ iso _TestMethodNotAllowedCarriesInterceptors is UnitTest
       h.fail("should not match GET on POST-only route")
     | let _: _RouteMiss =>
       h.fail("should be 405, not 404")
+    end
+
+class \nodoc\ iso _TestWildcardNameConflictReturnsError is UnitTest
+  """
+  Conflicting wildcard names at the same position produce a ConfigError.
+  """
+  fun name(): String => "router/wildcard name conflict returns error"
+
+  fun apply(h: TestHelper) =>
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/files/*path", _NoOpFactory, None)
+    builder.add(stallion.POST, "/files/*filepath", _NoOpFactory, None)
+    match builder.first_error()
+    | let err: ConfigError =>
+      h.assert_true(
+        err.message.contains("Conflicting wildcard names"))
+      h.assert_true(err.message.contains("'*path'"))
+      h.assert_true(err.message.contains("'*filepath'"))
+    else
+      h.fail(
+        "conflicting wildcard names should produce ConfigError")
+    end
+
+class \nodoc\ iso _TestSharedWildcardNameConsistent is UnitTest
+  """
+
+  Multiple methods at the same wildcard position with the same name works.
+
+  GET /files/*path and POST /files/*path share a wildcard node — the name
+  must match. Verifies no error is produced and both methods route correctly
+  with correct wildcard param extraction.
+  """
+
+  fun name(): String => "router/shared wildcard name consistent"
+
+  fun apply(h: TestHelper) =>
+    let builder = _RouterBuilder
+    builder.add(stallion.GET, "/files/*path", _NoOpFactory, None)
+    builder.add(stallion.POST, "/files/*path", _NoOpFactory, None)
+    h.assert_true(
+      builder.first_error() is None,
+      "same wildcard name should not produce error")
+    let router = builder.build()
+
+    match router.lookup(stallion.GET, "/files/readme.txt")
+    | let m: _RouteMatch =>
+      try
+        h.assert_eq[String]("readme.txt", m.params("path")?)
+      else
+        h.fail("param 'path' not found on GET")
+      end
+    else
+      h.fail("expected match for GET /files/readme.txt")
+    end
+
+    match router.lookup(stallion.POST, "/files/docs/guide.md")
+    | let m: _RouteMatch =>
+      try
+        h.assert_eq[String](
+          "docs/guide.md", m.params("path")?)
+      else
+        h.fail("param 'path' not found on POST")
+      end
+    else
+      h.fail("expected match for POST /files/docs/guide.md")
     end

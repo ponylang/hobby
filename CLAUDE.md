@@ -17,7 +17,10 @@ make ssl=libressl       # use LibreSSL (CI uses this)
 make config=debug       # debug build (combine with ssl=...)
 make examples ssl=3.0.x # examples only
 make clean              # clean build artifacts + corral cache
+make lint               # run pony-lint (must pass before pushing)
 ```
+
+All code changes must pass `make lint` locally before pushing. The linter enforces 80-column line limits and other style rules.
 
 The `ssl` option is required — Stallion transitively depends on the `ssl` package. Valid values: `3.0.x` (OpenSSL 3.x), `1.1.x` (OpenSSL 1.1.x), `libressl` (LibreSSL).
 
@@ -38,7 +41,7 @@ Users interact with these types:
 
 - **`Application`** (`class iso`): Route registration via `.>` chaining (`get`, `post`, etc.), `group()` for route groups, `add_request_interceptor()` for app-level request interceptors, `add_response_interceptor()` for app-level response interceptors. Route methods accept optional `response_interceptors` parameter. `serve()` consumes the Application, validates configuration, freezes routes into an immutable router, and starts listening. Returns `ServeResult` — `Serving` on success or `ConfigError` with a description of the problem. `handler_timeout` parameter on `serve()` controls inactivity timeout (default 30 seconds, `None` to disable).
 - **`Serving`** (`primitive`): Returned by `serve()` when the server started successfully.
-- **`ConfigError`** (`class val`): Returned by `serve()` when a configuration error prevented startup. Carries a `message: String` describing the error. Detected errors: overlapping group prefixes, empty group prefix, special characters in group prefix, conflicting param names.
+- **`ConfigError`** (`class val`): Returned by `serve()` when a configuration error prevented startup. Carries a `message: String` describing the error. Detected errors: overlapping group prefixes, empty group prefix, special characters in group prefix, conflicting param names, conflicting wildcard names.
 - **`ServeResult`** (type alias): `(Serving | ConfigError)`. Return type of `serve()`.
 - **`RouteGroup`** (`class iso`): Groups routes under a shared prefix and optional response interceptors. Constructor accepts `response_interceptors` parameter. Supports nesting via `group()`. Consumed by `Application.group()` or outer `RouteGroup.group()`.
 - **`RequestInterceptor`** (`interface val`): Synchronous request gate. `apply(request: Request box): InterceptResult` returns `InterceptPass` or `InterceptRespond`. The return type forces an explicit decision — the compiler won't accept an interceptor that forgets to decide. The first interceptor that responds wins.

@@ -269,7 +269,7 @@ class iso Application
     Consumes the Application — no further route registration is possible
     after this call. Returns `Serving` on success or `ConfigError` if
     a configuration error was detected (overlapping group prefixes,
-    invalid group prefix, conflicting param names).
+    invalid group prefix, conflicting param or wildcard names).
 
     `handler_timeout` is the handler inactivity timeout in milliseconds.
     Defaults to 30 seconds. Pass `None` to disable the timeout. When a
@@ -336,7 +336,7 @@ class iso Application
         r.interceptors)
     end
 
-    // Check for tree-level errors (e.g., conflicting param names)
+    // Check for tree-level errors (e.g., conflicting param or wildcard names)
     match builder.first_error()
     | let err: ConfigError => return err
     end
