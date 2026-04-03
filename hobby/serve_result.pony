@@ -16,6 +16,7 @@ class val ConfigError
   - Special characters in group prefix (`:` or `*`)
   - Conflicting param names at the same path position across methods
   - Conflicting wildcard names at the same path position across methods
+  - Segments after a wildcard (wildcards capture the entire remainder)
   """
   let message: String
 
