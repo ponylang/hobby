@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file. This projec
 
 - Add request interceptors for synchronous request short-circuiting ([PR #55](https://github.com/ponylang/hobby/pull/55))
 - Add response interceptors for synchronous response modification ([PR #57](https://github.com/ponylang/hobby/pull/57))
+- Add HTTPS support via serve_ssl() ([PR #75](https://github.com/ponylang/hobby/pull/75))
 
 ### Changed
 
