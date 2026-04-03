@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file. This projec
 ### Fixed
 
 - Reject segments after wildcard in route registration ([PR #77](https://github.com/ponylang/hobby/pull/77))
+- Reject empty param and wildcard names in route registration ([PR #78](https://github.com/ponylang/hobby/pull/78))
 
 ### Added
 
