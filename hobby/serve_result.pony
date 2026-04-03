@@ -17,6 +17,8 @@ class val ConfigError
   - Conflicting param names at the same path position across methods
   - Conflicting wildcard names at the same path position across methods
   - Segments after a wildcard (wildcards capture the entire remainder)
+  - Empty param name (bare `:` with no name)
+  - Empty wildcard name (bare `*` with no name)
   """
   let message: String
 

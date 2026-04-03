@@ -222,6 +222,12 @@ class ref _BuildNode
 
     if first == ':' then
       let name = segment.trim(1)
+      if name.size() == 0 then
+        errors.push(
+          "Empty param name ':' is not allowed — " +
+          "use ':name' to name the parameter.")
+        return
+      end
       let child =
         match _param_child
         | let existing: _BuildNode ref => existing
@@ -251,6 +257,12 @@ class ref _BuildNode
         errors)
     elseif first == '*' then
       let name = segment.trim(1)
+      if name.size() == 0 then
+        errors.push(
+          "Empty wildcard name '*' is not allowed — " +
+          "use '*name' to name the wildcard.")
+        return
+      end
       if (idx + 1) < segments.size() then
         errors.push(
           "Segments after wildcard '*" + name +
