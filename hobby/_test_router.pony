@@ -57,6 +57,7 @@ primitive \nodoc\ _TestRouterList
     test(_TestMethodNotAllowedCarriesInterceptors)
     test(_TestWildcardNameConflictReturnsError)
     test(_TestSharedWildcardNameConsistent)
+    test(_TestSegmentsAfterWildcardReturnsError)
 
 // --- Generators ---
 primitive \nodoc\ _GenPathSegment
@@ -2152,4 +2153,29 @@ class \nodoc\ iso _TestSharedWildcardNameConsistent is UnitTest
       end
     else
       h.fail("expected match for POST /files/docs/guide.md")
+    end
+
+class \nodoc\ iso _TestSegmentsAfterWildcardReturnsError is UnitTest
+  """
+  Segments after a wildcard produce a ConfigError.
+  """
+  fun name(): String =>
+    "router/segments after wildcard returns error"
+
+  fun apply(h: TestHelper) =>
+    let builder = _RouterBuilder
+    builder.add(
+      stallion.GET,
+      "/files/*path/extra",
+      _NoOpFactory,
+      None)
+    match builder.first_error()
+    | let err: ConfigError =>
+      h.assert_true(
+        err.message.contains("Segments after wildcard"))
+      h.assert_true(
+        err.message.contains("'*path'"))
+    else
+      h.fail(
+        "segments after wildcard should produce ConfigError")
     end

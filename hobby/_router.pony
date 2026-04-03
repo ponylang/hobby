@@ -251,6 +251,13 @@ class ref _BuildNode
         errors)
     elseif first == '*' then
       let name = segment.trim(1)
+      if (idx + 1) < segments.size() then
+        errors.push(
+          "Segments after wildcard '*" + name +
+          "' are not allowed — wildcards capture " +
+          "the entire remainder of the path.")
+        return
+      end
       _wildcard_entries(method) =
         _BuildMethodEntry(
           factory,
