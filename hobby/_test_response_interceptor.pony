@@ -369,7 +369,13 @@ actor \nodoc\ _TestResponseInterceptorListener is lori.TCPListenerActor
 
   fun ref _on_accept(fd: U32): lori.TCPConnectionActor =>
     _Connection(
-      _server_auth, fd, _config, _router, _timers, 0)
+      _server_auth,
+      fd,
+      _config,
+      _router,
+      _timers,
+      0,
+      _h.env.out)
 
   fun ref _on_listening() =>
     try

@@ -6,6 +6,10 @@ Each subdirectory is a self-contained Pony program demonstrating a different par
 
 Starts an HTTP server with two routes: a static greeting at `/` and a parameterized greeting at `/greet/:name`. Demonstrates `Application` route registration with `.>` chaining, inline handler factories using `RequestHandler`, and route parameter extraction via `handler.param()`. Start here if you're new to the library.
 
+## [https](https/)
+
+Starts an HTTPS server on 0.0.0.0:8443 with the same two routes as the hello example, served over TLS using a self-signed certificate from the project's `assets/` directory. Demonstrates `Application.serve_ssl()` with `SSLContext` setup including certificate loading, authority configuration, and the `recover val` pattern for creating an immutable context.
+
 ## [async-handler](async-handler/)
 
 Demonstrates actor-based handlers that do async work before responding. A `SlowService` actor simulates an async operation (e.g., a database query or external API call). The handler actor creates a `RequestHandler`, sends a query to the service, and responds when the result arrives. Shows the `HandlerReceiver` interface for lifecycle notifications.
