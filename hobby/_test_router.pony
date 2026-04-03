@@ -58,6 +58,8 @@ primitive \nodoc\ _TestRouterList
     test(_TestWildcardNameConflictReturnsError)
     test(_TestSharedWildcardNameConsistent)
     test(_TestSegmentsAfterWildcardReturnsError)
+    test(_TestEmptyParamNameReturnsError)
+    test(_TestEmptyWildcardNameReturnsError)
 
 // --- Generators ---
 primitive \nodoc\ _GenPathSegment
@@ -2178,4 +2180,44 @@ class \nodoc\ iso _TestSegmentsAfterWildcardReturnsError is UnitTest
     else
       h.fail(
         "segments after wildcard should produce ConfigError")
+    end
+
+class \nodoc\ iso _TestEmptyParamNameReturnsError is UnitTest
+  """
+  A bare `:` with no name produces a ConfigError.
+  """
+  fun name(): String =>
+    "router/empty param name returns error"
+
+  fun apply(h: TestHelper) =>
+    let builder = _RouterBuilder
+    builder.add(
+      stallion.GET, "/users/:", _NoOpFactory, None)
+    match builder.first_error()
+    | let err: ConfigError =>
+      h.assert_true(
+        err.message.contains("Empty param name"))
+    else
+      h.fail(
+        "empty param name should produce ConfigError")
+    end
+
+class \nodoc\ iso _TestEmptyWildcardNameReturnsError is UnitTest
+  """
+  A bare `*` with no name produces a ConfigError.
+  """
+  fun name(): String =>
+    "router/empty wildcard name returns error"
+
+  fun apply(h: TestHelper) =>
+    let builder = _RouterBuilder
+    builder.add(
+      stallion.GET, "/files/*", _NoOpFactory, None)
+    match builder.first_error()
+    | let err: ConfigError =>
+      h.assert_true(
+        err.message.contains("Empty wildcard name"))
+    else
+      h.fail(
+        "empty wildcard name should produce ConfigError")
     end
