@@ -1,6 +1,5 @@
 use "collections"
 use "pony_test"
-use "time"
 use "uri"
 use stallion = "stallion"
 use lori = "lori"
@@ -330,127 +329,6 @@ class \nodoc\ iso _TestConcatResponseInterceptorsInnerOnly is UnitTest
     end
 
 // --- Integration test infrastructure ---
-actor \nodoc\ _TestResponseInterceptorListener is lori.TCPListenerActor
-  """
-  Listener for response interceptor integration tests.
-  """
-  var _tcp_listener: lori.TCPListener =
-    lori.TCPListener.none()
-  let _server_auth: lori.TCPServerAuth
-  let _config: stallion.ServerConfig
-  let _router: _Router val
-  let _timers: Timers tag
-  let _h: TestHelper
-  let _run_client:
-    {(TestHelper, String,
-      _TestResponseInterceptorListener)} val
-
-  new create(
-    auth: lori.TCPListenAuth,
-    config: stallion.ServerConfig,
-    router: _Router val,
-    h: TestHelper,
-    run_client:
-      {(TestHelper, String,
-        _TestResponseInterceptorListener)} val)
-  =>
-    _server_auth = lori.TCPServerAuth(auth)
-    _config = config
-    _router = router
-    _timers = Timers
-    _h = h
-    _run_client = run_client
-    _tcp_listener =
-      lori.TCPListener(
-        auth, config.host, config.port, this)
-
-  fun ref _listener(): lori.TCPListener =>
-    _tcp_listener
-
-  fun ref _on_accept(fd: U32): lori.TCPConnectionActor =>
-    _Connection(
-      _server_auth,
-      fd,
-      _config,
-      _router,
-      _timers,
-      0,
-      _h.env.out)
-
-  fun ref _on_listening() =>
-    try
-      (_, let port) =
-        _tcp_listener.local_address().name()?
-      _run_client(_h, port, this)
-    else
-      _h.fail("could not get listener port")
-      _h.complete(false)
-    end
-
-  fun ref _on_listen_failure() =>
-    _h.fail("listener failed to start")
-    _h.complete(false)
-
-  be dispose() =>
-    _tcp_listener.close()
-    _timers.dispose()
-
-actor \nodoc\ _TestResponseInterceptorClient is
-  (lori.TCPConnectionActor &
-    lori.ClientLifecycleEventReceiver)
-  """
-  TCP client that checks for an expected string in
-  the response.
-  """
-  var _tcp_connection: lori.TCPConnection =
-    lori.TCPConnection.none()
-  let _h: TestHelper
-  let _request: String
-  let _expected: String
-  let _listener: _TestResponseInterceptorListener
-  var _response: String iso = recover iso String end
-
-  new create(
-    auth: lori.TCPConnectAuth,
-    host: String,
-    port: String,
-    h: TestHelper,
-    request: String,
-    expected: String,
-    listener: _TestResponseInterceptorListener)
-  =>
-    _h = h
-    _request = request
-    _expected = expected
-    _listener = listener
-    _tcp_connection =
-      lori.TCPConnection.client(
-        auth, host, port, "", this, this)
-
-  fun ref _connection(): lori.TCPConnection =>
-    _tcp_connection
-
-  fun ref _on_connected() =>
-    _tcp_connection.send(_request)
-
-  fun ref _on_received(data: Array[U8] iso) =>
-    _response.append(consume data)
-    let response_str: String val = _response.clone()
-    if response_str.contains(_expected) then
-      _tcp_connection.close()
-      _listener.dispose()
-      _h.complete(true)
-    end
-
-  fun ref _on_closed() => None
-
-  fun ref _on_connection_failure(
-    reason: lori.ConnectionFailureReason)
-  =>
-    _h.fail("connection failed")
-    _listener.dispose()
-    _h.complete(false)
-
 primitive \nodoc\ _ResponseInterceptorIntegrationHelpers
   fun run_test(
     h: TestHelper,
@@ -458,29 +336,8 @@ primitive \nodoc\ _ResponseInterceptorIntegrationHelpers
     request: String,
     expected: String)
   =>
-    h.long_test(5_000_000_000)
-    let host = _TestHost()
-    let config = stallion.ServerConfig(host, "0")
-    let auth = lori.TCPListenAuth(h.env.root)
-    let connect_auth = lori.TCPConnectAuth(h.env.root)
-    _TestResponseInterceptorListener(
-      auth,
-      config,
-      router,
-      h,
-      {(h': TestHelper,
-        port: String,
-        listener:
-          _TestResponseInterceptorListener) =>
-        _TestResponseInterceptorClient(
-          connect_auth,
-          host,
-          port,
-          h',
-          request,
-          expected,
-          listener)
-      })
+    _IntegrationHelpers.run_test(
+      h, router, request, expected)
 
 // --- Integration tests ---
 class \nodoc\ iso _TestResponseInterceptorSetHeaderIntegration is UnitTest
@@ -629,29 +486,29 @@ class \nodoc\ iso _TestResponseInterceptorStreamingIntegration is UnitTest
     let router = builder.build()
     h.long_test(5_000_000_000)
     let host = _TestHost()
-    let config = stallion.ServerConfig(host, "0")
     let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth =
       lori.TCPConnectAuth(h.env.root)
-    _TestResponseInterceptorListener(
-      auth,
-      config,
-      router,
-      h,
-      {(h': TestHelper,
-        port: String,
-        listener:
-          _TestResponseInterceptorListener) =>
-        _TestStreamingNoOpClient(
-          connect_auth,
-          host,
-          port,
-          h',
-          "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-          "chunk-1;",
-          "x-after-stream",
-          listener)
-      })
+    let app = BuiltApplication._create(router)
+    let notify =
+      _TestServerNotify(
+        h,
+        {(h': TestHelper,
+          port: String,
+          server: Server tag) =>
+          _TestStreamingNoOpClient(
+            connect_auth,
+            host,
+            port,
+            h',
+            "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+            "chunk-1;",
+            "x-after-stream",
+            server)
+        })
+    Server(
+      auth, app, notify
+      where host = host, port = "0")
 
 class \nodoc\ iso _TestResponseInterceptorGroupOn404 is UnitTest
   """
@@ -696,7 +553,7 @@ actor \nodoc\ _TestStreamingNoOpClient is
   let _request: String
   let _expect: String
   let _forbid: String
-  let _listener: _TestResponseInterceptorListener
+  let _server: Server tag
   var _response: String iso = recover iso String end
 
   new create(
@@ -707,13 +564,13 @@ actor \nodoc\ _TestStreamingNoOpClient is
     request: String,
     expect: String,
     forbid: String,
-    listener: _TestResponseInterceptorListener)
+    server: Server tag)
   =>
     _h = h
     _request = request
     _expect = expect
     _forbid = forbid
-    _listener = listener
+    _server = server
     _tcp_connection =
       lori.TCPConnection.client(
         auth, host, port, "", this, this)
@@ -730,10 +587,10 @@ actor \nodoc\ _TestStreamingNoOpClient is
     if response_str.contains(_expect) then
       _h.assert_false(
         response_str.contains(_forbid),
-        "streaming response must not contain header: "
-          + _forbid)
+        "streaming response must not contain"
+          + " header: " + _forbid)
       _tcp_connection.close()
-      _listener.dispose()
+      _server.dispose()
       _h.complete(true)
     end
 
@@ -743,5 +600,5 @@ actor \nodoc\ _TestStreamingNoOpClient is
     reason: lori.ConnectionFailureReason)
   =>
     _h.fail("connection failed")
-    _listener.dispose()
+    _server.dispose()
     _h.complete(false)

@@ -5,7 +5,7 @@ use hobby = "../../hobby"
 use stallion = "stallion"
 use lori = "lori"
 
-actor Main
+actor Main is hobby.ServerNotify
   """
 
   Custom content type mapping example.
@@ -25,7 +25,10 @@ actor Main
     curl -I http://localhost:8080/static/index.html
   """
 
+  let _env: Env
+
   new create(env: Env) =>
+    _env = env
     let auth = lori.TCPListenAuth(env.root)
     let root =
       FilePath(
@@ -37,12 +40,30 @@ actor Main
       .add("webp", "image/webp")
       .add("avif", "image/avif")
 
-    match
-      hobby.Application
-        .> get(
-          "/static/*filepath",
-          hobby.ServeFiles(root where content_types = types))
-        .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    let app = hobby.Application
+      .> get(
+        "/static/*filepath",
+        hobby.ServeFiles(root where content_types = types))
+
+    match \exhaustive\ app.build()
+    | let built: hobby.BuiltApplication =>
+      hobby.Server(
+        auth, built, this
+        where host = "0.0.0.0", port = "8080")
     | let err: hobby.ConfigError =>
       env.err.print(err.message)
     end
+
+  be listening(
+    server: hobby.Server,
+    host: String,
+    service: String)
+  =>
+    _env.out.print(
+      "Listening on " + host + ":" + service)
+
+  be listen_failed(
+    server: hobby.Server,
+    reason: String)
+  =>
+    _env.err.print(reason)

@@ -4,7 +4,7 @@ use hobby = "../../hobby"
 use stallion = "stallion"
 use lori = "lori"
 
-actor Main
+actor Main is hobby.ServerNotify
   """
 
   Route groups example.
@@ -31,65 +31,86 @@ actor Main
       http://localhost:8080/api/admin/dashboard
   """
 
+  let _env: Env
+
   new create(env: Env) =>
+    _env = env
     let auth = lori.TCPListenAuth(env.root)
 
     let auth_interceptor: Array[hobby.RequestInterceptor val] val =
       recover val [as hobby.RequestInterceptor val: AuthInterceptor] end
 
-    match
-      hobby.Application
-        .> get(
-          "/",
-          {(ctx) =>
-            hobby.RequestHandler(consume ctx)
-              .respond(stallion.StatusOK, "Hello from Hobby!")
-          } val)
-        .> get(
-          "/health",
-          {(ctx) =>
-            hobby.RequestHandler(consume ctx)
-              .respond(stallion.StatusOK, "OK")
-          } val)
-        .> group(
-          hobby.RouteGroup(
-            "/api"
-            where interceptors = auth_interceptor)
-            .> get(
-              "/users",
-              {(ctx) =>
+    let app = hobby.Application
+      .> get(
+        "/",
+        {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Hello from Hobby!")
+        } val)
+      .> get(
+        "/health",
+        {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "OK")
+        } val)
+      .> group(
+        hobby.RouteGroup(
+          "/api"
+          where interceptors = auth_interceptor)
+          .> get(
+            "/users",
+            {(ctx) =>
+              hobby.RequestHandler(consume ctx)
+                .respond(stallion.StatusOK, "User list")
+            } val)
+          .> get(
+            "/users/:id",
+            {(ctx) =>
+              let handler =
                 hobby.RequestHandler(consume ctx)
-                  .respond(stallion.StatusOK, "User list")
-              } val)
-            .> get(
-              "/users/:id",
-              {(ctx) =>
-                let handler =
+              try
+                let id = handler.param("id")?
+                handler.respond(
+                  stallion.StatusOK, "User " + id)
+              else
+                handler.respond(
+                  stallion.StatusBadRequest,
+                  "Bad Request")
+              end
+            } val)
+          .> group(
+            hobby.RouteGroup("/admin")
+              .> get(
+                "/dashboard",
+                {(ctx) =>
                   hobby.RequestHandler(consume ctx)
-                try
-                  let id = handler.param("id")?
-                  handler.respond(
-                    stallion.StatusOK, "User " + id)
-                else
-                  handler.respond(
-                    stallion.StatusBadRequest,
-                    "Bad Request")
-                end
-              } val)
-            .> group(
-              hobby.RouteGroup("/admin")
-                .> get(
-                  "/dashboard",
-                  {(ctx) =>
-                    hobby.RequestHandler(consume ctx)
-                      .respond(
-                        stallion.StatusOK,
-                        "Admin dashboard")
-                  } val)))
-        .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+                    .respond(
+                      stallion.StatusOK,
+                      "Admin dashboard")
+                } val)))
+
+    match \exhaustive\ app.build()
+    | let built: hobby.BuiltApplication =>
+      hobby.Server(
+        auth, built, this
+        where host = "0.0.0.0", port = "8080")
     | let err: hobby.ConfigError =>
       env.err.print(err.message)
     end
+
+  be listening(
+    server: hobby.Server,
+    host: String,
+    service: String)
+  =>
+    _env.out.print(
+      "Listening on " + host + ":" + service)
+
+  be listen_failed(
+    server: hobby.Server,
+    reason: String)
+  =>
+    _env.err.print(reason)
 
 // --- Request interceptor ---
 class val AuthInterceptor is hobby.RequestInterceptor

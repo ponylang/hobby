@@ -5,7 +5,7 @@ use hobby = "../../hobby"
 use stallion = "stallion"
 use lori = "lori"
 
-actor Main
+actor Main is hobby.ServerNotify
   """
 
   Static file serving example.
@@ -26,25 +26,32 @@ actor Main
     curl http://localhost:8080/static/docs/
   """
 
+  let _env: Env
+
   new create(env: Env) =>
+    _env = env
     try
       let dir = env.args(1)?
       let auth = lori.TCPListenAuth(env.root)
       let root = FilePath(FileAuth(env.root), dir)
 
-      match
-        hobby.Application
-          .> get(
-            "/",
-            {(ctx) =>
-              hobby.RequestHandler(consume ctx)
-                .respond(
-                  stallion.StatusOK,
-                  "Visit /static/index.html"
-                    + " to see a served file.")
-            } val)
-          .> get("/static/*filepath", hobby.ServeFiles(root))
-          .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+      let app = hobby.Application
+        .> get(
+          "/",
+          {(ctx) =>
+            hobby.RequestHandler(consume ctx)
+              .respond(
+                stallion.StatusOK,
+                "Visit /static/index.html"
+                  + " to see a served file.")
+          } val)
+        .> get("/static/*filepath", hobby.ServeFiles(root))
+
+      match \exhaustive\ app.build()
+      | let built: hobby.BuiltApplication =>
+        hobby.Server(
+          auth, built, this
+          where host = "0.0.0.0", port = "8080")
       | let err: hobby.ConfigError =>
         env.err.print(err.message)
       end
@@ -52,3 +59,17 @@ actor Main
       env.err.print("Usage: serve-files <directory>")
       env.exitcode(1)
     end
+
+  be listening(
+    server: hobby.Server,
+    host: String,
+    service: String)
+  =>
+    _env.out.print(
+      "Listening on " + host + ":" + service)
+
+  be listen_failed(
+    server: hobby.Server,
+    reason: String)
+  =>
+    _env.err.print(reason)

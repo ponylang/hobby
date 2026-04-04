@@ -1,8 +1,10 @@
-use hobby = "hobby"
+// in your code this `use` statement would be:
+// use hobby = "hobby"
+use hobby = "../../hobby"
 use stallion = "stallion"
 use lori = "lori"
 
-actor Main
+actor Main is hobby.ServerNotify
   """
 
   Demonstrates request interceptors for synchronous request short-circuiting.
@@ -19,7 +21,10 @@ actor Main
 
   """
 
+  let _env: Env
+
   new create(env: Env) =>
+    _env = env
     let auth = lori.TCPListenAuth(env.root)
 
     let auth_interceptor: Array[hobby.RequestInterceptor val] val =
@@ -41,46 +46,64 @@ actor Main
             recover val ["x-admin"] end)]
       end
 
-    match
-      hobby.Application
-        .> get(
-          "/",
-          {(ctx) =>
-            hobby.RequestHandler(consume ctx)
-              .respond(stallion.StatusOK, "Hello from Hobby!")
-          } val)
-        .> get(
-          "/api/:id",
-          {(ctx) =>
-            let handler = hobby.RequestHandler(consume ctx)
-            try
-              let id = handler.param("id")?
-              handler.respond(
-                stallion.StatusOK, "Resource: " + id)
-            else
-              handler.respond(
-                stallion.StatusBadRequest, "Bad Request")
-            end
-          } val
-          where interceptors = auth_interceptor)
-        .> post(
-          "/api/upload",
-          {(ctx) =>
-            hobby.RequestHandler(consume ctx)
-              .respond(stallion.StatusOK, "Upload accepted")
-          } val
-          where interceptors = upload_interceptors)
-        .> get(
-          "/admin",
-          {(ctx) =>
-            hobby.RequestHandler(consume ctx)
-              .respond(stallion.StatusOK, "Admin dashboard")
-          } val
-          where interceptors = admin_interceptors)
-        .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+    let app = hobby.Application
+      .> get(
+        "/",
+        {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Hello from Hobby!")
+        } val)
+      .> get(
+        "/api/:id",
+        {(ctx) =>
+          let handler = hobby.RequestHandler(consume ctx)
+          try
+            let id = handler.param("id")?
+            handler.respond(
+              stallion.StatusOK, "Resource: " + id)
+          else
+            handler.respond(
+              stallion.StatusBadRequest, "Bad Request")
+          end
+        } val
+        where interceptors = auth_interceptor)
+      .> post(
+        "/api/upload",
+        {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Upload accepted")
+        } val
+        where interceptors = upload_interceptors)
+      .> get(
+        "/admin",
+        {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Admin dashboard")
+        } val
+        where interceptors = admin_interceptors)
+
+    match \exhaustive\ app.build()
+    | let built: hobby.BuiltApplication =>
+      hobby.Server(
+        auth, built, this
+        where host = "localhost", port = "8080")
     | let err: hobby.ConfigError =>
       env.err.print(err.message)
     end
+
+  be listening(
+    server: hobby.Server,
+    host: String,
+    service: String)
+  =>
+    _env.out.print(
+      "Listening on " + host + ":" + service)
+
+  be listen_failed(
+    server: hobby.Server,
+    reason: String)
+  =>
+    _env.err.print(reason)
 
 class val AuthInterceptor is hobby.RequestInterceptor
   """
@@ -160,4 +183,3 @@ class val RequiredHeadersInterceptor is hobby.RequestInterceptor
       end
     end
     hobby.InterceptPass
-

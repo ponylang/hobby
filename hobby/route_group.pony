@@ -44,7 +44,7 @@ class iso RouteGroup
     Create a route group with a path prefix and optional interceptors.
 
     The prefix must be a static path segment — no `:param` or `*wildcard`
-    characters. This is validated at `serve()` time and reported as a
+    characters. This is validated at `build()` time and reported as a
     `ConfigError`. The prefix is prepended to every route path in the group.
     Request interceptors, if provided, run before each route's own
     interceptors. Response interceptors, if provided, run before each

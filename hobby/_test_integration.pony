@@ -1,5 +1,6 @@
 use "pony_test"
 use "collections"
+use "constrained_types"
 use "files"
 use "time"
 use stallion = "stallion"
@@ -38,6 +39,7 @@ primitive \nodoc\ _TestIntegrationList
     test(_TestSSLBasicGet)
     test(_TestSSLStreaming)
     test(_TestSSLHandshakeFailure)
+    test(_TestSSLConnectionFailedNotify)
 
 // --- Test helpers ---
 primitive \nodoc\ _TestHost
@@ -50,11 +52,12 @@ actor \nodoc\ _TestClient is
   """
   Simple TCP client that sends raw HTTP and collects the response.
   """
-  var _tcp_connection: lori.TCPConnection = lori.TCPConnection.none()
+  var _tcp_connection: lori.TCPConnection =
+    lori.TCPConnection.none()
   let _h: TestHelper
   let _request: String
   let _expected: String
-  let _listener: _TestIntegrationListener
+  let _server: Server tag
   var _response: String iso = recover iso String end
 
   new create(
@@ -64,17 +67,18 @@ actor \nodoc\ _TestClient is
     h: TestHelper,
     request: String,
     expected: String,
-    listener: _TestIntegrationListener)
+    server: Server tag)
   =>
     _h = h
     _request = request
     _expected = expected
-    _listener = listener
+    _server = server
     _tcp_connection =
       lori.TCPConnection.client(
         auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection => _tcp_connection
+  fun ref _connection(): lori.TCPConnection =>
+    _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
@@ -84,74 +88,46 @@ actor \nodoc\ _TestClient is
     let response_str: String val = _response.clone()
     if response_str.contains(_expected) then
       _tcp_connection.close()
-      _listener.dispose()
+      _server.dispose()
       _h.complete(true)
     end
 
   fun ref _on_closed() => None
 
-  fun ref _on_connection_failure(reason: lori.ConnectionFailureReason) =>
+  fun ref _on_connection_failure(
+    reason: lori.ConnectionFailureReason)
+  =>
     _h.fail("connection failed")
-    _listener.dispose()
+    _server.dispose()
     _h.complete(false)
 
-actor \nodoc\ _TestIntegrationListener is lori.TCPListenerActor
-  var _tcp_listener: lori.TCPListener = lori.TCPListener.none()
-  let _server_auth: lori.TCPServerAuth
-  let _config: stallion.ServerConfig
-  let _router: _Router val
-  let _timers: Timers tag
+actor \nodoc\ _TestServerNotify is ServerNotify
+  """
+  ServerNotify for integration tests. Calls a run-client lambda
+  when the server starts listening.
+  """
   let _h: TestHelper
   let _run_client:
-    {(TestHelper, String, _TestIntegrationListener)} val
+    {(TestHelper, String, Server tag)} val
 
   new create(
-    auth: lori.TCPListenAuth,
-    config: stallion.ServerConfig,
-    router: _Router val,
     h: TestHelper,
     run_client:
-      {(TestHelper, String,
-        _TestIntegrationListener)} val)
+      {(TestHelper, String, Server tag)} val)
   =>
-    _server_auth = lori.TCPServerAuth(auth)
-    _config = config
-    _router = router
-    _timers = Timers
     _h = h
     _run_client = run_client
-    _tcp_listener =
-      lori.TCPListener(
-        auth, config.host, config.port, this)
 
-  fun ref _listener(): lori.TCPListener => _tcp_listener
+  be listening(
+    server: Server,
+    host: String,
+    service: String)
+  =>
+    _run_client(_h, service, server)
 
-  fun ref _on_accept(fd: U32): lori.TCPConnectionActor =>
-    _Connection(
-      _server_auth,
-      fd,
-      _config,
-      _router,
-      _timers,
-      0,
-      _h.env.out)
-
-  fun ref _on_listening() =>
-    try
-      (_, let port) = _tcp_listener.local_address().name()?
-      _run_client(_h, port, this)
-    else
-      _h.fail("could not get listener port")
-      _h.complete(false)
-    end
-
-  fun ref _on_listen_failure() =>
+  be listen_failed(server: Server, reason: String) =>
     _h.fail("listener failed to start")
     _h.complete(false)
-
-  be dispose() =>
-    _tcp_listener.close()
-    _timers.dispose()
 
 // --- Test factories ---
 primitive \nodoc\ _HelloFactory
@@ -177,14 +153,23 @@ primitive \nodoc\ _EchoBodyFactory
 // --- Helpers ---
 primitive \nodoc\ _IntegrationHelpers
   fun build_router(
-    routes: Array[(stallion.Method, String, HandlerFactory)] val,
-    interceptors': (Array[RequestInterceptor val] val | None) = None,
-    response_interceptors': (Array[ResponseInterceptor val] val | None) = None):
-    _Router val
+    routes: Array[(stallion.Method, String,
+      HandlerFactory)] val,
+    interceptors':
+      (Array[RequestInterceptor val] val | None) = None,
+    response_interceptors':
+      (Array[ResponseInterceptor val] val | None)
+      = None)
+    : _Router val
   =>
     let builder = _RouterBuilder
     for (method, path, factory) in routes.values() do
-      builder.add(method, path, factory, response_interceptors', interceptors')
+      builder.add(
+        method,
+        path,
+        factory,
+        response_interceptors',
+        interceptors')
     end
     builder.build()
 
@@ -196,26 +181,27 @@ primitive \nodoc\ _IntegrationHelpers
   =>
     h.long_test(5_000_000_000)
     let host = _TestHost()
-    let config = stallion.ServerConfig(host, "0")
     let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
-    _TestIntegrationListener(
-      auth,
-      config,
-      router,
-      h,
-      {(h': TestHelper,
-        port: String,
-        listener: _TestIntegrationListener) =>
-        _TestClient(
-          connect_auth,
-          host,
-          port,
-          h',
-          request,
-          expected,
-          listener)
-      })
+    let app = BuiltApplication._create(router)
+    let notify =
+      _TestServerNotify(
+        h,
+        {(h': TestHelper,
+          port: String,
+          server: Server tag) =>
+          _TestClient(
+            connect_auth,
+            host,
+            port,
+            h',
+            request,
+            expected,
+            server)
+        })
+    Server(
+      auth, app, notify
+      where host = host, port = "0")
 
 // --- Integration tests ---
 class \nodoc\ iso _TestBasicGet is UnitTest
@@ -565,16 +551,17 @@ actor \nodoc\ _TestHeadClient is
     lori.ClientLifecycleEventReceiver)
   """
 
-  TCP client for HEAD tests: checks that an expected header is present AND
-  a forbidden body string is absent.
+  TCP client for HEAD tests: checks that an expected header is present
+  AND a forbidden body string is absent.
   """
 
-  var _tcp_connection: lori.TCPConnection = lori.TCPConnection.none()
+  var _tcp_connection: lori.TCPConnection =
+    lori.TCPConnection.none()
   let _h: TestHelper
   let _request: String
   let _expect_header: String
   let _forbid_body: String
-  let _listener: _TestIntegrationListener
+  let _server: Server tag
   var _response: String iso = recover iso String end
 
   new create(
@@ -585,18 +572,19 @@ actor \nodoc\ _TestHeadClient is
     request: String,
     expect_header: String,
     forbid_body: String,
-    listener: _TestIntegrationListener)
+    server: Server tag)
   =>
     _h = h
     _request = request
     _expect_header = expect_header
     _forbid_body = forbid_body
-    _listener = listener
+    _server = server
     _tcp_connection =
       lori.TCPConnection.client(
         auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection => _tcp_connection
+  fun ref _connection(): lori.TCPConnection =>
+    _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
@@ -610,15 +598,17 @@ actor \nodoc\ _TestHeadClient is
         "HEAD response must not contain body: "
           + _forbid_body)
       _tcp_connection.close()
-      _listener.dispose()
+      _server.dispose()
       _h.complete(true)
     end
 
   fun ref _on_closed() => None
 
-  fun ref _on_connection_failure(reason: lori.ConnectionFailureReason) =>
+  fun ref _on_connection_failure(
+    reason: lori.ConnectionFailureReason)
+  =>
     _h.fail("connection failed")
-    _listener.dispose()
+    _server.dispose()
     _h.complete(false)
 
 // --- HEAD test factory ---
@@ -638,27 +628,28 @@ primitive \nodoc\ _HeadIntegrationHelpers
   =>
     h.long_test(5_000_000_000)
     let host = _TestHost()
-    let config = stallion.ServerConfig(host, "0")
     let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
-    _TestIntegrationListener(
-      auth,
-      config,
-      router,
-      h,
-      {(h': TestHelper,
-        port: String,
-        listener: _TestIntegrationListener) =>
-        _TestHeadClient(
-          connect_auth,
-          host,
-          port,
-          h',
-          request,
-          expect_header,
-          forbid_body,
-          listener)
-      })
+    let app = BuiltApplication._create(router)
+    let notify =
+      _TestServerNotify(
+        h,
+        {(h': TestHelper,
+          port: String,
+          server: Server tag) =>
+          _TestHeadClient(
+            connect_auth,
+            host,
+            port,
+            h',
+            request,
+            expect_header,
+            forbid_body,
+            server)
+        })
+    Server(
+      auth, app, notify
+      where host = host, port = "0")
 
 // --- HEAD integration tests ---
 class \nodoc\ iso _TestHeadFallbackToGet is UnitTest
@@ -812,67 +803,36 @@ actor \nodoc\ _NeverRespondHandler is HandlerReceiver
   be throttled() => None
   be unthrottled() => None
 
-actor \nodoc\ _TestTimeoutListener is lori.TCPListenerActor
+primitive \nodoc\ _TimeoutTestHelpers
   """
-  Listener that creates connections with a short handler timeout.
+  Helpers for timeout integration tests. Creates a Server with a
+  500ms handler timeout.
   """
-  var _tcp_listener: lori.TCPListener = lori.TCPListener.none()
-  let _server_auth: lori.TCPServerAuth
-  let _config: stallion.ServerConfig
-  let _router: _Router val
-  let _timers: Timers tag
-  let _h: TestHelper
-  let _run_client:
-    {(TestHelper, String, _TestTimeoutListener)} val
 
-  new create(
-    auth: lori.TCPListenAuth,
-    config: stallion.ServerConfig,
-    router: _Router val,
+  fun run_timeout_test(
     h: TestHelper,
+    router: _Router val,
     run_client:
-      {(TestHelper, String,
-        _TestTimeoutListener)} val)
+      {(TestHelper, String, Server tag)} val)
   =>
-    _server_auth = lori.TCPServerAuth(auth)
-    _config = config
-    _router = router
-    _timers = Timers
-    _h = h
-    _run_client = run_client
-    _tcp_listener =
-      lori.TCPListener(
-        auth, config.host, config.port, this)
-
-  fun ref _listener(): lori.TCPListener => _tcp_listener
-
-  fun ref _on_accept(fd: U32): lori.TCPConnectionActor =>
-    // 500ms timeout in nanoseconds
-    _Connection(
-      _server_auth,
-      fd,
-      _config,
-      _router,
-      _timers,
-      500_000_000,
-      _h.env.out)
-
-  fun ref _on_listening() =>
-    try
-      (_, let port) = _tcp_listener.local_address().name()?
-      _run_client(_h, port, this)
-    else
-      _h.fail("could not get listener port")
-      _h.complete(false)
-    end
-
-  fun ref _on_listen_failure() =>
-    _h.fail("listener failed to start")
-    _h.complete(false)
-
-  be dispose() =>
-    _tcp_listener.close()
-    _timers.dispose()
+    h.long_test(10_000_000_000)
+    let host = _TestHost()
+    let auth = lori.TCPListenAuth(h.env.root)
+    let app = BuiltApplication._create(router)
+    let timeout =
+      match MakeHandlerTimeout(500)
+      | let t: HandlerTimeout => t
+      else
+        _Unreachable()
+        return
+      end
+    Server(
+      auth,
+      app,
+      _TestServerNotify(h, run_client)
+      where host = host,
+      port = "0",
+      handler_timeout = timeout)
 
 actor \nodoc\ _TestTimeoutClient is
   (lori.TCPConnectionActor &
@@ -880,10 +840,11 @@ actor \nodoc\ _TestTimeoutClient is
   """
   TCP client for timeout tests that expects 504.
   """
-  var _tcp_connection: lori.TCPConnection = lori.TCPConnection.none()
+  var _tcp_connection: lori.TCPConnection =
+    lori.TCPConnection.none()
   let _h: TestHelper
   let _request: String
-  let _listener: _TestTimeoutListener
+  let _server: Server tag
   var _response: String iso = recover iso String end
 
   new create(
@@ -892,16 +853,17 @@ actor \nodoc\ _TestTimeoutClient is
     port: String,
     h: TestHelper,
     request: String,
-    listener: _TestTimeoutListener)
+    server: Server tag)
   =>
     _h = h
     _request = request
-    _listener = listener
+    _server = server
     _tcp_connection =
       lori.TCPConnection.client(
         auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection => _tcp_connection
+  fun ref _connection(): lori.TCPConnection =>
+    _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
@@ -913,15 +875,17 @@ actor \nodoc\ _TestTimeoutClient is
       response_str.contains("Gateway Timeout")
     then
       _tcp_connection.close()
-      _listener.dispose()
+      _server.dispose()
       _h.complete(true)
     end
 
   fun ref _on_closed() => None
 
-  fun ref _on_connection_failure(reason: lori.ConnectionFailureReason) =>
+  fun ref _on_connection_failure(
+    reason: lori.ConnectionFailureReason)
+  =>
     _h.fail("connection failed")
-    _listener.dispose()
+    _server.dispose()
     _h.complete(false)
 
 class \nodoc\ iso _TestHandlerTimeout504 is UnitTest
@@ -933,31 +897,26 @@ class \nodoc\ iso _TestHandlerTimeout504 is UnitTest
   fun label(): String => "integration"
 
   fun apply(h: TestHelper) =>
-    h.long_test(10_000_000_000)
     let host = _TestHost()
-    let config = stallion.ServerConfig(host, "0")
-    let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
     let router =
       _IntegrationHelpers.build_router(
         recover val
           [(stallion.GET, "/", _NeverRespondFactory)]
         end)
-    _TestTimeoutListener(
-      auth,
-      config,
-      router,
+    _TimeoutTestHelpers.run_timeout_test(
       h,
+      router,
       {(h': TestHelper,
         port: String,
-        listener: _TestTimeoutListener) =>
+        server: Server tag) =>
         _TestTimeoutClient(
           connect_auth,
           host,
           port,
           h',
           "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-          listener)
+          server)
       })
 
 // --- Streaming timeout test ---
@@ -985,10 +944,11 @@ actor \nodoc\ _TestStreamTimeoutClient is
   """
   Accumulates response; expects chunk received then connection closed.
   """
-  var _tcp_connection: lori.TCPConnection = lori.TCPConnection.none()
+  var _tcp_connection: lori.TCPConnection =
+    lori.TCPConnection.none()
   let _h: TestHelper
   let _request: String
-  let _listener: _TestTimeoutListener
+  let _server: Server tag
   var _response: String iso = recover iso String end
   var _got_chunk: Bool = false
 
@@ -998,16 +958,17 @@ actor \nodoc\ _TestStreamTimeoutClient is
     port: String,
     h: TestHelper,
     request: String,
-    listener: _TestTimeoutListener)
+    server: Server tag)
   =>
     _h = h
     _request = request
-    _listener = listener
+    _server = server
     _tcp_connection =
       lori.TCPConnection.client(
         auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection => _tcp_connection
+  fun ref _connection(): lori.TCPConnection =>
+    _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
@@ -1021,17 +982,20 @@ actor \nodoc\ _TestStreamTimeoutClient is
 
   fun ref _on_closed() =>
     if _got_chunk then
-      _listener.dispose()
+      _server.dispose()
       _h.complete(true)
     else
-      _h.fail("connection closed without receiving chunk")
-      _listener.dispose()
+      _h.fail(
+        "connection closed without receiving chunk")
+      _server.dispose()
       _h.complete(false)
     end
 
-  fun ref _on_connection_failure(reason: lori.ConnectionFailureReason) =>
+  fun ref _on_connection_failure(
+    reason: lori.ConnectionFailureReason)
+  =>
     _h.fail("connection failed")
-    _listener.dispose()
+    _server.dispose()
     _h.complete(false)
 
 class \nodoc\ iso _TestStreamingTimeout is UnitTest
@@ -1043,10 +1007,7 @@ class \nodoc\ iso _TestStreamingTimeout is UnitTest
   fun label(): String => "integration"
 
   fun apply(h: TestHelper) =>
-    h.long_test(10_000_000_000)
     let host = _TestHost()
-    let config = stallion.ServerConfig(host, "0")
-    let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
     let factory: HandlerFactory =
       {(ctx) =>
@@ -1057,21 +1018,19 @@ class \nodoc\ iso _TestStreamingTimeout is UnitTest
         recover val
           [(stallion.GET, "/", factory)]
         end)
-    _TestTimeoutListener(
-      auth,
-      config,
-      router,
+    _TimeoutTestHelpers.run_timeout_test(
       h,
+      router,
       {(h': TestHelper,
         port: String,
-        listener: _TestTimeoutListener) =>
+        server: Server tag) =>
         _TestStreamTimeoutClient(
           connect_auth,
           host,
           port,
           h',
           "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-          listener)
+          server)
       })
 
 // --- on_closed dispose test ---
@@ -1080,16 +1039,18 @@ actor \nodoc\ _DisposeCoordinator
   Receives handler disposal notification and completes the test.
   """
   var _h: (TestHelper | None) = None
-  var _listener: (_TestIntegrationListener | None) = None
+  var _server: (Server tag | None) = None
 
-  be setup(h: TestHelper, listener: _TestIntegrationListener) =>
+  be setup(h: TestHelper, server: Server tag) =>
     _h = h
-    _listener = listener
+    _server = server
 
   be handler_disposed() =>
-    match (_h, _listener)
-    | (let h: TestHelper, let listener: _TestIntegrationListener) =>
-      listener.dispose()
+    match (_h, _server)
+    | (let h: TestHelper,
+      let server: Server tag)
+    =>
+      server.dispose()
       h.complete(true)
     end
 
@@ -1168,7 +1129,6 @@ class \nodoc\ iso _TestOnClosedDispose is UnitTest
   fun apply(h: TestHelper) =>
     h.long_test(10_000_000_000)
     let host = _TestHost()
-    let config = stallion.ServerConfig(host, "0")
     let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
     let coordinator = _DisposeCoordinator
@@ -1181,23 +1141,24 @@ class \nodoc\ iso _TestOnClosedDispose is UnitTest
         recover val
           [(stallion.GET, "/", factory)]
         end)
-    _TestIntegrationListener(
-      auth,
-      config,
-      router,
-      h,
-      {(h': TestHelper,
-        port: String,
-        listener:
-          _TestIntegrationListener)(coordinator) =>
-        coordinator.setup(h', listener)
-        _DisconnectAfterSendClient(
-          connect_auth,
-          host,
-          port,
-          h',
-          "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
-      })
+    let app = BuiltApplication._create(router)
+    let notify =
+      _TestServerNotify(
+        h,
+        {(h': TestHelper,
+          port: String,
+          server: Server tag)(coordinator) =>
+          coordinator.setup(h', server)
+          _DisconnectAfterSendClient(
+            connect_auth,
+            host,
+            port,
+            h',
+            "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        })
+    Server(
+      auth, app, notify
+      where host = host, port = "0")
 
 // --- Pipelined handler-in-progress test ---
 actor \nodoc\ _DelayedResponseHandler is HandlerReceiver
@@ -1323,10 +1284,7 @@ class \nodoc\ iso _TestRespondAfterDispose is UnitTest
   fun label(): String => "integration"
 
   fun apply(h: TestHelper) =>
-    h.long_test(10_000_000_000)
     let host = _TestHost()
-    let config = stallion.ServerConfig(host, "0")
-    let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
     let factory: HandlerFactory =
       {(ctx) =>
@@ -1337,21 +1295,19 @@ class \nodoc\ iso _TestRespondAfterDispose is UnitTest
         recover val
           [(stallion.GET, "/", factory)]
         end)
-    _TestTimeoutListener(
-      auth,
-      config,
-      router,
+    _TimeoutTestHelpers.run_timeout_test(
       h,
+      router,
       {(h': TestHelper,
         port: String,
-        listener: _TestTimeoutListener) =>
+        server: Server tag) =>
         _TestTimeoutClient(
           connect_auth,
           host,
           port,
           h',
           "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-          listener)
+          server)
       })
 
 // --- Normal completion with timeout test ---
@@ -1361,10 +1317,11 @@ actor \nodoc\ _TestTimeoutNormalClient is
   """
   TCP client that expects a normal response, fails on 504.
   """
-  var _tcp_connection: lori.TCPConnection = lori.TCPConnection.none()
+  var _tcp_connection: lori.TCPConnection =
+    lori.TCPConnection.none()
   let _h: TestHelper
   let _request: String
-  let _listener: _TestTimeoutListener
+  let _server: Server tag
   var _response: String iso = recover iso String end
 
   new create(
@@ -1373,16 +1330,17 @@ actor \nodoc\ _TestTimeoutNormalClient is
     port: String,
     h: TestHelper,
     request: String,
-    listener: _TestTimeoutListener)
+    server: Server tag)
   =>
     _h = h
     _request = request
-    _listener = listener
+    _server = server
     _tcp_connection =
       lori.TCPConnection.client(
         auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection => _tcp_connection
+  fun ref _connection(): lori.TCPConnection =>
+    _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
@@ -1392,20 +1350,24 @@ actor \nodoc\ _TestTimeoutNormalClient is
     let response_str: String val = _response.clone()
     if response_str.contains("Hello from Hobby!") then
       _tcp_connection.close()
-      _listener.dispose()
+      _server.dispose()
       _h.complete(true)
     elseif response_str.contains("Gateway Timeout") then
-      _h.fail("unexpected 504 — handler completed before timeout")
+      _h.fail(
+        "unexpected 504 — handler completed"
+          + " before timeout")
       _tcp_connection.close()
-      _listener.dispose()
+      _server.dispose()
       _h.complete(false)
     end
 
   fun ref _on_closed() => None
 
-  fun ref _on_connection_failure(reason: lori.ConnectionFailureReason) =>
+  fun ref _on_connection_failure(
+    reason: lori.ConnectionFailureReason)
+  =>
     _h.fail("connection failed")
-    _listener.dispose()
+    _server.dispose()
     _h.complete(false)
 
 class \nodoc\ iso _TestNormalCompletionWithTimeout is UnitTest
@@ -1417,31 +1379,26 @@ class \nodoc\ iso _TestNormalCompletionWithTimeout is UnitTest
   fun label(): String => "integration"
 
   fun apply(h: TestHelper) =>
-    h.long_test(10_000_000_000)
     let host = _TestHost()
-    let config = stallion.ServerConfig(host, "0")
-    let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
     let router =
       _IntegrationHelpers.build_router(
         recover val
           [(stallion.GET, "/", _HelloFactory)]
         end)
-    _TestTimeoutListener(
-      auth,
-      config,
-      router,
+    _TimeoutTestHelpers.run_timeout_test(
       h,
+      router,
       {(h': TestHelper,
         port: String,
-        listener: _TestTimeoutListener) =>
+        server: Server tag) =>
         _TestTimeoutNormalClient(
           connect_auth,
           host,
           port,
           h',
           "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-          listener)
+          server)
       })
 
 // --- Streaming dispose test ---
@@ -1481,7 +1438,6 @@ class \nodoc\ iso _TestOnClosedStreamingDispose is UnitTest
   fun apply(h: TestHelper) =>
     h.long_test(10_000_000_000)
     let host = _TestHost()
-    let config = stallion.ServerConfig(host, "0")
     let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
     let coordinator = _DisposeCoordinator
@@ -1494,23 +1450,24 @@ class \nodoc\ iso _TestOnClosedStreamingDispose is UnitTest
         recover val
           [(stallion.GET, "/", factory)]
         end)
-    _TestIntegrationListener(
-      auth,
-      config,
-      router,
-      h,
-      {(h': TestHelper,
-        port: String,
-        listener:
-          _TestIntegrationListener)(coordinator) =>
-        coordinator.setup(h', listener)
-        _DisconnectAfterSendClient(
-          connect_auth,
-          host,
-          port,
-          h',
-          "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
-      })
+    let app = BuiltApplication._create(router)
+    let notify =
+      _TestServerNotify(
+        h,
+        {(h': TestHelper,
+          port: String,
+          server: Server tag)(coordinator) =>
+          coordinator.setup(h', server)
+          _DisconnectAfterSendClient(
+            connect_auth,
+            host,
+            port,
+            h',
+            "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        })
+    Server(
+      auth, app, notify
+      where host = host, port = "0")
 
 class \nodoc\ iso _TestMethodNotAllowed405 is UnitTest
   """
@@ -1560,7 +1517,7 @@ actor \nodoc\ _TestSSLClient is
   let _h: TestHelper
   let _request: String
   let _expected: String
-  let _listener: _TestSSLIntegrationListener
+  let _server: Server tag
   var _response: String iso = recover iso String end
 
   new create(
@@ -1571,12 +1528,12 @@ actor \nodoc\ _TestSSLClient is
     h: TestHelper,
     request: String,
     expected: String,
-    listener: _TestSSLIntegrationListener)
+    server: Server tag)
   =>
     _h = h
     _request = request
     _expected = expected
-    _listener = listener
+    _server = server
     _tcp_connection =
       lori.TCPConnection.ssl_client(
         auth, ssl_ctx, host, port, "", this, this)
@@ -1592,7 +1549,7 @@ actor \nodoc\ _TestSSLClient is
     let response_str: String val = _response.clone()
     if response_str.contains(_expected) then
       _tcp_connection.close()
-      _listener.dispose()
+      _server.dispose()
       _h.complete(true)
     end
 
@@ -1602,73 +1559,8 @@ actor \nodoc\ _TestSSLClient is
     reason: lori.ConnectionFailureReason)
   =>
     _h.fail("SSL connection failed")
-    _listener.dispose()
+    _server.dispose()
     _h.complete(false)
-
-actor \nodoc\ _TestSSLIntegrationListener
-  is lori.TCPListenerActor
-  var _tcp_listener: lori.TCPListener =
-    lori.TCPListener.none()
-  let _server_auth: lori.TCPServerAuth
-  let _config: stallion.ServerConfig
-  let _router: _Router val
-  let _timers: Timers tag
-  let _h: TestHelper
-  let _ssl_ctx: ssl_net.SSLContext val
-  let _run_client:
-    {(TestHelper, String,
-      _TestSSLIntegrationListener)} val
-
-  new create(
-    auth: lori.TCPListenAuth,
-    config: stallion.ServerConfig,
-    router: _Router val,
-    ssl_ctx: ssl_net.SSLContext val,
-    h: TestHelper,
-    run_client:
-      {(TestHelper, String,
-        _TestSSLIntegrationListener)} val)
-  =>
-    _server_auth = lori.TCPServerAuth(auth)
-    _config = config
-    _router = router
-    _ssl_ctx = ssl_ctx
-    _timers = Timers
-    _h = h
-    _run_client = run_client
-    _tcp_listener =
-      lori.TCPListener(
-        auth, config.host, config.port, this)
-
-  fun ref _listener(): lori.TCPListener => _tcp_listener
-
-  fun ref _on_accept(fd: U32): lori.TCPConnectionActor =>
-    _Connection(
-      _server_auth,
-      fd,
-      _config,
-      _router,
-      _timers,
-      0,
-      _h.env.out,
-      _ssl_ctx)
-
-  fun ref _on_listening() =>
-    try
-      (_, let port) = _tcp_listener.local_address().name()?
-      _run_client(_h, port, this)
-    else
-      _h.fail("could not get listener port")
-      _h.complete(false)
-    end
-
-  fun ref _on_listen_failure() =>
-    _h.fail("SSL listener failed to start")
-    _h.complete(false)
-
-  be dispose() =>
-    _tcp_listener.close()
-    _timers.dispose()
 
 primitive \nodoc\ _SSLIntegrationHelpers
   fun run_ssl_test(
@@ -1679,7 +1571,6 @@ primitive \nodoc\ _SSLIntegrationHelpers
   =>
     h.long_test(5_000_000_000)
     let host = _TestHost()
-    let config = stallion.ServerConfig(host, "0")
     let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
     let ssl_ctx =
@@ -1690,27 +1581,28 @@ primitive \nodoc\ _SSLIntegrationHelpers
         h.complete(false)
         return
       end
-    _TestSSLIntegrationListener(
-      auth,
-      config,
-      router,
-      ssl_ctx,
-      h,
-      {(h': TestHelper,
-        port: String,
-        listener: _TestSSLIntegrationListener)
-        (ssl_ctx, connect_auth, host)
-      =>
-        _TestSSLClient(
-          connect_auth,
-          ssl_ctx,
-          host,
-          port,
-          h',
-          request,
-          expected,
-          listener)
-      })
+    let app = BuiltApplication._create(router)
+    let notify =
+      _TestServerNotify(
+        h,
+        {(h': TestHelper,
+          port: String,
+          server: Server tag)
+          (ssl_ctx, connect_auth, host)
+        =>
+          _TestSSLClient(
+            connect_auth,
+            ssl_ctx,
+            host,
+            port,
+            h',
+            request,
+            expected,
+            server)
+        })
+    Server.ssl(
+      auth, app, notify, ssl_ctx
+      where host = host, port = "0")
 
 // --- SSL integration tests ---
 class \nodoc\ iso _TestSSLBasicGet is UnitTest
@@ -1768,7 +1660,6 @@ class \nodoc\ iso _TestSSLHandshakeFailure is UnitTest
   fun apply(h: TestHelper) =>
     h.long_test(5_000_000_000)
     let host = _TestHost()
-    let config = stallion.ServerConfig(host, "0")
     let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
     let ssl_ctx =
@@ -1784,26 +1675,28 @@ class \nodoc\ iso _TestSSLHandshakeFailure is UnitTest
         recover val
           [(stallion.GET, "/", _HelloFactory)]
         end)
-    _TestSSLIntegrationListener(
-      auth,
-      config,
-      router,
-      ssl_ctx,
-      h,
-      {(h': TestHelper,
-        port: String,
-        listener: _TestSSLIntegrationListener)
-        (ssl_ctx, connect_auth, host)
-      =>
-        // First: plain TCP client triggers handshake failure
-        _PlainTCPThenSSLClient(
-          connect_auth,
-          ssl_ctx,
-          host,
-          port,
-          h',
-          listener)
-      })
+    let app = BuiltApplication._create(router)
+    let notify =
+      _TestServerNotify(
+        h,
+        {(h': TestHelper,
+          port: String,
+          server: Server tag)
+          (ssl_ctx, connect_auth, host)
+        =>
+          // First: plain TCP client triggers
+          // handshake failure
+          _PlainTCPThenSSLClient(
+            connect_auth,
+            ssl_ctx,
+            host,
+            port,
+            h',
+            server)
+        })
+    Server.ssl(
+      auth, app, notify, ssl_ctx
+      where host = host, port = "0")
 
 actor \nodoc\ _PlainTCPThenSSLClient is
   (lori.TCPConnectionActor &
@@ -1820,7 +1713,7 @@ actor \nodoc\ _PlainTCPThenSSLClient is
   let _host: String
   let _port: String
   let _h: TestHelper
-  let _listener: _TestSSLIntegrationListener
+  let _server: Server tag
 
   new create(
     connect_auth: lori.TCPConnectAuth,
@@ -1828,14 +1721,14 @@ actor \nodoc\ _PlainTCPThenSSLClient is
     host: String,
     port: String,
     h: TestHelper,
-    listener: _TestSSLIntegrationListener)
+    server: Server tag)
   =>
     _connect_auth = connect_auth
     _ssl_ctx = ssl_ctx
     _host = host
     _port = port
     _h = h
-    _listener = listener
+    _server = server
     // Connect as plain TCP — no SSL
     _tcp_connection =
       lori.TCPConnection.client(
@@ -1864,7 +1757,7 @@ actor \nodoc\ _PlainTCPThenSSLClient is
       _h,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "Hello from Hobby!",
-      _listener)
+      _server)
 
   fun ref _on_connection_failure(
     reason: lori.ConnectionFailureReason)
@@ -1880,5 +1773,127 @@ actor \nodoc\ _PlainTCPThenSSLClient is
       _h,
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
       "Hello from Hobby!",
-      _listener)
+      _server)
+
+class \nodoc\ iso _TestSSLConnectionFailedNotify
+  is UnitTest
+  """
+  SSL handshake failure delivers `connection_failed` to
+  `ServerNotify`.
+  """
+  fun name(): String =>
+    "integration/ssl connection_failed notify"
+
+  fun label(): String => "integration"
+
+  fun apply(h: TestHelper) =>
+    h.long_test(5_000_000_000)
+    let host = _TestHost()
+    let auth = lori.TCPListenAuth(h.env.root)
+    let ssl_ctx =
+      try
+        _TestSSLContext(h)?
+      else
+        h.fail("could not create SSL context")
+        h.complete(false)
+        return
+      end
+    let router =
+      _IntegrationHelpers.build_router(
+        recover val
+          [(stallion.GET, "/", _HelloFactory)]
+        end)
+    let app = BuiltApplication._create(router)
+    let notify =
+      _ConnectionFailedNotify(h)
+    Server.ssl(
+      auth, app, notify, ssl_ctx
+      where host = host, port = "0")
+
+actor \nodoc\ _ConnectionFailedNotify
+  is ServerNotify
+  """
+  Notify that starts a plain TCP client on listening, then
+  asserts that `connection_failed` is called.
+  """
+  let _h: TestHelper
+  var _got_failed: Bool = false
+
+  new create(h: TestHelper) =>
+    _h = h
+
+  be listening(
+    server: Server,
+    host: String,
+    service: String)
+  =>
+    let connect_auth =
+      lori.TCPConnectAuth(_h.env.root)
+    // Send plain TCP to SSL server
+    _PlainTCPClient(
+      connect_auth, host, service, this)
+
+  be connection_failed(
+    server: Server,
+    reason: String)
+  =>
+    _got_failed = true
+    server.dispose()
+    _h.complete(true)
+
+  be plain_client_done() =>
+    // If the plain client closed without triggering
+    // connection_failed, wait briefly — the failure
+    // notification is async through _Connection →
+    // Server → this.
+    if not _got_failed then
+      _check_later()
+    end
+
+  be _check_later() =>
+    if not _got_failed then
+      _h.fail(
+        "connection_failed was not called")
+      _h.complete(false)
+    end
+
+actor \nodoc\ _PlainTCPClient is
+  (lori.TCPConnectionActor &
+    lori.ClientLifecycleEventReceiver)
+  """
+  Sends plain HTTP to an SSL listener, triggering a handshake
+  failure. Notifies the coordinator when done.
+  """
+  var _tcp_connection: lori.TCPConnection =
+    lori.TCPConnection.none()
+  let _notify: _ConnectionFailedNotify
+
+  new create(
+    auth: lori.TCPConnectAuth,
+    host: String,
+    port: String,
+    notify: _ConnectionFailedNotify)
+  =>
+    _notify = notify
+    _tcp_connection =
+      lori.TCPConnection.client(
+        auth, host, port, "", this, this)
+
+  fun ref _connection(): lori.TCPConnection =>
+    _tcp_connection
+
+  fun ref _on_connected() =>
+    _tcp_connection.send(
+      "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+
+  fun ref _on_received(data: Array[U8] iso) =>
+    None
+
+  fun ref _on_closed() =>
+    _notify.plain_client_done()
+
+  fun ref _on_connection_failure(
+    reason: lori.ConnectionFailureReason)
+  =>
+    _notify.plain_client_done()
 
