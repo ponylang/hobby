@@ -569,27 +569,28 @@ primitive \nodoc\ _ServeFilesCacheControlDisabledHelper
   =>
     h.long_test(5_000_000_000)
     let host = _TestHost()
-    let config = stallion.ServerConfig(host, "0")
     let auth = lori.TCPListenAuth(h.env.root)
     let connect_auth = lori.TCPConnectAuth(h.env.root)
-    _TestIntegrationListener(
-      auth,
-      config,
-      router,
-      h,
-      {(h': TestHelper,
-        port: String,
-        listener: _TestIntegrationListener) =>
-        _TestNoCacheControlClient(
-          connect_auth,
-          host,
-          port,
-          h',
-          request,
-          expected,
-          forbidden,
-          listener)
-      })
+    let app = BuiltApplication._create(router)
+    let notify =
+      _TestServerNotify(
+        h,
+        {(h': TestHelper,
+          port: String,
+          server: Server tag) =>
+          _TestNoCacheControlClient(
+            connect_auth,
+            host,
+            port,
+            h',
+            request,
+            expected,
+            forbidden,
+            server)
+        })
+    Server(
+      auth, app, notify
+      where host = host, port = "0")
 
 actor \nodoc\ _TestNoCacheControlClient is
   (lori.TCPConnectionActor &
@@ -600,12 +601,13 @@ actor \nodoc\ _TestNoCacheControlClient is
   string is absent.
   """
 
-  var _tcp_connection: lori.TCPConnection = lori.TCPConnection.none()
+  var _tcp_connection: lori.TCPConnection =
+    lori.TCPConnection.none()
   let _h: TestHelper
   let _request: String
   let _expected: String
   let _forbidden: String
-  let _listener: _TestIntegrationListener
+  let _server: Server tag
   var _response: String iso = recover iso String end
 
   new create(
@@ -616,18 +618,19 @@ actor \nodoc\ _TestNoCacheControlClient is
     request: String,
     expected: String,
     forbidden: String,
-    listener: _TestIntegrationListener)
+    server: Server tag)
   =>
     _h = h
     _request = request
     _expected = expected
     _forbidden = forbidden
-    _listener = listener
+    _server = server
     _tcp_connection =
       lori.TCPConnection.client(
         auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection => _tcp_connection
+  fun ref _connection(): lori.TCPConnection =>
+    _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
@@ -638,17 +641,20 @@ actor \nodoc\ _TestNoCacheControlClient is
     if response_str.contains(_expected) then
       _h.assert_false(
         response_str.contains(_forbidden),
-        "Response must not contain: " + _forbidden)
+        "Response must not contain: "
+          + _forbidden)
       _tcp_connection.close()
-      _listener.dispose()
+      _server.dispose()
       _h.complete(true)
     end
 
   fun ref _on_closed() => None
 
-  fun ref _on_connection_failure(reason: lori.ConnectionFailureReason) =>
+  fun ref _on_connection_failure(
+    reason: lori.ConnectionFailureReason)
+  =>
     _h.fail("connection failed")
-    _listener.dispose()
+    _server.dispose()
     _h.complete(false)
 
 class \nodoc\ iso _TestServeFilesLargeFileCacheHeaders is UnitTest

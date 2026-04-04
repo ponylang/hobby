@@ -5,6 +5,7 @@ actor \nodoc\ Main is TestList
     PonyTest(env, this)
 
   fun tag tests(test: PonyTest) =>
+    _TestBuildList.tests(test)
     _TestRouterList.tests(test)
     _TestRouteGroupList.tests(test)
     _TestContentTypeList.tests(test)

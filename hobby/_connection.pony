@@ -28,7 +28,7 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
   let _router: _Router val
   let _timers: Timers tag
   let _timeout_ns: U64
-  let _out: OutStream
+  let _server: Server tag
   var _body: Array[U8] iso = recover iso Array[U8] end
   var _has_body: Bool = false
   var _current_token: U64 = 0
@@ -51,13 +51,13 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
     router: _Router val,
     timers: Timers tag,
     timeout_ns: U64,
-    out: OutStream,
+    server: Server tag,
     ssl_ctx: (ssl_net.SSLContext val | None) = None)
   =>
     _router = router
     _timers = timers
     _timeout_ns = timeout_ns
-    _out = out
+    _server = server
     _pending_requests = Array[_PendingRequest]
     _http =
       match ssl_ctx
@@ -127,7 +127,7 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
   fun ref on_start_failure(reason: lori.StartFailureReason) =>
     match \exhaustive\ reason
     | lori.StartFailedSSL =>
-      _out.print("Hobby: connection failed (SSL handshake)")
+      _server._connection_failed("SSL handshake")
     end
 
   // --- Request processing ---

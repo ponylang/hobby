@@ -1,5 +1,5 @@
 """
 
-HTTPS example using serve_ssl() with a self-signed certificate.
+HTTPS example using Server.ssl() with a self-signed certificate.
 """
 

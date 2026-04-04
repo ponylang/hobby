@@ -58,16 +58,23 @@ class val ServeFiles
   use stallion = "stallion"
   use lori = "lori"
 
-  actor Main
+  actor Main is hobby.ServerNotify
     new create(env: Env) =>
       let auth = lori.TCPListenAuth(env.root)
-      let root = FilePath(FileAuth(env.root), "./public")
-      hobby.Application
-        .> get("/static/*filepath", hobby.ServeFiles(root))
-        .serve(
-          auth,
-          stallion.ServerConfig("0.0.0.0", "8080"),
-          env.out)
+      let root =
+        FilePath(FileAuth(env.root), "./public")
+      let app = hobby.Application
+        .> get(
+          "/static/*filepath",
+          hobby.ServeFiles(root))
+
+      match app.build()
+      | let built: hobby.BuiltApplication =>
+        hobby.Server(auth, built, this
+          where host = "0.0.0.0", port = "8080")
+      | let err: hobby.ConfigError =>
+        None
+      end
   ```
 
   Path traversal is prevented by Pony's `FilePath.from()`, which rejects

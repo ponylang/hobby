@@ -1,50 +1,49 @@
 use stallion = "stallion"
-use lori = "lori"
-use ssl_net = "ssl/net"
 
-class iso Application
+class ref Application
   """
 
-  The public API for the Hobby web framework.
+  Mutable route builder for the Hobby web framework.
 
-  Register routes via `.>` method chaining (`get`, `post`, etc.), then call
-  `serve()` (HTTP) or `serve_ssl()` (HTTPS) to freeze the routes and start
-  listening.
+  Register routes via `.>` method chaining (`get`, `post`, etc.), then
+  call `build()` to validate and freeze the routes into a
+  `BuiltApplication`. Pass the result to `Server` to start listening.
 
   ```pony
   use hobby = "hobby"
   use stallion = "stallion"
   use lori = "lori"
 
-  actor Main
+  actor Main is hobby.ServerNotify
+    let _env: Env
+
     new create(env: Env) =>
+      _env = env
       let auth = lori.TCPListenAuth(env.root)
-      match
-        hobby.Application
-          .> get("/", {(ctx) =>
-            hobby.RequestHandler(consume ctx)
-              .respond(stallion.StatusOK, "Hello!")
-          } val)
-          .> get("/greet/:name", {(ctx) =>
-            let handler = hobby.RequestHandler(consume ctx)
-            try
-              handler.respond(stallion.StatusOK,
-                "Hello, " + handler.param("name")? + "!")
-            else
-              handler.respond(stallion.StatusBadRequest, "Bad Request")
-            end
-          } val)
-          .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+      let app = hobby.Application
+        .> get("/", {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Hello!")
+        } val)
+
+      match app.build()
+      | let built: hobby.BuiltApplication =>
+        hobby.Server(auth, built, this
+          where host = "localhost", port = "8080")
       | let err: hobby.ConfigError =>
         env.err.print(err.message)
       end
+
+    be listening(server: hobby.Server,
+      host: String, service: String)
+    =>
+      _env.out.print(
+        "Listening on " + host + ":" + service)
   ```
 
-  Route methods are `fun ref` — automatic receiver recovery allows calling
-  them on an `iso` receiver since all arguments are `val`. Use `.>` to chain
-  route calls (it discards the method's return and passes the receiver
-  through). Call `.serve()` (HTTP) or `.serve_ssl()` (HTTPS) last — it
-  consumes the Application and returns the routes.
+  `Application` is `ref` — it is a builder that produces snapshots. You
+  can build routes, call `build()` to freeze a snapshot, add more
+  routes, and build again. Each `BuiltApplication` is independent.
   """
 
   embed _routes: Array[_RouteDefinition]
@@ -52,7 +51,7 @@ class iso Application
   embed _app_response_interceptors: Array[ResponseInterceptor val]
   embed _group_infos: Array[_GroupInfo]
 
-  new iso create() =>
+  new create() =>
     _routes = Array[_RouteDefinition]
     _app_interceptors = Array[RequestInterceptor val]
     _app_response_interceptors = Array[ResponseInterceptor val]
@@ -257,76 +256,21 @@ class iso Application
       .> _collect_group_infos(_group_infos)
       .> _flatten_routes_into(_routes)
 
-  fun iso serve(
-    auth: lori.TCPListenAuth,
-    config: stallion.ServerConfig,
-    out: OutStream,
-    handler_timeout: (U64 | None) = 30_000)
-    : ServeResult
-  =>
+  fun ref build(): BuildResult =>
     """
 
-    Freeze routes, validate configuration, and start listening over HTTP.
+    Validate routes and freeze them into a `BuiltApplication`.
 
-    Consumes the Application — no further route registration is possible
-    after this call. Returns `Serving` on success or `ConfigError` if
-    a configuration error was detected (overlapping group prefixes,
-    invalid group prefix, conflicting param or wildcard names).
+    Returns `BuiltApplication` on success or `ConfigError` if a
+    configuration error was detected (overlapping group prefixes,
+    invalid group prefix, conflicting param or wildcard names, empty
+    param name, empty wildcard name).
 
-    `handler_timeout` is the handler inactivity timeout in milliseconds.
-    Defaults to 30 seconds. Pass `None` to disable the timeout. When a
-    handler fails to respond within the timeout, the framework sends 504
-    Gateway Timeout (or closes the connection for active streams).
-
-    For HTTPS, use `serve_ssl()` instead.
+    The Application is not consumed — you can add more routes and call
+    `build()` again. Each `BuiltApplication` is an independent
+    snapshot.
     """
 
-    let self: Application ref = consume this
-    match \exhaustive\ self._build(handler_timeout)
-    | (let router: _Router val, let timeout_ns: U64) =>
-      _Listener(auth, config, router, out, timeout_ns)
-      Serving
-    | let err: ConfigError => err
-    end
-
-  fun iso serve_ssl(
-    auth: lori.TCPListenAuth,
-    config: stallion.ServerConfig,
-    out: OutStream,
-    ssl_ctx: ssl_net.SSLContext val,
-    handler_timeout: (U64 | None) = 30_000)
-    : ServeResult
-  =>
-    """
-
-    Freeze routes, validate configuration, and start listening over
-    HTTPS.
-
-    Identical to `serve()` except connections use TLS via the provided
-    `SSLContext`. The context must be configured with a certificate and
-    private key before calling this method. If the context is
-    misconfigured (e.g., no certificate set), `serve_ssl()` still returns
-    `Serving` but every connection will fail at TLS handshake time —
-    these failures are logged as "Hobby: connection failed (SSL
-    handshake)".
-
-    Consumes the Application — no further route registration is possible
-    after this call.
-    """
-
-    let self: Application ref = consume this
-    match \exhaustive\ self._build(handler_timeout)
-    | (let router: _Router val, let timeout_ns: U64) =>
-      _Listener.ssl(
-        auth, config, router, out, timeout_ns, ssl_ctx)
-      Serving
-    | let err: ConfigError => err
-    end
-
-  fun ref _build(
-    handler_timeout: (U64 | None))
-    : ((_Router val, U64) | ConfigError)
-  =>
     // Validate group configuration before building
     match _ValidateGroups(_group_infos)
     | let err: ConfigError => return err
@@ -393,14 +337,5 @@ class iso Application
     match builder.first_error()
     | let err: ConfigError => return err
     end
-    let router: _Router val = builder.build()
 
-    // Convert millisecond timeout to nanoseconds
-    let timeout_ns: U64 =
-      match handler_timeout
-      | let ms: U64 => ms * 1_000_000
-      else
-        0
-      end
-
-    (router, timeout_ns)
+    BuiltApplication._create(builder.build())

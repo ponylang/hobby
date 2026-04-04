@@ -4,7 +4,7 @@ use hobby = "../../hobby"
 use stallion = "stallion"
 use lori = "lori"
 
-actor Main
+actor Main is hobby.ServerNotify
   """
 
   Response interceptors example.
@@ -30,41 +30,62 @@ actor Main
     curl -v http://localhost:8080/nonexistent
   """
 
+  let _env: Env
+
   new create(env: Env) =>
+    _env = env
     let auth = lori.TCPListenAuth(env.root)
 
     let auth_interceptor: Array[hobby.RequestInterceptor val] val =
       recover val [as hobby.RequestInterceptor val: AuthInterceptor] end
 
-    match
-      hobby.Application
-        .> add_response_interceptor(CorsResponseInterceptor("*"))
-        .> add_response_interceptor(SecurityHeadersInterceptor)
-        .> add_response_interceptor(LogResponseInterceptor(env.out))
-        .> get(
-          "/",
-          {(ctx) =>
-            hobby.RequestHandler(consume ctx)
-              .respond(stallion.StatusOK, "Hello from Hobby!")
-          } val)
-        .> get(
-          "/api/:id",
-          {(ctx) =>
-            let handler = hobby.RequestHandler(consume ctx)
-            try
-              let id = handler.param("id")?
-              handler.respond(
-                stallion.StatusOK, "Resource: " + id)
-            else
-              handler.respond(
-                stallion.StatusBadRequest, "Bad Request")
-            end
-          } val
-          where interceptors = auth_interceptor)
-        .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    let app = hobby.Application
+      .> add_response_interceptor(CorsResponseInterceptor("*"))
+      .> add_response_interceptor(SecurityHeadersInterceptor)
+      .> add_response_interceptor(LogResponseInterceptor(env.out))
+      .> get(
+        "/",
+        {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Hello from Hobby!")
+        } val)
+      .> get(
+        "/api/:id",
+        {(ctx) =>
+          let handler = hobby.RequestHandler(consume ctx)
+          try
+            let id = handler.param("id")?
+            handler.respond(
+              stallion.StatusOK, "Resource: " + id)
+          else
+            handler.respond(
+              stallion.StatusBadRequest, "Bad Request")
+          end
+        } val
+        where interceptors = auth_interceptor)
+
+    match \exhaustive\ app.build()
+    | let built: hobby.BuiltApplication =>
+      hobby.Server(
+        auth, built, this
+        where host = "0.0.0.0", port = "8080")
     | let err: hobby.ConfigError =>
       env.err.print(err.message)
     end
+
+  be listening(
+    server: hobby.Server,
+    host: String,
+    service: String)
+  =>
+    _env.out.print(
+      "Listening on " + host + ":" + service)
+
+  be listen_failed(
+    server: hobby.Server,
+    reason: String)
+  =>
+    _env.err.print(reason)
 
 // --- Response interceptors ---
 class val CorsResponseInterceptor is hobby.ResponseInterceptor

@@ -116,7 +116,7 @@ primitive _ValidateGroups
 
   Validate group configuration before tree insertion.
 
-  Called in `Application.serve()` where the original full prefix strings
+  Called in `Application.build()` where the original full prefix strings
   are available. Returns the first error found, or `None` if all groups
   are valid. Checks:
   - Empty prefix (collides with app-level interceptors)

@@ -8,7 +8,7 @@ Starts an HTTP server with two routes: a static greeting at `/` and a parameteri
 
 ## [https](https/)
 
-Starts an HTTPS server on 0.0.0.0:8443 with the same two routes as the hello example, served over TLS using a self-signed certificate from the project's `assets/` directory. Demonstrates `Application.serve_ssl()` with `SSLContext` setup including certificate loading, authority configuration, and the `recover val` pattern for creating an immutable context.
+Starts an HTTPS server on 0.0.0.0:8443 with the same two routes as the hello example, served over TLS using a self-signed certificate from the project's `assets/` directory. Demonstrates `Server.ssl()` with `SSLContext` setup including certificate loading, authority configuration, and the `recover val` pattern for creating an immutable context.
 
 ## [async-handler](async-handler/)
 

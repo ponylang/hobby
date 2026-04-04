@@ -7,36 +7,49 @@ A simple HTTP web framework for Pony, powered by
 
 ## Quick Start
 
-Create an `Application`, register routes with `.>` chaining, and call
-`serve()` to start listening:
+Create an `Application`, register routes with `.>` chaining, call
+`build()` to compile the routes, and pass the result to `Server`:
 
 ```pony
 use hobby = "hobby"
 use stallion = "stallion"
 use lori = "lori"
 
-actor Main
+actor Main is hobby.ServerNotify
+  let _env: Env
+
   new create(env: Env) =>
+    _env = env
     let auth = lori.TCPListenAuth(env.root)
-    match
-      hobby.Application
-        .> get("/", {(ctx) =>
-          hobby.RequestHandler(consume ctx)
-            .respond(stallion.StatusOK, "Hello!")
-        } val)
-        .> get("/greet/:name", {(ctx) =>
-          let handler = hobby.RequestHandler(consume ctx)
-          try
-            handler.respond(stallion.StatusOK,
-              "Hello, " + handler.param("name")? + "!")
-          else
-            handler.respond(stallion.StatusBadRequest, "Bad Request")
-          end
-        } val)
-        .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+    let app = hobby.Application
+      .> get("/", {(ctx) =>
+        hobby.RequestHandler(consume ctx)
+          .respond(stallion.StatusOK, "Hello!")
+      } val)
+      .> get("/greet/:name", {(ctx) =>
+        let handler = hobby.RequestHandler(consume ctx)
+        try
+          handler.respond(stallion.StatusOK,
+            "Hello, " + handler.param("name")? + "!")
+        else
+          handler.respond(
+            stallion.StatusBadRequest, "Bad Request")
+        end
+      } val)
+
+    match app.build()
+    | let built: hobby.BuiltApplication =>
+      hobby.Server(auth, built, this
+        where host = "localhost", port = "8080")
     | let err: hobby.ConfigError =>
       env.err.print(err.message)
     end
+
+  be listening(server: hobby.Server,
+    host: String, service: String)
+  =>
+    _env.out.print(
+      "Listening on " + host + ":" + service)
 ```
 
 ## Handler Factories
@@ -182,14 +195,19 @@ requests. After `StreamingStarted`, call `send_chunk()` to send data and
 
 ## Handler Timeout
 
-`Application.serve()` and `serve_ssl()` accept an optional
-`handler_timeout` parameter (in milliseconds, default 30 seconds). When
-a handler fails to respond within the timeout, the framework sends 504
-Gateway Timeout. Pass `None` to disable the timeout.
+`Server` accepts an optional `handler_timeout` parameter (a
+`HandlerTimeout` constrained type or `None`). The default is 30 seconds
+via `DefaultHandlerTimeout()`. When a handler fails to respond within the
+timeout, the framework sends 504 Gateway Timeout. Pass `None` to
+disable the timeout.
+
+Construct a custom timeout with `MakeHandlerTimeout(milliseconds)`, which
+validates the value (must be > 0, must not overflow when converted to
+nanoseconds).
 
 ## HTTPS
 
-Use `serve_ssl()` instead of `serve()` to listen over TLS. Pass an
+Use `Server.ssl()` instead of `Server` to listen over TLS. Pass an
 `SSLContext val` configured with a certificate and private key:
 
 ```pony
@@ -199,8 +217,11 @@ use stallion = "stallion"
 use lori = "lori"
 use ssl_net = "ssl/net"
 
-actor Main
+actor Main is hobby.ServerNotify
+  let _env: Env
+
   new create(env: Env) =>
+    _env = env
     let auth = lori.TCPListenAuth(env.root)
     let file_auth = FileAuth(env.root)
     let sslctx =
@@ -220,26 +241,33 @@ actor Main
         return
       end
 
-    match
-      hobby.Application
-        .> get("/", {(ctx) =>
-          hobby.RequestHandler(consume ctx)
-            .respond(stallion.StatusOK, "Hello over HTTPS!")
-        } val)
-        .serve_ssl(
-          auth,
-          stallion.ServerConfig("0.0.0.0", "8443"),
-          env.out,
-          sslctx)
+    let app = hobby.Application
+      .> get("/", {(ctx) =>
+        hobby.RequestHandler(consume ctx)
+          .respond(
+            stallion.StatusOK,
+            "Hello over HTTPS!")
+      } val)
+
+    match app.build()
+    | let built: hobby.BuiltApplication =>
+      hobby.Server.ssl(auth, built, this, sslctx
+        where host = "0.0.0.0", port = "8443")
     | let err: hobby.ConfigError =>
       env.err.print(err.message)
     end
+
+  be listening(server: hobby.Server,
+    host: String, service: String)
+  =>
+    _env.out.print(
+      "Listening on " + host + ":" + service)
 ```
 
 If the `SSLContext` is misconfigured (e.g., no certificate set),
-`serve_ssl()` returns `Serving` but every connection fails at TLS
-handshake time. These failures are logged to the `OutStream` passed
-to `serve_ssl()`.
+`Server.ssl()` starts but every connection fails at TLS handshake
+time. These failures are reported via
+`ServerNotify.connection_failed()`.
 
 ## Static File Serving
 
@@ -255,14 +283,20 @@ use hobby = "hobby"
 use stallion = "stallion"
 use lori = "lori"
 
-actor Main
+actor Main is hobby.ServerNotify
   new create(env: Env) =>
     let auth = lori.TCPListenAuth(env.root)
-    let root = FilePath(FileAuth(env.root), "./public")
-    match
-      hobby.Application
-        .> get("/static/*filepath", hobby.ServeFiles(root))
-        .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    let root =
+      FilePath(FileAuth(env.root), "./public")
+    let app = hobby.Application
+      .> get(
+        "/static/*filepath",
+        hobby.ServeFiles(root))
+
+    match app.build()
+    | let built: hobby.BuiltApplication =>
+      hobby.Server(auth, built, this
+        where host = "0.0.0.0", port = "8080")
     | let err: hobby.ConfigError =>
       env.err.print(err.message)
     end
@@ -275,17 +309,19 @@ resolves to a directory, `ServeFiles` automatically serves `index.html`.
 
 Users import up to five packages:
 
-- **`hobby`**: Application, BodyNotNeeded, ConfigError, ContentTypes,
-  CookieSigningKey, HandlerContext, HandlerFactory, HandlerReceiver,
-  InterceptPass, InterceptRespond, InterceptResult, InvalidSignature,
-  MalformedSignedValue, RequestHandler, RequestInterceptor, ResponseContext,
-  ResponseInterceptor, RouteGroup, ServeFiles, ServeResult, Serving,
-  SignedCookie, SignedCookieError, StreamingStarted
+- **`hobby`**: Application, BodyNotNeeded, BuildResult, BuiltApplication,
+  ConfigError, ContentTypes, CookieSigningKey, DefaultHandlerTimeout,
+  HandlerContext, HandlerFactory, HandlerReceiver, HandlerTimeout,
+  HandlerTimeoutValidator, InterceptPass, InterceptRespond, InterceptResult,
+  InvalidSignature, MakeHandlerTimeout, MalformedSignedValue,
+  RequestHandler, RequestInterceptor, ResponseContext, ResponseInterceptor,
+  RouteGroup, ServeFiles, Server, ServerNotify, SignedCookie,
+  SignedCookieError, StreamingStarted
 - **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig,
   ChunkedNotSupported)
 - **`lori`**: `TCPListenAuth(env.root)` for network access
-- **`ssl/net`**: `SSLContext` (only needed when using `serve_ssl()`)
+- **`ssl/net`**: `SSLContext` (only needed when using `Server.ssl()`)
 - **`files`**: `FilePath`, `FileAuth` (needed for `ServeFiles` and
-  `serve_ssl()` certificate loading)
+  `Server.ssl()` certificate loading)
 """
 

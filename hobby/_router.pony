@@ -58,7 +58,7 @@ class ref _RouterBuilder
 
     Used for app-level interceptors (on the root node, path `""`) and
     group-level interceptors (on the group prefix node). Overlap detection
-    happens earlier in `Application.serve()` via `_ValidateGroups`.
+    happens earlier in `Application.build()` via `_ValidateGroups`.
     `_set_interceptors` concatenates as defense-in-depth.
     """
 
@@ -182,7 +182,7 @@ class ref _BuildNode
 
     Set path-level interceptors on this node.
 
-    Overlap detection happens earlier in `Application.serve()` via
+    Overlap detection happens earlier in `Application.build()` via
     `_ValidateGroups`, where the original full prefix strings are
     available for a clear error message. As defense-in-depth,
     concatenates rather than overwrites if interceptors already exist.

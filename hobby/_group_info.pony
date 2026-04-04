@@ -5,7 +5,7 @@ class val _GroupInfo
 
   Carries the fully-joined prefix and interceptors for a route group. Created
   during `Application.group()` / `RouteGroup.group()` and consumed by
-  `Application.serve()` to tag intermediate tree nodes with group-level
+  `Application.build()` to tag intermediate tree nodes with group-level
   interceptors via `_RouterBuilder.add_interceptors()`.
   """
 

@@ -4,7 +4,7 @@ use hobby = "../../hobby"
 use stallion = "stallion"
 use lori = "lori"
 
-actor Main
+actor Main is hobby.ServerNotify
   """
 
   Async handler example.
@@ -23,26 +23,47 @@ actor Main
     curl http://localhost:8080/slow
   """
 
+  let _env: Env
+
   new create(env: Env) =>
+    _env = env
     let auth = lori.TCPListenAuth(env.root)
     let slow = SlowService
-    match
-      hobby.Application
-        .> get(
-          "/",
-          {(ctx) =>
-            hobby.RequestHandler(consume ctx)
-              .respond(stallion.StatusOK, "Hello from Hobby!")
-          } val)
-        .> get(
-          "/slow",
-          {(ctx)(slow) =>
-            SlowHandler(consume ctx, slow)
-          } val)
-        .serve(auth, stallion.ServerConfig("0.0.0.0", "8080"), env.out)
+    let app = hobby.Application
+      .> get(
+        "/",
+        {(ctx) =>
+          hobby.RequestHandler(consume ctx)
+            .respond(stallion.StatusOK, "Hello from Hobby!")
+        } val)
+      .> get(
+        "/slow",
+        {(ctx)(slow) =>
+          SlowHandler(consume ctx, slow)
+        } val)
+
+    match \exhaustive\ app.build()
+    | let built: hobby.BuiltApplication =>
+      hobby.Server(
+        auth, built, this
+        where host = "0.0.0.0", port = "8080")
     | let err: hobby.ConfigError =>
       env.err.print(err.message)
     end
+
+  be listening(
+    server: hobby.Server,
+    host: String,
+    service: String)
+  =>
+    _env.out.print(
+      "Listening on " + host + ":" + service)
+
+  be listen_failed(
+    server: hobby.Server,
+    reason: String)
+  =>
+    _env.err.print(reason)
 
 actor SlowService
   """

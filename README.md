@@ -23,10 +23,13 @@ use hobby = "hobby"
 use stallion = "stallion"
 use lori = "lori"
 
-actor Main
+actor Main is hobby.ServerNotify
+  let _env: Env
+
   new create(env: Env) =>
+    _env = env
     let auth = lori.TCPListenAuth(env.root)
-    hobby.Application
+    let app = hobby.Application
       .>get("/", {(ctx) =>
         hobby.RequestHandler(consume ctx)
           .respond(stallion.StatusOK, "Hello!")
@@ -40,10 +43,20 @@ actor Main
           handler.respond(stallion.StatusBadRequest, "Bad Request")
         end
       } val)
-      .serve(auth, stallion.ServerConfig("localhost", "8080"), env.out)
+
+    match app.build()
+    | let built: hobby.BuiltApplication =>
+      hobby.Server(auth, built, this
+        where host = "localhost", port = "8080")
+    | let err: hobby.ConfigError =>
+      env.err.print(err.message)
+    end
+
+  be listening(server: hobby.Server, host: String, service: String) =>
+    _env.out.print("Listening on " + host + ":" + service)
 ```
 
-See the [examples](examples/) directory for more, including middleware usage. For a detailed walkthrough, read the [Writing Middleware](docs/middleware-guide.md) guide.
+See the [examples](examples/) directory for more, including interceptor usage. For a detailed walkthrough, read the [Writing Request Interceptors](docs/interceptor-guide.md) guide.
 
 ## API Documentation
 
