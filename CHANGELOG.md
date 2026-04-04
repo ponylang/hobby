@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Changed
 
+- Separate route compilation from server startup ([PR #80](https://github.com/ponylang/hobby/pull/80))
 
 ## [0.5.0] - 2026-04-03
 
