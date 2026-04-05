@@ -45,6 +45,7 @@ type HandlerTimeout is Constrained[U64, HandlerTimeoutValidator]
   `(HandlerTimeout | ValidationFailure)`. Pass to `Server` or
   `Server.ssl` to set the timeout, or pass `None` to disable it.
   """
+
 type MakeHandlerTimeout is
   MakeConstrained[U64, HandlerTimeoutValidator]
   """
