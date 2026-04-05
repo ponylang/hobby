@@ -2,9 +2,9 @@ use stallion = "stallion"
 
 primitive InterceptPass
   """
-
   Returned by a request interceptor to pass the request through to the handler.
   """
+
 class ref InterceptRespond
   """
 
