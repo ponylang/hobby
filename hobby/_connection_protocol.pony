@@ -2,12 +2,10 @@ use stallion = "stallion"
 
 trait tag _ConnectionProtocol
   """
-
   Protocol behaviors that `RequestHandler` sends to `_Connection`.
 
   Package-private — users interact with `RequestHandler`, not this interface.
   """
-
   be _handler_respond(
     token: U64,
     status: stallion.Status,

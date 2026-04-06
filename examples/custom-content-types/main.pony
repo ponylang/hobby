@@ -7,7 +7,6 @@ use lori = "lori"
 
 actor Main is hobby.ServerNotify
   """
-
   Custom content type mapping example.
 
   Starts an HTTP server on 0.0.0.0:8080 that serves files from `public/`
@@ -24,7 +23,6 @@ actor Main is hobby.ServerNotify
     curl -I http://localhost:8080/static/photo.avif
     curl -I http://localhost:8080/static/index.html
   """
-
   let _env: Env
 
   new create(env: Env) =>

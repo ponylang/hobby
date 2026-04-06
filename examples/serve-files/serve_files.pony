@@ -1,5 +1,4 @@
 """
-
 Static file serving example.
 """
 

@@ -1,13 +1,11 @@
 primitive _SplitSegments
   """
-
   Split a normalized path into an array of path segments.
 
   Strips the leading slash and splits on `/`, skipping empty segments
   (which normalizes double slashes). `/api/users/:id` → `["api", "users",
   ":id"]`. `/` → `[]`. `/api//users` → `["api", "users"]`.
   """
-
   fun apply(path: String): Array[String] val =>
     if path.size() <= 1 then
       return recover val Array[String] end
@@ -35,12 +33,10 @@ primitive _SplitSegments
 
 primitive _JoinRemainingSegments
   """
-
   Join segments from a start index onward with `/` separators.
 
   Used to reconstruct the captured value for wildcard parameters.
   """
-
   fun apply(
     segments: Array[String] val,
     from: USize,
@@ -74,7 +70,6 @@ primitive _JoinRemainingSegments
 
 primitive _JoinPath
   """
-
   Join a group prefix with a route path.
 
   Strips any trailing slash from the prefix, then concatenates with the route
@@ -84,7 +79,6 @@ primitive _JoinPath
   Examples: `("/api/", "/users")` -> `"/api/users"`,
   `("/", "/health")` -> `"/health"`, `("", "/health")` -> `"/health"`.
   """
-
   fun apply(prefix: String, path: String): String =>
     if prefix.size() == 0 then
       return path
@@ -113,7 +107,6 @@ primitive _TrimTrailingSlash
 
 primitive _ValidateGroups
   """
-
   Validate group configuration before tree insertion.
 
   Called in `Application.build()` where the original full prefix strings
@@ -123,7 +116,6 @@ primitive _ValidateGroups
   - Special characters in prefix (`:` or `*`)
   - Overlapping prefixes (two groups with the same prefix)
   """
-
   fun apply(infos: Array[_GroupInfo] box): (ConfigError | None) =>
     for gi in infos.values() do
       if (gi.prefix.size() == 0) or (gi.prefix == "/") then
@@ -180,14 +172,12 @@ primitive _HasSpecialChars
 
 primitive _ConcatResponseInterceptors
   """
-
   Concatenate two optional response interceptor arrays.
 
   Returns a combined array with outer interceptors first, then inner.
   When one side is `None`, returns the other directly (no allocation).
   When both are `None`, returns `None`.
   """
-
   fun apply(
     outer: (Array[ResponseInterceptor val] val | None),
     inner: (Array[ResponseInterceptor val] val | None))
@@ -216,14 +206,12 @@ primitive _ConcatResponseInterceptors
 
 primitive _ConcatInterceptors
   """
-
   Concatenate two optional interceptor arrays.
 
   Returns a combined array with outer interceptors first, then inner.
   When one side is `None`, returns the other directly (no allocation).
   When both are `None`, returns `None`.
   """
-
   fun apply(
     outer: (Array[RequestInterceptor val] val | None),
     inner: (Array[RequestInterceptor val] val | None))

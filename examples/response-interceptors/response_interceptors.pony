@@ -1,5 +1,4 @@
 """
-
 Response interceptors example.
 """
 

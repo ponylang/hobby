@@ -2,7 +2,6 @@ use stallion = "stallion"
 
 class ref Application
   """
-
   Mutable route builder for the Hobby web framework.
 
   Register routes via `.>` method chaining (`get`, `post`, etc.), then
@@ -45,7 +44,6 @@ class ref Application
   can build routes, call `build()` to freeze a snapshot, add more
   routes, and build again. Each `BuiltApplication` is independent.
   """
-
   embed _routes: Array[_RouteDefinition]
   embed _app_interceptors: Array[RequestInterceptor val]
   embed _app_response_interceptors: Array[ResponseInterceptor val]
@@ -212,7 +210,6 @@ class ref Application
 
   fun ref add_request_interceptor(interceptor: RequestInterceptor val) =>
     """
-
     Add an application-level request interceptor.
 
     Request interceptors run before the handler on every request. Application
@@ -222,12 +219,10 @@ class ref Application
 
     App-level interceptors also run on 404 responses where no route matched.
     """
-
     _app_interceptors.push(interceptor)
 
   fun ref add_response_interceptor(interceptor: ResponseInterceptor val) =>
     """
-
     Add an application-level response interceptor.
 
     Response interceptors run after the handler responds, before the response
@@ -238,12 +233,10 @@ class ref Application
     App-level response interceptors also run on 404 responses where no route
     matched.
     """
-
     _app_response_interceptors.push(interceptor)
 
   fun ref group(g: RouteGroup iso) =>
     """
-
     Consume a route group, flattening its routes into this application.
 
     The group's prefix is applied to each of its routes. Group-level
@@ -251,14 +244,12 @@ class ref Application
     registered on path nodes, not concatenated onto routes. The group is
     consumed — no further registration on it is possible.
     """
-
     (consume g)
       .> _collect_group_infos(_group_infos)
       .> _flatten_routes_into(_routes)
 
   fun ref build(): BuildResult =>
     """
-
     Validate routes and freeze them into a `BuiltApplication`.
 
     Returns `BuiltApplication` on success or `ConfigError` if a
@@ -270,7 +261,6 @@ class ref Application
     `build()` again. Each `BuiltApplication` is an independent
     snapshot.
     """
-
     // Validate group configuration before building
     match _ValidateGroups(_group_infos)
     | let err: ConfigError => return err

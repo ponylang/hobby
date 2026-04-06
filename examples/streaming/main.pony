@@ -6,7 +6,6 @@ use lori = "lori"
 
 actor Main is hobby.ServerNotify
   """
-
   Streaming response example.
 
   Starts an HTTP server on 0.0.0.0:8080 with two routes:
@@ -21,7 +20,6 @@ actor Main is hobby.ServerNotify
     curl http://localhost:8080/stream
     curl --head http://localhost:8080/stream
   """
-
   let _env: Env
 
   new create(env: Env) =>

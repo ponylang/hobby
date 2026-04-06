@@ -568,13 +568,11 @@ class \nodoc\ iso _TestStaticParamWildcardPriority is UnitTest
 
 class \nodoc\ iso _Test405FallsBackToLowerPriorityMatch is UnitTest
   """
-
   405 from param falls back to wildcard match.
 
   POST /files/:id + GET /files/*path — GET /files/readme.txt should match
   the wildcard, not return 405 from the param branch.
   """
-
   fun name(): String => "router/405 falls back to lower priority match"
 
   fun apply(h: TestHelper) =>
@@ -633,13 +631,11 @@ class \nodoc\ iso _Test405FallsBackToLowerPriorityMatch is UnitTest
 
 class \nodoc\ iso _Test405FallsBackStaticToParam is UnitTest
   """
-
   405 from static falls back to param match.
 
   POST /users/new + GET /users/:id — GET /users/new should match the param
   with id="new", not return 405 from the static branch.
   """
-
   fun name(): String => "router/405 falls back static to param"
 
   fun apply(h: TestHelper) =>
@@ -695,7 +691,6 @@ class \nodoc\ iso _Test405FallsBackStaticToParam is UnitTest
 
 class \nodoc\ iso _Test405ExactPathDoesNotIncludeWildcard is UnitTest
   """
-
   Exact-path 405 does not include wildcard methods.
 
   GET /files + POST /files/*path → DELETE /files gets Allow: GET, HEAD
@@ -704,7 +699,6 @@ class \nodoc\ iso _Test405ExactPathDoesNotIncludeWildcard is UnitTest
   (the early return at `idx >= segments.size()` resolves before the
   priority branch loop runs).
   """
-
   fun name(): String =>
     "router/405 exact path does not include wildcard"
 
@@ -740,14 +734,12 @@ class \nodoc\ iso _Test405ExactPathDoesNotIncludeWildcard is UnitTest
 
 class \nodoc\ iso _Test405MergesMethodsAcrossBranches is UnitTest
   """
-
   Allow header merges methods from all priority branches.
 
   POST /files/:id + GET /files/*path → DELETE /files/readme.txt hits the
   param branch first (405 with POST) then the wildcard branch (405 with
   GET, HEAD). The merged Allow header should include all three.
   """
-
   fun name(): String =>
     "router/405 merges methods across branches"
 
@@ -792,14 +784,12 @@ class \nodoc\ iso _Test405MergesMethodsAcrossBranches is UnitTest
 class \nodoc\ iso _Test405MergeDeduplicatesOverlappingMethods
   is UnitTest
   """
-
   Allow header deduplicates methods that appear in multiple branches.
 
   GET /users/new + GET /users/:id → DELETE /users/new hits the static
   branch (405 with GET, HEAD) then the param branch (405 with GET, HEAD).
   The merged Allow header should contain each method only once.
   """
-
   fun name(): String =>
     "router/405 merge deduplicates overlapping methods"
 
@@ -842,13 +832,11 @@ class \nodoc\ iso _Test405MergeDeduplicatesOverlappingMethods
 class \nodoc\ iso _PropertyInsertionOrderInvariance is
   Property1[(Array[USize] val, Array[USize] val)]
   """
-
   Route lookup results are independent of insertion order.
 
   Generates two permutations of the same route set and verifies that both
   produce identical lookup results for every registered path.
   """
-
   fun name(): String => "router/property/insertion order invariance"
 
   fun gen(): Generator[(Array[USize] val, Array[USize] val)] =>
@@ -1326,14 +1314,12 @@ class \nodoc\ iso _TestParamNameConflictReturnsError is UnitTest
 
 class \nodoc\ iso _TestInterceptorSegmentBoundary is UnitTest
   """
-
   Group interceptors at /api must NOT leak to /api-docs.
 
   In the segment trie, `/api` and `/api-docs` are distinct children of the
   root node (`"api"` vs `"api-docs"`). Interceptors registered on the `/api`
   node propagate only to its children, not to sibling segments.
   """
-
   fun name(): String => "router/interceptor segment boundary"
 
   fun apply(h: TestHelper) =>
@@ -1377,11 +1363,9 @@ class \nodoc\ iso _TestInterceptorSegmentBoundary is UnitTest
 
 class \nodoc\ iso _TestInterceptorSegmentBoundaryMiss is UnitTest
   """
-
   A 404 miss at a sibling path (/api-unknown) must NOT carry group
   interceptors from /api.
   """
-
   fun name(): String => "router/interceptor segment boundary miss"
 
   fun apply(h: TestHelper) =>
@@ -1426,11 +1410,9 @@ class \nodoc\ iso _TestInterceptorSegmentBoundaryMiss is UnitTest
 
 class \nodoc\ iso _TestInterceptorSegmentBoundaryNestedGroups is UnitTest
   """
-
   App-level interceptors propagate everywhere. Group interceptors at /api
   propagate to /api/admin/users but not to /api-docs.
   """
-
   fun name(): String => "router/interceptor segment boundary nested groups"
 
   fun apply(h: TestHelper) =>
@@ -1494,7 +1476,6 @@ class \nodoc\ iso _TestInterceptorSegmentBoundaryNestedGroups is UnitTest
 
 class \nodoc\ iso _TestDeepestMissPreservesRicherInterceptors is UnitTest
   """
-
   When static and param children both miss, the miss with richer interceptors
   wins.
 
@@ -1503,7 +1484,6 @@ class \nodoc\ iso _TestDeepestMissPreservesRicherInterceptors is UnitTest
   /api/users/new/nonexistent — static child reaches depth with [A, B] but
   misses, param child :id misses with only [A]. The 404 must carry [A, B].
   """
-
   fun name(): String => "router/deepest miss preserves richer interceptors"
 
   fun apply(h: TestHelper) =>
@@ -1541,13 +1521,11 @@ class \nodoc\ iso _TestDeepestMissPreservesRicherInterceptors is UnitTest
 
 class \nodoc\ iso _TestSharedParamNameConsistent is UnitTest
   """
-
   Multiple methods at the same param position with the same name works.
 
   GET /users/:id and POST /users/:id share a param child — the name must
   match. Mismatched names (e.g., :userId vs :id) would panic at startup.
   """
-
   fun name(): String => "router/shared param name consistent"
 
   fun apply(h: TestHelper) =>
@@ -1580,11 +1558,9 @@ class \nodoc\ iso _TestSharedParamNameConsistent is UnitTest
 
 class \nodoc\ iso _TestDoubleSlashNormalization is UnitTest
   """
-
   Double slashes are normalized: `/users//42/details` matches
   `/users/:id/details` with `id` = `"42"`.
   """
-
   fun name(): String => "router/double slash normalization"
 
   fun apply(h: TestHelper) =>
@@ -1628,14 +1604,12 @@ class \nodoc\ iso _TestDoubleSlashNormalization is UnitTest
 
 class \nodoc\ iso _TestWildcardDoubleSlashNormalization is UnitTest
   """
-
   Wildcard captures normalize double slashes in the captured value.
 
   A request for `/files/a//b/c` produces a wildcard value of `"a/b/c"`,
   not `"a//b/c"`, because `_SplitSegments` skips empty segments before
   the wildcard remainder is reconstructed.
   """
-
   fun name(): String => "router/wildcard double slash normalization"
 
   fun apply(h: TestHelper) =>
@@ -1820,11 +1794,9 @@ class \nodoc\ iso _TestWildcardHeadFallback is UnitTest
 // --- _SplitSegments / _JoinRemainingSegments tests ---
 class \nodoc\ iso _TestSplitSegmentsEdgeCases is UnitTest
   """
-
   `_SplitSegments` edge cases: root, empty, single segment, double slashes,
   triple slashes, param/wildcard markers, and registration-path normalization.
   """
-
   fun name(): String => "router/split segments edge cases"
 
   fun apply(h: TestHelper) =>
@@ -1894,11 +1866,9 @@ class \nodoc\ iso _TestSplitSegmentsEdgeCases is UnitTest
 
 class \nodoc\ iso _PropertySplitJoinRoundTrip is Property1[String]
   """
-
   Splitting a static path into segments and joining them all back produces
   the original path without the leading slash.
   """
-
   fun name(): String => "router/property/split join round-trip"
 
   fun gen(): Generator[String] => _GenStaticPath()
@@ -1912,11 +1882,9 @@ class \nodoc\ iso _PropertySplitJoinRoundTrip is Property1[String]
 
 class \nodoc\ iso _TestJoinRemainingSegments is UnitTest
   """
-
   `_JoinRemainingSegments` edge cases: past-end index, single segment,
   multiple segments, and mid-array start.
   """
-
   fun name(): String => "router/join remaining segments"
 
   fun apply(h: TestHelper) =>
@@ -1961,13 +1929,11 @@ class \nodoc\ iso _TestJoinRemainingSegments is UnitTest
 
 class \nodoc\ iso _TestRoutesBeforeInterceptors is UnitTest
   """
-
   Routes registered before interceptors still get the interceptors.
 
   `add_interceptors` may be called after `add` — the tree traversal in
   `_ensure_path` must work on a tree that already has route nodes.
   """
-
   fun name(): String => "router/routes before interceptors"
 
   fun apply(h: TestHelper) =>
@@ -2115,14 +2081,12 @@ class \nodoc\ iso _TestWildcardNameConflictReturnsError is UnitTest
 
 class \nodoc\ iso _TestSharedWildcardNameConsistent is UnitTest
   """
-
   Multiple methods at the same wildcard position with the same name works.
 
   GET /files/*path and POST /files/*path share a wildcard node — the name
   must match. Verifies no error is produced and both methods route correctly
   with correct wildcard param extraction.
   """
-
   fun name(): String => "router/shared wildcard name consistent"
 
   fun apply(h: TestHelper) =>

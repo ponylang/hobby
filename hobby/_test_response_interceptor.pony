@@ -542,11 +542,9 @@ actor \nodoc\ _TestStreamingNoOpClient is
   (lori.TCPConnectionActor &
     lori.ClientLifecycleEventReceiver)
   """
-
   TCP client for streaming no-op test: expects chunk data
   present AND a forbidden header absent.
   """
-
   var _tcp_connection: lori.TCPConnection =
     lori.TCPConnection.none()
   let _h: TestHelper

@@ -32,11 +32,9 @@ class \nodoc\ iso _TestHTTPDateEpochZero is UnitTest
 
 class \nodoc\ iso _TestHTTPDateSunday is UnitTest
   """
-
   Known Sunday date guards against day_of_week indexing bugs.
   Jan 4, 1970 (epoch 259200) is a Sunday.
   """
-
   fun name(): String => "http-date/sunday"
 
   fun apply(h: TestHelper) =>

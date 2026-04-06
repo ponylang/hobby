@@ -16,7 +16,6 @@ actor Main is hobby.ServerNotify
     curl http://localhost:8080/
     curl http://localhost:8080/greet/World
   """
-
   let _env: Env
 
   new create(env: Env) =>

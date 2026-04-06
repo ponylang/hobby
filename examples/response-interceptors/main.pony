@@ -6,7 +6,6 @@ use lori = "lori"
 
 actor Main is hobby.ServerNotify
   """
-
   Response interceptors example.
 
   Demonstrates three response interceptor patterns:
@@ -29,7 +28,6 @@ actor Main is hobby.ServerNotify
     curl -v http://localhost:8080/api/42 -H "Authorization: Bearer secret"
     curl -v http://localhost:8080/nonexistent
   """
-
   let _env: Env
 
   new create(env: Env) =>
@@ -90,13 +88,11 @@ actor Main is hobby.ServerNotify
 // --- Response interceptors ---
 class val CorsResponseInterceptor is hobby.ResponseInterceptor
   """
-
   Adds CORS headers to every response.
 
   Captures the allowed origin at construction time. The interceptor is `val`
   and shareable across connections.
   """
-
   let _origin: String
 
   new val create(origin: String) => _origin = origin
@@ -112,10 +108,8 @@ class val CorsResponseInterceptor is hobby.ResponseInterceptor
 
 primitive SecurityHeadersInterceptor is hobby.ResponseInterceptor
   """
-
   Adds common security headers to every response.
   """
-
   fun apply(ctx: hobby.ResponseContext ref) =>
     ctx.set_header("x-content-type-options", "nosniff")
     ctx.set_header("x-frame-options", "DENY")
@@ -125,14 +119,12 @@ primitive SecurityHeadersInterceptor is hobby.ResponseInterceptor
 
 class val LogResponseInterceptor is hobby.ResponseInterceptor
   """
-
   Logs the request method, path, and response status after handling.
 
   A read-only interceptor — it doesn't modify the response. For streaming
   responses, the status is still available for logging even though header
   modifications would be no-ops.
   """
-
   let _out: OutStream
 
   new val create(out: OutStream) => _out = out

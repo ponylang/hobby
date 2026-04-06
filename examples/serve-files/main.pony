@@ -7,7 +7,6 @@ use lori = "lori"
 
 actor Main is hobby.ServerNotify
   """
-
   Static file serving example.
 
   Starts an HTTP server on 0.0.0.0:8080 that serves files from a directory
@@ -25,7 +24,6 @@ actor Main is hobby.ServerNotify
     curl http://localhost:8080/static/style.css
     curl http://localhost:8080/static/docs/
   """
-
   let _env: Env
 
   new create(env: Env) =>

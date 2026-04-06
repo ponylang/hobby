@@ -1,5 +1,4 @@
 """
-
 Custom content types example.
 """
 

@@ -2,14 +2,12 @@ use "collections"
 
 class val _RouteMatch
   """
-
   Result of a successful route lookup.
 
   Contains the handler factory, optional response interceptor and request
   interceptor chains, and extracted route parameters. Produced by
   `_Router.lookup()` when a request path matches a registered route.
   """
-
   let factory: HandlerFactory
   let response_interceptors: (Array[ResponseInterceptor val] val | None)
   let interceptors: (Array[RequestInterceptor val] val | None)
@@ -27,7 +25,6 @@ class val _RouteMatch
 
 class val _RouteMiss
   """
-
   Result of a failed route lookup.
 
   Carries accumulated request and response interceptors from the deepest
@@ -35,7 +32,6 @@ class val _RouteMiss
   group prefixes to run on 404 responses — e.g., an auth interceptor on
   `/api` can reject unauthenticated requests to `/api/nonexistent`.
   """
-
   let response_interceptors: (Array[ResponseInterceptor val] val | None)
   let interceptors: (Array[RequestInterceptor val] val | None)
 
@@ -66,7 +62,6 @@ class val _RouteMiss
 
 class val _MethodNotAllowed
   """
-
   Result of a lookup where the path exists but no handler matches the
   requested method.
 
@@ -75,7 +70,6 @@ class val _MethodNotAllowed
   still run on 405 responses — an auth interceptor should reject before
   revealing which methods are allowed.
   """
-
   let allowed_methods: Array[String] val
   let response_interceptors: (Array[ResponseInterceptor val] val | None)
   let interceptors: (Array[RequestInterceptor val] val | None)

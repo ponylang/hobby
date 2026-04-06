@@ -1,5 +1,4 @@
 """
-
 # Hobby
 
 A simple HTTP web framework for Pony, powered by

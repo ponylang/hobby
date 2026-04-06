@@ -42,7 +42,6 @@ actor Server is lori.TCPListenerActor
 
   Call `dispose()` to shut down. In-flight connections drain naturally.
   """
-
   var _tcp_listener: lori.TCPListener =
     lori.TCPListener.none()
   let _server_auth: lori.TCPServerAuth

@@ -8,7 +8,6 @@ interface tag ServerNotify
 
   Modeled after the notify pattern in ponylang/postgres.
   """
-
   be listening(server: Server, host: String, service: String) =>
     """
     The server is bound and accepting connections.

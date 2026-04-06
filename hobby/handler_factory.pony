@@ -1,7 +1,6 @@
 type HandlerFactory is
   {(HandlerContext iso): (HandlerReceiver tag | None)} val
   """
-
   A handler factory creates request handlers for incoming HTTP requests.
 
   `HandlerFactory` is a `val` lambda that receives an iso handler context and

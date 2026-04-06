@@ -4,7 +4,6 @@ use stallion = "stallion"
 
 class val ServeFiles
   """
-
   Serve files from a directory on disk.
 
   Structurally matches `HandlerFactory` — pass directly to route methods.
@@ -85,7 +84,6 @@ class val ServeFiles
   correct `text/html` content type and caching headers. If no `index.html`
   exists, the directory request returns 404.
   """
-
   let _root: FilePath
   let _chunk_threshold: USize
   let _cache_control: (String | None)
@@ -98,7 +96,6 @@ class val ServeFiles
     content_types: ContentTypes = ContentTypes)
   =>
     """
-
     Create a handler factory that serves files under `root`.
 
     `root` must have `FileLookup`, `FileStat`, and `FileRead` capabilities.
@@ -116,7 +113,6 @@ class val ServeFiles
     If the route uses a wildcard name other than `*filepath`, param lookup
     will fail and the handler will return 500. Always use `*filepath`.
     """
-
     _root = root
     _chunk_threshold = chunk_threshold * 1024
     _cache_control = cache_control

@@ -2,10 +2,8 @@ use "collections"
 
 primitive _ContentTypeDefaults
   """
-
   Build the default content-type map with 17 common file extensions.
   """
-
   fun apply(): Map[String, String] ref^ =>
     let m = Map[String, String](24)
     m("html") = "text/html"
@@ -29,7 +27,6 @@ primitive _ContentTypeDefaults
 
 class val ContentTypes
   """
-
   Map file extensions to MIME content types.
 
   Ships with 17 common defaults (html, css, js, json, xml, txt, png, jpg,
@@ -47,34 +44,27 @@ class val ContentTypes
   Lookups are case-insensitive — both the default keys and user-provided keys
   are lowercased. Unknown extensions return `application/octet-stream`.
   """
-
   let _map: Map[String, String] val
 
   new val create() =>
     """
-
     Create a `ContentTypes` with the 17 standard defaults.
     """
-
     _map = recover val _ContentTypeDefaults() end
 
   new val _from_map(map: Map[String, String] val) =>
     """
-
     Create a `ContentTypes` from a pre-built map.
     """
-
     _map = map
 
   fun val add(ext: String, mime: String): ContentTypes val =>
     """
-
     Return a new `ContentTypes` with the given mapping added. If `ext`
     already exists, the new MIME type replaces the previous one. The
     extension is lowercased before insertion so lookups are always
     case-insensitive.
     """
-
     let new_map =
       recover val
         let m = Map[String, String](_map.size() + 1)
@@ -88,11 +78,9 @@ class val ContentTypes
 
   fun apply(ext: String): String =>
     """
-
     Look up the MIME type for `ext`. Returns `application/octet-stream` when
     the extension is not in the map.
     """
-
     try
       _map(ext.lower())?
     else

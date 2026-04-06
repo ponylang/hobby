@@ -1,6 +1,5 @@
 primitive StreamingStarted
   """
-
   Returned by `RequestHandler.start_streaming()` on success.
 
   Indicates that chunked streaming has begun. The handler should proceed to

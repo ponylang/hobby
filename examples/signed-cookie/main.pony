@@ -6,7 +6,6 @@ use lori = "lori"
 
 actor Main is hobby.ServerNotify
   """
-
   Signed cookie example.
 
   Demonstrates signing and verifying cookie values using HMAC-SHA256 to
@@ -24,7 +23,6 @@ actor Main is hobby.ServerNotify
     curl -c cookies.txt -b cookies.txt http://localhost:8080/clear
     curl -c cookies.txt -b cookies.txt http://localhost:8080/
   """
-
   let _env: Env
 
   new create(env: Env) =>
