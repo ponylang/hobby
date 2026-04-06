@@ -9,7 +9,6 @@ actor _ServeFilesHandler is (HandlerReceiver & _FileTarget)
   Implements `HandlerReceiver` for lifecycle notifications and `_FileTarget`
   for receiving file data from the streamer.
   """
-
   embed _handler: RequestHandler
   var _streamer: (_FileStreamer | None) = None
 

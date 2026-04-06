@@ -6,7 +6,6 @@ use lori = "lori"
 
 actor Main is hobby.ServerNotify
   """
-
   Async handler example.
 
   Demonstrates actor-based handlers that do async work before responding.
@@ -22,7 +21,6 @@ actor Main is hobby.ServerNotify
     curl http://localhost:8080/
     curl http://localhost:8080/slow
   """
-
   let _env: Env
 
   new create(env: Env) =>

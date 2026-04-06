@@ -1,5 +1,4 @@
 """
-
 Hello world example.
 """
 

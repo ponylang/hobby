@@ -1,5 +1,4 @@
 """
-
 Async handler example.
 """
 

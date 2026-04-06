@@ -3,7 +3,6 @@ use stallion = "stallion"
 
 class iso HandlerContext
   """
-
   Request context consumed by a handler factory to create a handler.
 
   Carries the HTTP request, route parameters, and request body. Created by
@@ -14,7 +13,6 @@ class iso HandlerContext
   package-private and used by `RequestHandler` to communicate with the
   connection.
   """
-
   let request: stallion.Request val
   let params: Map[String, String] val
   let body: Array[U8] val

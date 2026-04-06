@@ -18,7 +18,6 @@ actor \nodoc\ _MockConnection is _ConnectionProtocol
   """
   Mock connection that accepts all protocol messages as no-ops.
   """
-
   be _handler_respond(
     token: U64,
     status: stallion.Status,

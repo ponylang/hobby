@@ -6,7 +6,6 @@ trait _ServerState
   events — the state machine is the single place to understand
   what happens in each state.
   """
-
   fun ref dispose(server: Server ref): _ServerState
 
   fun ref on_accept(
@@ -34,7 +33,6 @@ class _ServerStarting is _ServerState
   """
   Server constructed, waiting for bind result from lori.
   """
-
   fun ref dispose(server: Server ref): _ServerState =>
     server._do_dispose()
     _ServerDisposed
@@ -79,7 +77,6 @@ class _ServerListening is _ServerState
   """
   Server bound and accepting connections.
   """
-
   fun ref dispose(server: Server ref): _ServerState =>
     server._do_dispose()
     _ServerDisposed
@@ -122,7 +119,6 @@ class _ServerDisposed is _ServerState
   """
   Server shut down. All events are no-ops.
   """
-
   fun ref dispose(server: Server ref): _ServerState =>
     this
 

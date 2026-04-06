@@ -2,7 +2,6 @@ use stallion = "stallion"
 
 class ref ResponseContext
   """
-
   Context for response interceptors.
 
   Provides read access to the response status, body, streaming state, and the
@@ -14,7 +13,6 @@ class ref ResponseContext
   silently ignored — headers and status are already on the wire, and body
   chunks have already been sent.
   """
-
   let _buf: _BufferedResponse ref
   let _request: stallion.Request val
 
@@ -48,26 +46,22 @@ class ref ResponseContext
 
   fun ref set_status(status': stallion.Status) =>
     """
-
     Replace the response status.
 
     No-op for streaming responses (status already on wire).
     """
-
     if not _buf.is_streaming then
       _buf.status = status'
     end
 
   fun ref set_header(name: String, value: String) =>
     """
-
     Set or replace a response header.
 
     Removes any existing entries with the same name (case-insensitive per
     RFC 7230 section 3.2) and adds a new one with the name lowercased.
     No-op for streaming responses (headers already on wire).
     """
-
     if not _buf.is_streaming then
       let lower_name: String val = name.lower()
       var i: USize = 0
@@ -87,26 +81,22 @@ class ref ResponseContext
 
   fun ref add_header(name: String, value: String) =>
     """
-
     Add a response header without removing existing entries.
 
     The name is lowercased for consistency. Use for multi-value headers like
     `Set-Cookie`. No-op for streaming responses.
     """
-
     if not _buf.is_streaming then
       _buf.headers.push((name.lower(), value))
     end
 
   fun ref set_body(body': ByteSeq) =>
     """
-
     Replace the response body.
 
     Content-Length is recalculated automatically at serialization time.
     No-op for streaming responses (chunks already sent).
     """
-
     if not _buf.is_streaming then
       _buf.body = body'
     end

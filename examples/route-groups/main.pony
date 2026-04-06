@@ -6,7 +6,6 @@ use lori = "lori"
 
 actor Main is hobby.ServerNotify
   """
-
   Route groups example.
 
   Demonstrates route grouping with shared prefixes and interceptors:
@@ -30,7 +29,6 @@ actor Main is hobby.ServerNotify
     curl -H "Authorization: Bearer secret" \
       http://localhost:8080/api/admin/dashboard
   """
-
   let _env: Env
 
   new create(env: Env) =>

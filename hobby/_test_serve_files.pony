@@ -38,11 +38,9 @@ primitive \nodoc\ _TestServeFilesList
 // --- Test setup ---
 primitive \nodoc\ _ServeFilesTestSetup
   """
-
   Create a temporary directory with test files for ServeFiles integration
   tests. Idempotent — safe to call multiple times.
   """
-
   fun apply(env: Env): FilePath ? =>
     let file_auth = FileAuth(env.root)
     let root = FilePath(file_auth, "/tmp/hobby-test-serve")
@@ -555,11 +553,9 @@ class \nodoc\ iso _TestServeFilesCacheControlDisabled is UnitTest
 
 primitive \nodoc\ _ServeFilesCacheControlDisabledHelper
   """
-
   Run a test that checks for a required string AND verifies a forbidden
   string is absent.
   """
-
   fun run_test(
     h: TestHelper,
     router: _Router val,
@@ -596,11 +592,9 @@ actor \nodoc\ _TestNoCacheControlClient is
   (lori.TCPConnectionActor &
     lori.ClientLifecycleEventReceiver)
   """
-
   TCP client that checks a required string is present and a forbidden
   string is absent.
   """
-
   var _tcp_connection: lori.TCPConnection =
     lori.TCPConnection.none()
   let _h: TestHelper
@@ -686,11 +680,9 @@ class \nodoc\ iso _TestServeFilesLargeFileCacheHeaders is UnitTest
 
 class \nodoc\ iso _TestServeFilesLargeFileETag304 is UnitTest
   """
-
   Large file with matching If-None-Match returns 304 (conditional check
   happens before size branch).
   """
-
   fun name(): String => "integration/serve-files/large file ETag 304"
 
   fun label(): String => "integration"
@@ -717,11 +709,9 @@ class \nodoc\ iso _TestServeFilesLargeFileETag304 is UnitTest
 
 class \nodoc\ iso _TestServeFilesETagPrecedence is UnitTest
   """
-
   If-None-Match takes precedence over If-Modified-Since per RFC 7232 section 3.
   Matching ETag + non-matching If-Modified-Since still returns 304.
   """
-
   fun name(): String => "integration/serve-files/ETag precedence"
 
   fun label(): String => "integration"
@@ -939,11 +929,9 @@ class \nodoc\ iso _TestFileStreamerPauseResume is UnitTest
 
 actor \nodoc\ _PauseResumeTarget is _FileTarget
   """
-
   On first chunk, pauses the streamer. A short timer resumes it.
   Verifies that _file_done arrives after the pause/resume cycle.
   """
-
   let _h: TestHelper
   var _streamer: (_FileStreamer | None) = None
   let _timers: Timers
@@ -1046,11 +1034,9 @@ class \nodoc\ iso _TestServeFilesHandlerBackpressure is UnitTest
 
 actor \nodoc\ _BackpressureMockConnection is _ConnectionProtocol
   """
-
   Mock connection that throttles on first chunk and unthrottles after a timer.
   Verifies that chunks continue to arrive after unthrottling.
   """
-
   let _h: TestHelper
   let _path: FilePath
   let _timers: Timers

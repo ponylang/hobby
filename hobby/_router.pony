@@ -3,7 +3,6 @@ use stallion = "stallion"
 
 class ref _RouterBuilder
   """
-
   Mutable builder for constructing a `_Router`.
 
   Accumulates route definitions and group interceptors into a single shared
@@ -11,7 +10,6 @@ class ref _RouterBuilder
   Configuration errors (e.g., conflicting param or wildcard names) are
   accumulated in `_errors` and available via `first_error()`.
   """
-
   var _root: _BuildNode ref
   embed _errors: Array[String]
 
@@ -29,13 +27,11 @@ class ref _RouterBuilder
       (Array[RequestInterceptor val] val | None) = None)
   =>
     """
-
     Register a route handler for a specific method and path.
 
     Per-route interceptors are stored in the method entry at the leaf node.
     Path-level interceptors are registered separately via `add_interceptors()`.
     """
-
     let normalized = _NormalizePath(path)
     let method_key: String val = method.string()
     let segments = _SplitSegments(normalized)
@@ -53,7 +49,6 @@ class ref _RouterBuilder
     response_interceptors: (Array[ResponseInterceptor val] val | None))
   =>
     """
-
     Register path-level interceptors on a tree node.
 
     Used for app-level interceptors (on the root node, path `""`) and
@@ -61,7 +56,6 @@ class ref _RouterBuilder
     happens earlier in `Application.build()` via `_ValidateGroups`.
     `_set_interceptors` concatenates as defense-in-depth.
     """
-
     if (interceptors is None) and (response_interceptors is None) then
       return
     end
@@ -82,11 +76,9 @@ class ref _RouterBuilder
 
   fun box first_error(): (ConfigError | None) =>
     """
-
     Return the first configuration error detected during route registration,
     or `None` if no errors were found.
     """
-
     if _errors.size() > 0 then
       try
         ConfigError(_errors(0)?)
@@ -100,14 +92,12 @@ class ref _RouterBuilder
 
 class val _Router
   """
-
   Immutable segment trie router with a single shared path tree.
 
   Handlers are keyed by HTTP method at leaf nodes. Interceptors live on
   shared path nodes and are method-independent. `lookup()` finds the matching
   handler, accumulated interceptors, and extracted parameters.
   """
-
   let _root: _TreeNode val
 
   new val _create(root: _TreeNode val) =>
@@ -117,7 +107,6 @@ class val _Router
     (_RouteMatch | _RouteMiss | _MethodNotAllowed)
   =>
     """
-
     Look up a route for the given method and path.
 
     Returns `_RouteMatch` on success, `_RouteMiss` when the path doesn't
@@ -125,7 +114,6 @@ class val _Router
     matches the method. For HEAD requests, automatically falls back to GET
     if no explicit HEAD handler exists.
     """
-
     let normalized = _NormalizePath(path)
     let method_key: String val = method.string()
     let is_head = method is stallion.HEAD
@@ -149,7 +137,6 @@ primitive _NormalizePath
 // --- Mutable build-time node ---
 class ref _BuildNode
   """
-
   Mutable segment trie node for route construction.
 
   Used by `_RouterBuilder` during route registration, then frozen into a
@@ -159,7 +146,6 @@ class ref _BuildNode
   - Method-keyed handler entries (from route registration)
   - Static children, param child, and wildcard entries for tree structure
   """
-
   var _interceptors: (Array[RequestInterceptor val] val | None) = None
   var _response_interceptors:
     (Array[ResponseInterceptor val] val | None) = None
@@ -179,7 +165,6 @@ class ref _BuildNode
       (Array[ResponseInterceptor val] val | None))
   =>
     """
-
     Set path-level interceptors on this node.
 
     Overlap detection happens earlier in `Application.build()` via
@@ -187,7 +172,6 @@ class ref _BuildNode
     available for a clear error message. As defense-in-depth,
     concatenates rather than overwrites if interceptors already exist.
     """
-
     _interceptors = _ConcatInterceptors(_interceptors, interceptors)
     _response_interceptors =
       _ConcatResponseInterceptors(
@@ -312,10 +296,8 @@ class ref _BuildNode
       (Array[ResponseInterceptor val] val | None))
   =>
     """
-
     Traverse or create nodes to reach the given path and set interceptors.
     """
-
     if idx >= segments.size() then
       _set_interceptors(interceptors, response_interceptors)
       return
@@ -343,14 +325,12 @@ class ref _BuildNode
     : _TreeNode val
   =>
     """
-
     Create an immutable deep copy of this node tree.
 
     Pre-computes accumulated interceptor arrays from root to each node.
     Per-route interceptors in method entries are concatenated with the
     accumulated path interceptors at freeze time, so lookup is zero-allocation.
     """
-
     // Accumulate this node's interceptors with ancestors'
     let new_accumulated =
       _ConcatInterceptors(accumulated_interceptors, _interceptors)
@@ -424,13 +404,11 @@ class ref _BuildNode
 // --- Build-time method entry (mutable) ---
 class ref _BuildMethodEntry
   """
-
   Mutable method entry during tree construction.
 
   Holds the handler factory and per-route interceptors before freeze-time
   concatenation with accumulated path interceptors.
   """
-
   let factory: HandlerFactory
   let interceptors: (Array[RequestInterceptor val] val | None)
   let response_interceptors:
@@ -450,7 +428,6 @@ class ref _BuildMethodEntry
 // --- Immutable lookup node ---
 class val _TreeNode
   """
-
   Immutable segment trie node for route lookup.
 
   Produced by freezing a `_BuildNode`. Each node stores pre-computed
@@ -462,7 +439,6 @@ class val _TreeNode
   concatenated at freeze time). Lookup is zero-allocation for both hits
   and misses.
   """
-
   let _accumulated_interceptors:
     (Array[RequestInterceptor val] val | None)
   let _accumulated_response_interceptors:
@@ -537,7 +513,6 @@ class val _TreeNode
       _RouteMiss | _MethodNotAllowed)
   =>
     """
-
     Recursive lookup returning method entry and accumulated params on hit,
     `_RouteMiss` when the path doesn't exist, or `_MethodNotAllowed` when
     the path exists but no handler matches the requested method.
@@ -552,7 +527,6 @@ class val _TreeNode
     reports methods from a single entries map; this function merges across
     calls.
     """
-
     if idx >= segments.size() then
       match _resolve_or_405(
         method_key, is_head, _method_entries)
@@ -727,7 +701,6 @@ class val _TreeNode
     : (_MethodEntry val | _MethodNotAllowed | None)
   =>
     """
-
     Try to resolve a method entry from the given entries map.
 
     Returns the entry on match, `_MethodNotAllowed` if the map has entries
@@ -738,7 +711,6 @@ class val _TreeNode
     multiple `_resolve_or_405` calls when multiple priority branches each
     return 405.
     """
-
     try
       return entries(method_key)?
     end

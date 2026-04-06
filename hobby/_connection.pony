@@ -15,7 +15,6 @@ type _PendingRequest is
 
 actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
   """
-
   Internal connection actor that handles a single HTTP connection.
 
   Implements Stallion's `HTTPServerActor` to receive HTTP events and
@@ -23,7 +22,6 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
   runs through: request interceptors (synchronous) → handler factory →
   handler actor (async) → response interceptors (synchronous) → wire.
   """
-
   var _http: stallion.HTTPServer = stallion.HTTPServer.none()
   let _router: _Router val
   let _timers: Timers tag
@@ -374,11 +372,9 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
   // --- Helpers ---
   fun ref _run_after_and_send(buf: _BufferedResponse ref) =>
     """
-
     Run response interceptors on the buffered response, send to wire,
     clean up.
     """
-
     match _current_request
     | let req: stallion.Request val =>
       let ctx = ResponseContext._create(buf, req)

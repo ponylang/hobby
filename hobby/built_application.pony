@@ -11,7 +11,6 @@ class val BuiltApplication
   prove that route configuration is valid. The routing tree is accessed
   internally by `Server`.
   """
-
   let _router: _Router val
 
   new val _create(router: _Router val) =>

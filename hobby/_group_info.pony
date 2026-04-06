@@ -1,6 +1,5 @@
 class val _GroupInfo
   """
-
   Group metadata preserved for tree building.
 
   Carries the fully-joined prefix and interceptors for a route group. Created
@@ -8,7 +7,6 @@ class val _GroupInfo
   `Application.build()` to tag intermediate tree nodes with group-level
   interceptors via `_RouterBuilder.add_interceptors()`.
   """
-
   let prefix: String
   let interceptors: (Array[RequestInterceptor val] val | None)
   let response_interceptors: (Array[ResponseInterceptor val] val | None)

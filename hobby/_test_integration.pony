@@ -522,11 +522,9 @@ class \nodoc\ iso _TestStreamingResponse is UnitTest
 
 class \nodoc\ iso _TestPipelinedStreaming is UnitTest
   """
-
   Pipelined streaming request is buffered and processed after first stream
   finishes.
   """
-
   fun name(): String => "integration/pipelined streaming"
 
   fun label(): String => "integration"
@@ -550,11 +548,9 @@ actor \nodoc\ _TestHeadClient is
   (lori.TCPConnectionActor &
     lori.ClientLifecycleEventReceiver)
   """
-
   TCP client for HEAD tests: checks that an expected header is present
   AND a forbidden body string is absent.
   """
-
   var _tcp_connection: lori.TCPConnection =
     lori.TCPConnection.none()
   let _h: TestHelper
@@ -762,11 +758,9 @@ class \nodoc\ iso _TestHeadPostOnlyRoute is UnitTest
 
 class \nodoc\ iso _TestHeadStreamingPipelinedGet is UnitTest
   """
-
   HEAD to streaming handler followed by pipelined GET: HEAD completes without
   setting streaming mode, so the GET is NOT buffered and processes immediately.
   """
-
   fun name(): String => "integration/HEAD streaming + pipelined GET"
 
   fun label(): String => "integration"
@@ -808,7 +802,6 @@ primitive \nodoc\ _TimeoutTestHelpers
   Helpers for timeout integration tests. Creates a Server with a
   500ms handler timeout.
   """
-
   fun run_timeout_test(
     h: TestHelper,
     router: _Router val,

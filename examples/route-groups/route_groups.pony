@@ -1,5 +1,4 @@
 """
-
 Route groups example.
 """
 

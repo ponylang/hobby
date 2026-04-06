@@ -57,7 +57,6 @@ primitive DefaultHandlerTimeout
   """
   Returns the default handler timeout of 30 seconds (30,000 ms).
   """
-
   fun apply(): (HandlerTimeout | None) =>
     match MakeHandlerTimeout(30_000)
     | let t: HandlerTimeout => t

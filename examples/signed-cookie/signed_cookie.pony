@@ -1,5 +1,4 @@
 """
-
 Signed cookie example.
 """
 

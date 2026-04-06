@@ -2,7 +2,6 @@ use "time"
 
 primitive _HTTPDate
   """
-
   Format epoch seconds as an RFC 7231 IMF-fixdate HTTP-date.
 
   The output is always 29 characters in the form:
@@ -13,7 +12,6 @@ primitive _HTTPDate
   `ponyc/src/libponyrt/lang/time.c`), so `day_of_week` is 0=Sunday,
   1=Monday, ..., 6=Saturday.
   """
-
   fun apply(seconds: I64): String =>
     let date = PosixDate(seconds)
 

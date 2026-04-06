@@ -2,7 +2,6 @@ use stallion = "stallion"
 
 class ref _BufferedResponse
   """
-
   Mutable response buffer for response interceptor modification.
 
   Created by `_Connection` when a response is produced (from handler, request
@@ -15,7 +14,6 @@ class ref _BufferedResponse
   Content-Length header is already present (from explicit user headers or an
   interceptor), `_build()` does not override it.
   """
-
   var status: stallion.Status
   embed headers: Array[(String, String)]
   var body: (ByteSeq | None)
@@ -87,7 +85,6 @@ class ref _BufferedResponse
 
   fun box _build(): Array[U8] val =>
     """
-
     Serialize this buffered response into HTTP bytes for the wire.
 
     For non-streaming responses, auto-adds Content-Length from the final body
@@ -95,7 +92,6 @@ class ref _BufferedResponse
     response interceptors, so interceptors that call `set_body()` get correct
     Content-Length automatically.
     """
-
     let builder = stallion.ResponseBuilder(status)
     for (name, value) in headers.values() do
       builder.add_header(name, value)

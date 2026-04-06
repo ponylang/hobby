@@ -2,7 +2,6 @@ use stallion = "stallion"
 
 class iso RouteGroup
   """
-
   A group of routes sharing a common path prefix and optional interceptors.
 
   Route groups let you factor out repeated prefixes and interceptors instead of
@@ -25,7 +24,6 @@ class iso RouteGroup
   `RouteGroup.group()` when done — this consumes the group and flattens its
   routes.
   """
-
   let _prefix: String
   let _interceptors: (Array[RequestInterceptor val] val | None)
   let _response_interceptors: (Array[ResponseInterceptor val] val | None)
@@ -40,7 +38,6 @@ class iso RouteGroup
       (Array[ResponseInterceptor val] val | None) = None)
   =>
     """
-
     Create a route group with a path prefix and optional interceptors.
 
     The prefix must be a static path segment — no `:param` or `*wildcard`
@@ -50,7 +47,6 @@ class iso RouteGroup
     interceptors. Response interceptors, if provided, run before each
     route's own response interceptors.
     """
-
     _prefix = prefix
     _interceptors = interceptors
     _response_interceptors = response_interceptors
@@ -212,14 +208,12 @@ class iso RouteGroup
 
   fun ref group(inner: RouteGroup iso) =>
     """
-
     Consume a nested route group, flattening its routes into this group.
 
     The inner group's prefix is appended to this group's prefix, and the inner
     group's interceptors are preserved separately for tree building. The inner
     group is consumed — no further registration on it is possible.
     """
-
     (consume inner)
       .> _collect_group_infos(_group_infos, _prefix)
       .> _flatten_routes_into(_routes, _prefix)
@@ -229,14 +223,12 @@ class iso RouteGroup
     outer_prefix: String = "")
   =>
     """
-
     Flatten routes into target, joining paths with outer prefix.
 
     Per-route interceptors are passed through unchanged — no concatenation
     with group interceptors. Group interceptors are handled separately via
     `_collect_group_infos()` and registered on tree nodes.
     """
-
     let full_prefix = _JoinPath(outer_prefix, _prefix)
     for r in _routes.values() do
       let joined_path = _JoinPath(full_prefix, r.path)
@@ -254,13 +246,11 @@ class iso RouteGroup
     outer_prefix: String = "")
   =>
     """
-
     Collect this group's info and any nested group infos into target.
 
     Prefixes are joined through all nesting levels. Only emits a `_GroupInfo`
     if this group has interceptors.
     """
-
     let full_prefix = _JoinPath(outer_prefix, _prefix)
     if (_interceptors isnt None) or (_response_interceptors isnt None) then
       target.push(
