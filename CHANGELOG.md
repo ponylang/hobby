@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Fixed
 
+- Fix connection stall after large response with backpressure ([PR #85](https://github.com/ponylang/hobby/pull/85))
 
 ### Added
 
