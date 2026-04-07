@@ -2,17 +2,11 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a CHANGELOG](http://keepachangelog.com/).
 
-## [unreleased] - unreleased
+## [0.6.1] - 2026-04-07
 
 ### Fixed
 
 - Fix connection stall after large response with backpressure ([PR #85](https://github.com/ponylang/hobby/pull/85))
-
-### Added
-
-
-### Changed
-
 
 ## [0.6.0] - 2026-04-04
 
