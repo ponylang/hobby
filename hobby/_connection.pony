@@ -128,6 +128,12 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
       _server._connection_failed("SSL handshake")
     end
 
+  fun ref on_timer_failure() =>
+    // Hobby does not call `HTTPServer.set_timer()`, so Stallion will never
+    // fire this callback. If this ever fires, a future change has started
+    // using `set_timer()` without wiring up real handling here.
+    _Unreachable()
+
   // --- Request processing ---
   fun ref _process_request(
     request': stallion.Request val,
