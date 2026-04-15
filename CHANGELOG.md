@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Fixed
 
+- Recover from idle timer subscription failures ([PR #93](https://github.com/ponylang/hobby/pull/93))
 
 ### Added
 
