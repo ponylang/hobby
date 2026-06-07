@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Fixed
 
+- Reject malformed and smuggling-prone HTTP requests ([PR #104](https://github.com/ponylang/hobby/pull/104))
+- Accept valid quoted parameters in Transfer-Encoding and Accept headers ([PR #104](https://github.com/ponylang/hobby/pull/104))
+- Honor a Connection: close request in all its valid forms ([PR #104](https://github.com/ponylang/hobby/pull/104))
+- Combine repeated lines of a comma-separated header when reading it ([PR #104](https://github.com/ponylang/hobby/pull/104))
 
 ### Added
 
