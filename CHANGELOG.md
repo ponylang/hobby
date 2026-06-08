@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a CHANGELOG](http://keepachangelog.com/).
 
-## [unreleased] - unreleased
+## [0.8.1] - 2026-06-08
 
 ### Fixed
 
@@ -10,12 +10,6 @@ All notable changes to this project will be documented in this file. This projec
 - Accept valid quoted parameters in Transfer-Encoding and Accept headers ([PR #104](https://github.com/ponylang/hobby/pull/104))
 - Honor a Connection: close request in all its valid forms ([PR #104](https://github.com/ponylang/hobby/pull/104))
 - Combine repeated lines of a comma-separated header when reading it ([PR #104](https://github.com/ponylang/hobby/pull/104))
-
-### Added
-
-
-### Changed
-
 
 ## [0.8.0] - 2026-05-28
 
