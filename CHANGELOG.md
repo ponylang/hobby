@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Fixed
 
+- Fix truncated streaming responses to slow clients ([PR #105](https://github.com/ponylang/hobby/pull/105))
 
 ### Added
 
