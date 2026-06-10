@@ -2,17 +2,11 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a CHANGELOG](http://keepachangelog.com/).
 
-## [unreleased] - unreleased
+## [0.8.2] - 2026-06-10
 
 ### Fixed
 
 - Fix truncated streaming responses to slow clients ([PR #105](https://github.com/ponylang/hobby/pull/105))
-
-### Added
-
-
-### Changed
-
 
 ## [0.8.1] - 2026-06-08
 
