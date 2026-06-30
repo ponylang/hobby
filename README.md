@@ -10,7 +10,7 @@ hobby is beta quality software that will change frequently. Expect breaking chan
 
 * Requires ponyc 0.64.0 or later. On Windows, requires ponyc 0.66.0 or later.
 * Install [corral](https://github.com/ponylang/corral)
-* `corral add github.com/ponylang/hobby.git --version 0.8.3`
+* `corral add github.com/ponylang/hobby.git --version 0.9.0`
 * `corral fetch` to fetch your dependencies
 * `use "hobby"` to include this package
 * `corral run -- ponyc` to compile your application
