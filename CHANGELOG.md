@@ -2,20 +2,16 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a CHANGELOG](http://keepachangelog.com/).
 
-## [unreleased] - unreleased
+## [0.9.0] - 2026-06-30
 
 ### Fixed
 
 - Fix idle timeout never closing stalled connections ([PR #107](https://github.com/ponylang/hobby/pull/107))
 - Fix connections closed mid-transfer by the idle timeout ([PR #107](https://github.com/ponylang/hobby/pull/107))
 
-### Added
-
-
 ### Changed
 
 - Drop support for Windows 10 ([PR #107](https://github.com/ponylang/hobby/pull/107))
-
 
 ## [0.8.3] - 2026-06-22
 
