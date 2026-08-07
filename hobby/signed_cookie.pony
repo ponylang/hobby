@@ -9,11 +9,20 @@ primitive SignedCookie
   (not encrypted); the signature proves integrity.
   """
 
-  fun sign(key: CookieSigningKey, value: String val): String val =>
+  fun sign(key: CookieSigningKey, value: String val)
+    : (String val | SignedCookieError)
+  =>
     """
     Sign `value` and return the signed string `value.signature`.
+
+    Returns `CryptoFailure` if the HMAC operation fails.
     """
-    let hmac: Array[U8] val = crypto.HmacSha256(key._bytes(), value)
+    let hmac: Array[U8] val =
+      try
+        crypto.HmacSha256(key._bytes(), value)?
+      else
+        return CryptoFailure
+      end
     let sig: String val =
       Base64.encode_url[String iso](hmac where pad = true)
     recover val
@@ -53,7 +62,12 @@ primitive SignedCookie
         return MalformedSignedValue
       end
 
-    let expected: Array[U8] val = crypto.HmacSha256(key._bytes(), value)
+    let expected: Array[U8] val =
+      try
+        crypto.HmacSha256(key._bytes(), value)?
+      else
+        return CryptoFailure
+      end
 
     if crypto.ConstantTimeCompare(expected, decoded) then
       value

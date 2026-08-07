@@ -6,11 +6,22 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Fixed
 
+- Fix streaming responses stalling under several conditions ([PR #114](https://github.com/ponylang/hobby/pull/114))
+- Fix a hang when a handler closes the server from a request callback ([PR #114](https://github.com/ponylang/hobby/pull/114))
+- Fix a connection wedging under sustained write backpressure ([PR #114](https://github.com/ponylang/hobby/pull/114))
+- Fix HTTPS connections receiving more requests after throttling ([PR #114](https://github.com/ponylang/hobby/pull/114))
+- Fix a possible write hang under load ([PR #114](https://github.com/ponylang/hobby/pull/114))
+- Fix several SSL connection bugs ([PR #114](https://github.com/ponylang/hobby/pull/114))
+- Send TLS close_notify on graceful close ([PR #114](https://github.com/ponylang/hobby/pull/114))
 
 ### Added
 
 
 ### Changed
+
+- SignedCookie.sign() returns a result instead of a plain String ([PR #114](https://github.com/ponylang/hobby/pull/114))
+- Require ponyc 0.67.0 or later ([PR #114](https://github.com/ponylang/hobby/pull/114))
+- Move to ssl 4.0.0 ([PR #114](https://github.com/ponylang/hobby/pull/114))
 
 
 ## [0.9.0] - 2026-06-30

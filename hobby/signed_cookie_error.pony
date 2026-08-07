@@ -17,8 +17,18 @@ primitive InvalidSignature
   fun string(): String iso^ =>
     "invalid signature".clone()
 
-type SignedCookieError is (MalformedSignedValue | InvalidSignature)
+primitive CryptoFailure
   """
-  Errors that can occur when verifying a signed cookie value.
+  The underlying HMAC operation failed — an extremely rare condition
+  caused by a broken or misconfigured OpenSSL installation.
+  """
+
+  fun string(): String iso^ =>
+    "crypto failure".clone()
+
+type SignedCookieError is
+  (MalformedSignedValue | InvalidSignature | CryptoFailure)
+  """
+  Errors from signing or verifying a signed cookie value.
   """
 

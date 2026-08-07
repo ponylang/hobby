@@ -298,6 +298,19 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
       | stallion.AlreadyResponded =>
         // Shouldn't happen — token validated
         None
+      | stallion.ConnectionClosed =>
+        _cancel_timer()
+        match _handler
+        | let h: HandlerReceiver tag => h.dispose()
+        end
+        _handler = None
+        _current_request = None
+        _current_responder = None
+        _current_response_interceptors = None
+        _streaming_status = None
+        _is_head = false
+        _state = _Idle
+        _pending_requests.clear()
       end
     end
 

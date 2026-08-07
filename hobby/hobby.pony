@@ -309,7 +309,8 @@ resolves to a directory, `ServeFiles` automatically serves `index.html`.
 Users import up to five packages:
 
 - **`hobby`**: Application, BodyNotNeeded, BuildResult, BuiltApplication,
-  ConfigError, ContentTypes, CookieSigningKey, DefaultHandlerTimeout,
+  ConfigError, ContentTypes, CookieSigningKey, CryptoFailure,
+  DefaultHandlerTimeout,
   HandlerContext, HandlerFactory, HandlerReceiver, HandlerTimeout,
   HandlerTimeoutValidator, InterceptPass, InterceptRespond, InterceptResult,
   InvalidSignature, MakeHandlerTimeout, MalformedSignedValue,

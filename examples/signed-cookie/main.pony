@@ -54,7 +54,14 @@ actor Main is hobby.ServerNotify
           let new_count: String val =
             (count + 1).string()
           let signed =
-            hobby.SignedCookie.sign(key, new_count)
+            match \exhaustive\ hobby.SignedCookie.sign(key, new_count)
+            | let s: String => s
+            | let e: hobby.SignedCookieError =>
+              handler.respond(
+                stallion.StatusInternalServerError,
+                "Signing failed")
+              return
+            end
           // Build response headers with signed cookie.
           // Secure=false for localhost testing; use the
           // default (true) in production.

@@ -579,7 +579,7 @@ actor \nodoc\ _TestStreamingNoOpClient is
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
 
-  fun ref _on_received(data: Array[U8] iso) =>
+  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains(_expect) then
@@ -591,6 +591,7 @@ actor \nodoc\ _TestStreamingNoOpClient is
       _server.dispose()
       _h.complete(true)
     end
+    lori.KeepReading
 
   fun ref _on_closed() => None
 
