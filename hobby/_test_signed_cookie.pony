@@ -30,7 +30,11 @@ class \nodoc\ iso _TestSignedCookieRoundTrip is UnitTest
   fun apply(h: TestHelper) ? =>
     let key = CookieSigningKey.generate()?
     let value = "user=alice"
-    let signed = SignedCookie.sign(key, value)
+    let signed =
+      match \exhaustive\ SignedCookie.sign(key, value)
+      | let s: String => s
+      | let e: SignedCookieError => h.fail(e.string()); return
+      end
     match \exhaustive\ SignedCookie.verify(key, signed)
     | let v: String => h.assert_eq[String](value, v)
     | let e: SignedCookieError => h.fail(e.string())
@@ -41,7 +45,11 @@ class \nodoc\ iso _TestSignedCookieTamperedValue is UnitTest
 
   fun apply(h: TestHelper) ? =>
     let key = CookieSigningKey.generate()?
-    let signed = SignedCookie.sign(key, "user=alice")
+    let signed =
+      match \exhaustive\ SignedCookie.sign(key, "user=alice")
+      | let s: String => s
+      | let e: SignedCookieError => h.fail(e.string()); return
+      end
     // Replace "alice" with "mallory"
     let sig_part = signed.trim(signed.rfind(".")?.usize())
     let tampered =
@@ -54,6 +62,7 @@ class \nodoc\ iso _TestSignedCookieTamperedValue is UnitTest
     | let _: String => h.fail("accepted tampered value")
     | InvalidSignature => None
     | MalformedSignedValue => h.fail("wrong error type")
+    | CryptoFailure => h.fail("crypto failure")
     end
 
 class \nodoc\ iso _TestSignedCookieTamperedSig is UnitTest
@@ -61,7 +70,11 @@ class \nodoc\ iso _TestSignedCookieTamperedSig is UnitTest
 
   fun apply(h: TestHelper) ? =>
     let key = CookieSigningKey.generate()?
-    let signed = SignedCookie.sign(key, "user=alice")
+    let signed =
+      match \exhaustive\ SignedCookie.sign(key, "user=alice")
+      | let s: String => s
+      | let e: SignedCookieError => h.fail(e.string()); return
+      end
     let pos = signed.rfind(".")?.usize()
     let value = signed.trim(0, pos)
     // Replace the signature with a different valid Base64 string
@@ -76,6 +89,7 @@ class \nodoc\ iso _TestSignedCookieTamperedSig is UnitTest
     | let _: String => h.fail("accepted tampered signature")
     | InvalidSignature => None
     | MalformedSignedValue => h.fail("wrong error type")
+    | CryptoFailure => h.fail("crypto failure")
     end
 
 class \nodoc\ iso _TestSignedCookieNoSeparator is UnitTest
@@ -90,6 +104,7 @@ class \nodoc\ iso _TestSignedCookieNoSeparator is UnitTest
     | let _: String => h.fail("accepted value without separator")
     | MalformedSignedValue => None
     | InvalidSignature => h.fail("wrong error type")
+    | CryptoFailure => h.fail("crypto failure")
     end
 
 class \nodoc\ iso _TestSignedCookieEmptySig is UnitTest
@@ -104,6 +119,7 @@ class \nodoc\ iso _TestSignedCookieEmptySig is UnitTest
     | let _: String => h.fail("accepted empty signature")
     | MalformedSignedValue => None
     | InvalidSignature => h.fail("wrong error type")
+    | CryptoFailure => h.fail("crypto failure")
     end
 
 class \nodoc\ iso _TestSignedCookieWrongKey is UnitTest
@@ -116,11 +132,16 @@ class \nodoc\ iso _TestSignedCookieWrongKey is UnitTest
       else
         h.fail("key generation failed"); return
       end
-    let signed = SignedCookie.sign(key1, "secret")
+    let signed =
+      match \exhaustive\ SignedCookie.sign(key1, "secret")
+      | let s: String => s
+      | let e: SignedCookieError => h.fail(e.string()); return
+      end
     match \exhaustive\ SignedCookie.verify(key2, signed)
     | let _: String => h.fail("accepted wrong key")
     | InvalidSignature => None
     | MalformedSignedValue => h.fail("wrong error type")
+    | CryptoFailure => h.fail("crypto failure")
     end
 
 class \nodoc\ iso _TestSignedCookieValueWithDots is UnitTest
@@ -132,7 +153,11 @@ class \nodoc\ iso _TestSignedCookieValueWithDots is UnitTest
       else h.fail("key generation failed"); return
       end
     let value = "a.b.c.d"
-    let signed = SignedCookie.sign(key, value)
+    let signed =
+      match \exhaustive\ SignedCookie.sign(key, value)
+      | let s: String => s
+      | let e: SignedCookieError => h.fail(e.string()); return
+      end
     match \exhaustive\ SignedCookie.verify(key, signed)
     | let v: String => h.assert_eq[String](value, v)
     | let e: SignedCookieError => h.fail(e.string())
@@ -147,7 +172,11 @@ class \nodoc\ iso _TestSignedCookieEmptyValue is UnitTest
       else h.fail("key generation failed"); return
       end
     let value = ""
-    let signed = SignedCookie.sign(key, value)
+    let signed =
+      match \exhaustive\ SignedCookie.sign(key, value)
+      | let s: String => s
+      | let e: SignedCookieError => h.fail(e.string()); return
+      end
     match \exhaustive\ SignedCookie.verify(key, signed)
     | let v: String => h.assert_eq[String](value, v)
     | let e: SignedCookieError => h.fail(e.string())
@@ -165,6 +194,7 @@ class \nodoc\ iso _TestSignedCookieInvalidBase64 is UnitTest
     | let _: String => h.fail("accepted invalid base64")
     | MalformedSignedValue => None
     | InvalidSignature => h.fail("wrong error type")
+    | CryptoFailure => h.fail("crypto failure")
     end
 
 class \nodoc\ iso _TestSignedCookieKeyBoundary is UnitTest
@@ -199,7 +229,7 @@ class \nodoc\ iso _TestSignedCookieRfc4231Vector is UnitTest
 
   fun name(): String => "SignedCookie/rfc-4231-vector"
 
-  fun apply(h: TestHelper) =>
+  fun apply(h: TestHelper) ? =>
     // RFC 4231 Test Case 2 key: "Jefe" (4 bytes) — too short for
     // CookieSigningKey, so test the HMAC primitive directly.
     let key: Array[U8] val = [as U8: 0x4a; 0x65; 0x66; 0x65]
@@ -211,7 +241,7 @@ class \nodoc\ iso _TestSignedCookieRfc4231Vector is UnitTest
         0x5a; 0x00; 0x3f; 0x08; 0x9d; 0x27; 0x39; 0x83
         0x9d; 0xec; 0x58; 0xb9; 0x64; 0xec; 0x38; 0x43
       ]
-    let actual = crypto.HmacSha256(key, data)
+    let actual = crypto.HmacSha256(key, data)?
     h.assert_eq[USize](32, actual.size())
     h.assert_true(
       crypto.ConstantTimeCompare(expected, actual),
@@ -246,7 +276,11 @@ class \nodoc\ iso _TestSignedCookieCrossLanguageVector is UnitTest
     let key = CookieSigningKey(key_bytes)?
 
     let expected = "hello.7GT0SrIsQCeVHsMIKW5wg_p2huSb8nTFCUeO-QsJ_Ak="
-    let signed = SignedCookie.sign(key, "hello")
+    let signed =
+      match \exhaustive\ SignedCookie.sign(key, "hello")
+      | let s: String => s
+      | let e: SignedCookieError => h.fail(e.string()); return
+      end
     h.assert_eq[String](expected, signed)
 
     match \exhaustive\ SignedCookie.verify(key, signed)
@@ -269,7 +303,11 @@ class \nodoc\ iso _PropSignedCookieRoundTrip is Property1[String]
       try CookieSigningKey.generate()?
       else h.fail("key generation failed"); return
       end
-    let signed = SignedCookie.sign(key, sample)
+    let signed =
+      match \exhaustive\ SignedCookie.sign(key, sample)
+      | let s: String => s
+      | let e: SignedCookieError => h.fail(e.string()); return
+      end
     match \exhaustive\ SignedCookie.verify(key, signed)
     | let v: String => h.assert_eq[String](sample, v)
     | let e: SignedCookieError => h.fail(e.string())
@@ -290,8 +328,16 @@ class \nodoc\ iso _PropSignedCookieDeterministic is Property1[String]
       try CookieSigningKey.generate()?
       else h.fail("key generation failed"); return
       end
-    let a = SignedCookie.sign(key, sample)
-    let b = SignedCookie.sign(key, sample)
+    let a =
+      match \exhaustive\ SignedCookie.sign(key, sample)
+      | let s: String => s
+      | let e: SignedCookieError => h.fail(e.string()); return
+      end
+    let b =
+      match \exhaustive\ SignedCookie.sign(key, sample)
+      | let s: String => s
+      | let e: SignedCookieError => h.fail(e.string()); return
+      end
     h.assert_eq[String](a, b)
 
 class \nodoc\ iso _PropSignedCookieTamperDetection is
@@ -314,7 +360,11 @@ class \nodoc\ iso _PropSignedCookieTamperDetection is
       try CookieSigningKey.generate()?
       else h.fail("key generation failed"); return
       end
-    let signed = SignedCookie.sign(key, value)
+    let signed =
+      match \exhaustive\ SignedCookie.sign(key, value)
+      | let s: String => s
+      | let e: SignedCookieError => h.fail(e.string()); return
+      end
 
     if signed.size() == 0 then return end
     let flip_pos = flip_hint % signed.size()
@@ -355,7 +405,11 @@ class \nodoc\ iso _PropSignedCookieKeyIndependence is Property1[String]
       else
         h.fail("key generation failed"); return
       end
-    let signed = SignedCookie.sign(key1, sample)
+    let signed =
+      match \exhaustive\ SignedCookie.sign(key1, sample)
+      | let s: String => s
+      | let e: SignedCookieError => h.fail(e.string()); return
+      end
     match \exhaustive\ SignedCookie.verify(key2, signed)
     | let _: String => h.fail("different key accepted")
     | let _: SignedCookieError => None
@@ -379,7 +433,11 @@ class \nodoc\ iso _PropSignedCookieCookieOctetValidity is Property1[String]
       try CookieSigningKey.generate()?
       else h.fail("key generation failed"); return
       end
-    let signed = SignedCookie.sign(key, sample)
+    let signed =
+      match \exhaustive\ SignedCookie.sign(key, sample)
+      | let s: String => s
+      | let e: SignedCookieError => h.fail(e.string()); return
+      end
     // Check only the dot separator and signature, not the user-supplied value
     let pos =
       try signed.rfind(".")?.usize()
@@ -419,7 +477,11 @@ class \nodoc\ iso _PropSignedCookieSignatureLength is Property1[String]
       try CookieSigningKey.generate()?
       else h.fail("key generation failed"); return
       end
-    let signed = SignedCookie.sign(key, sample)
+    let signed =
+      match \exhaustive\ SignedCookie.sign(key, sample)
+      | let s: String => s
+      | let e: SignedCookieError => h.fail(e.string()); return
+      end
     let pos =
       try signed.rfind(".")?.usize()
       else h.fail("no separator in signed output"); return

@@ -83,7 +83,7 @@ actor \nodoc\ _TestClient is
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
 
-  fun ref _on_received(data: Array[U8] iso) =>
+  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains(_expected) then
@@ -91,6 +91,7 @@ actor \nodoc\ _TestClient is
       _server.dispose()
       _h.complete(true)
     end
+    lori.KeepReading
 
   fun ref _on_closed() => None
 
@@ -585,7 +586,7 @@ actor \nodoc\ _TestHeadClient is
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
 
-  fun ref _on_received(data: Array[U8] iso) =>
+  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains(_expect_header) then
@@ -597,6 +598,7 @@ actor \nodoc\ _TestHeadClient is
       _server.dispose()
       _h.complete(true)
     end
+    lori.KeepReading
 
   fun ref _on_closed() => None
 
@@ -861,7 +863,7 @@ actor \nodoc\ _TestTimeoutClient is
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
 
-  fun ref _on_received(data: Array[U8] iso) =>
+  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains("504") or
@@ -871,6 +873,7 @@ actor \nodoc\ _TestTimeoutClient is
       _server.dispose()
       _h.complete(true)
     end
+    lori.KeepReading
 
   fun ref _on_closed() => None
 
@@ -966,12 +969,13 @@ actor \nodoc\ _TestStreamTimeoutClient is
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
 
-  fun ref _on_received(data: Array[U8] iso) =>
+  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains("stream-timeout-chunk") then
       _got_chunk = true
     end
+    lori.KeepReading
 
   fun ref _on_closed() =>
     if _got_chunk then
@@ -1104,7 +1108,9 @@ actor \nodoc\ _DisconnectAfterSendClient is
   be _disconnect_now() =>
     _tcp_connection.close()
 
-  fun ref _on_received(data: Array[U8] iso) => None
+  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
+    lori.KeepReading
+
   fun ref _on_closed() => None
 
   fun ref _on_connection_failure(reason: lori.ConnectionFailureReason) =>
@@ -1338,7 +1344,7 @@ actor \nodoc\ _TestTimeoutNormalClient is
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
 
-  fun ref _on_received(data: Array[U8] iso) =>
+  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains("Hello from Hobby!") then
@@ -1353,6 +1359,7 @@ actor \nodoc\ _TestTimeoutNormalClient is
       _server.dispose()
       _h.complete(false)
     end
+    lori.KeepReading
 
   fun ref _on_closed() => None
 
@@ -1537,7 +1544,7 @@ actor \nodoc\ _TestSSLClient is
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
 
-  fun ref _on_received(data: Array[U8] iso) =>
+  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains(_expected) then
@@ -1545,6 +1552,7 @@ actor \nodoc\ _TestSSLClient is
       _server.dispose()
       _h.complete(true)
     end
+    lori.KeepReading
 
   fun ref _on_closed() => None
 
@@ -1735,9 +1743,8 @@ actor \nodoc\ _PlainTCPThenSSLClient is
     _tcp_connection.send(
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
 
-  fun ref _on_received(data: Array[U8] iso) =>
-    // SSL listener will likely close us — ignore data
-    None
+  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
+    lori.KeepReading
 
   fun ref _on_closed() =>
     // Plain connection was closed (expected). Now connect
@@ -1879,8 +1886,8 @@ actor \nodoc\ _PlainTCPClient is
     _tcp_connection.send(
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
 
-  fun ref _on_received(data: Array[U8] iso) =>
-    None
+  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
+    lori.KeepReading
 
   fun ref _on_closed() =>
     _notify.plain_client_done()
