@@ -220,8 +220,8 @@ class ref _BuildNode
           _param_child = c
           c
         end
-      if (child._param_name.size() > 0)
-        and (child._param_name != name)
+      if (child._param_name.size() > 0) and
+        (child._param_name != name)
       then
         errors.push(
           "Conflicting param names at the same path " +
@@ -259,8 +259,8 @@ class ref _BuildNode
           factory,
           interceptors,
           response_interceptors)
-      if (_wildcard_name.size() > 0)
-        and (_wildcard_name != name)
+      if (_wildcard_name.size() > 0) and
+        (_wildcard_name != name)
       then
         errors.push(
           "Conflicting wildcard names at the same path " +
@@ -599,9 +599,7 @@ class val _TreeNode
           | (let entry: _MethodEntry val,
             let child_params:
               Array[(String, String)] val) =>
-            let with_param:
-              Array[(String, String)] val
-            =
+            let with_param: Array[(String, String)] val =
               recover val
                 let a = Array[(String, String)]
                 a.push((child._param_name, segment))
@@ -627,8 +625,8 @@ class val _TreeNode
             // (has richer interceptors).
             match deepest_miss
             | let prev: _RouteMiss =>
-              if miss._interceptor_count()
-                > prev._interceptor_count()
+              if miss._interceptor_count() >
+                prev._interceptor_count()
               then
                 deepest_miss = miss
               end
@@ -648,9 +646,7 @@ class val _TreeNode
     | let entry: _MethodEntry val =>
       let remainder =
         _JoinRemainingSegments(segments, idx, path_size)
-      let wildcard_params:
-        Array[(String, String)] val
-      =
+      let wildcard_params: Array[(String, String)] val =
         recover val
           Array[(String, String)]
             .> push((_wildcard_name, remainder))

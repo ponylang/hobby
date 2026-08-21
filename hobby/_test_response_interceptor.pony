@@ -405,17 +405,13 @@ class \nodoc\ iso _TestResponseInterceptorOnRejectIntercept is UnitTest
   fun label(): String => "integration"
 
   fun apply(h: TestHelper) =>
-    let response_interceptors:
-      Array[ResponseInterceptor val] val
-    =
+    let response_interceptors: Array[ResponseInterceptor val] val =
       recover val
         [ as ResponseInterceptor val:
           _AddHeaderResponseInterceptor(
             "x-custom", "on-reject")]
       end
-    let request_interceptors:
-      Array[RequestInterceptor val] val
-    =
+    let request_interceptors: Array[RequestInterceptor val] val =
       recover val
         [ as RequestInterceptor val:
           _RejectInterceptor]
@@ -585,8 +581,8 @@ actor \nodoc\ _TestStreamingNoOpClient is
     if response_str.contains(_expect) then
       _h.assert_false(
         response_str.contains(_forbid),
-        "streaming response must not contain"
-          + " header: " + _forbid)
+        "streaming response must not contain" +
+          " header: " + _forbid)
       _tcp_connection.close()
       _server.dispose()
       _h.complete(true)

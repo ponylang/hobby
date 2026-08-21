@@ -345,8 +345,8 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
 
   be _handler_timeout(token: U64) =>
     if token != _current_token then return end
-    if (_state isnt _HandlerInProgress)
-      and (_state isnt _Streaming)
+    if (_state isnt _HandlerInProgress) and
+      (_state isnt _Streaming)
     then
       return
     end

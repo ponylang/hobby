@@ -40,8 +40,8 @@ actor Main is hobby.ServerNotify
             hobby.RequestHandler(consume ctx)
               .respond(
                 stallion.StatusOK,
-                "Visit /static/index.html"
-                  + " to see a served file.")
+                "Visit /static/index.html" +
+                  " to see a served file.")
           } val)
         .> get("/static/*filepath", hobby.ServeFiles(root))
 

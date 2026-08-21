@@ -79,8 +79,8 @@ actor Main is hobby.ServerNotify
     service: String)
   =>
     _env.out.print(
-      "Listening on " + host + ":" + service
-        + " (HTTPS)")
+      "Listening on " + host + ":" + service +
+        " (HTTPS)")
 
   be listen_failed(
     server: hobby.Server,

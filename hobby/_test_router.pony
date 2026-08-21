@@ -412,8 +412,8 @@ class \nodoc\ iso _TestWildcardSingleSegment is UnitTest
     match router.lookup(stallion.GET, "/files/")
     | let _: _RouteMatch =>
       h.fail(
-        "should not match /files/ "
-          + "(normalizes to /files, no wildcard content)")
+        "should not match /files/ " +
+          "(normalizes to /files, no wildcard content)")
     end
 
 class \nodoc\ iso _TestTrailingSlashNormalization is UnitTest
@@ -613,8 +613,8 @@ class \nodoc\ iso _Test405FallsBackToLowerPriorityMatch is UnitTest
       end
     | let _: _MethodNotAllowed =>
       h.fail(
-        "should match GET wildcard, "
-          + "not return 405 from POST param")
+        "should match GET wildcard, " +
+          "not return 405 from POST param")
     | let _: _RouteMiss =>
       h.fail("expected match")
     end
@@ -673,8 +673,8 @@ class \nodoc\ iso _Test405FallsBackStaticToParam is UnitTest
       end
     | let _: _MethodNotAllowed =>
       h.fail(
-        "should match GET param, "
-          + "not return 405 from POST static")
+        "should match GET param, " +
+          "not return 405 from POST static")
     | let _: _RouteMiss =>
       h.fail("expected match")
     end
@@ -724,8 +724,8 @@ class \nodoc\ iso _Test405ExactPathDoesNotIncludeWildcard is UnitTest
       h.assert_true(has_head, "Allow should include HEAD")
       h.assert_false(
         has_post,
-        "Allow must NOT include POST "
-          + "(wildcard method, different resource)")
+        "Allow must NOT include POST " +
+          "(wildcard method, different resource)")
     | let _: _RouteMatch =>
       h.fail("DELETE should not match")
     | let _: _RouteMiss =>
@@ -878,9 +878,7 @@ class \nodoc\ iso _PropertyInsertionOrderInvariance is
       } val
 
     // Fixed route set: static, param, wildcard
-    let routes:
-      Array[(String, String, HandlerFactory)] val
-    =
+    let routes: Array[(String, String, HandlerFactory)] val =
       [ ("/api/v1/users", "/api/v1/users", f0)
         ("/api/v1/users/:id", "/api/v1/users/42", f1)
         ("/api/v1/items", "/api/v1/items", f2)
@@ -905,8 +903,8 @@ class \nodoc\ iso _PropertyInsertionOrderInvariance is
       | (let ma: _RouteMatch, let mb: _RouteMatch) =>
         h.assert_true(
           ma.factory is mb.factory,
-          "insertion order changed matched route for "
-            + lookup_path)
+          "insertion order changed matched route for " +
+            lookup_path)
       | (let _: _RouteMiss, let _: _RouteMiss) =>
         None
       | ( let _: _MethodNotAllowed
@@ -914,8 +912,8 @@ class \nodoc\ iso _PropertyInsertionOrderInvariance is
         None
       else
         h.fail(
-          "insertion order changed result type for "
-            + lookup_path)
+          "insertion order changed result type for " +
+            lookup_path)
       end
     end
 
@@ -1025,8 +1023,8 @@ class \nodoc\ iso _TestInterceptorAccumulation is UnitTest
         try
           h.assert_true(
             ints(0)? is interceptor,
-            "accumulated interceptor should be "
-              + "the one registered on /api")
+            "accumulated interceptor should be " +
+              "the one registered on /api")
         else
           h.fail("interceptor access failed")
         end
@@ -1065,8 +1063,8 @@ class \nodoc\ iso _TestMissCarriesInterceptors is UnitTest
         try
           h.assert_true(
             ints(0)? is interceptor,
-            "miss should carry the request "
-              + "interceptor from /api")
+            "miss should carry the request " +
+              "interceptor from /api")
         else
           h.fail("interceptor access failed")
         end
@@ -1080,8 +1078,8 @@ class \nodoc\ iso _TestMissCarriesInterceptors is UnitTest
         try
           h.assert_true(
             ris(0)? is resp_interceptor,
-            "miss should carry the response "
-              + "interceptor from /api")
+            "miss should carry the response " +
+              "interceptor from /api")
         else
           h.fail("response interceptor access failed")
         end
@@ -1116,8 +1114,8 @@ class \nodoc\ iso _TestRootMissCarriesInterceptors is UnitTest
         try
           h.assert_true(
             ints(0)? is interceptor,
-            "root miss should carry "
-              + "the root interceptor")
+            "root miss should carry " +
+              "the root interceptor")
         else
           h.fail("interceptor access failed")
         end
@@ -1340,8 +1338,8 @@ class \nodoc\ iso _TestInterceptorSegmentBoundary is UnitTest
         h.assert_eq[USize](
           1,
           ints.size(),
-          "/api/users should have "
-            + "group interceptors")
+          "/api/users should have " +
+            "group interceptors")
       else
         h.fail(
           "/api/users should have interceptors")
@@ -1355,8 +1353,8 @@ class \nodoc\ iso _TestInterceptorSegmentBoundary is UnitTest
     | let m: _RouteMatch =>
       h.assert_true(
         m.interceptors is None,
-        "/api-docs must not inherit "
-          + "/api group interceptors")
+        "/api-docs must not inherit " +
+          "/api group interceptors")
     | let _: _RouteMiss =>
       h.fail("expected match for /api-docs")
     end
@@ -1386,12 +1384,12 @@ class \nodoc\ iso _TestInterceptorSegmentBoundaryMiss is UnitTest
         h.assert_eq[USize](
           1,
           ints.size(),
-          "/api/nonexistent should carry "
-            + "group interceptors")
+          "/api/nonexistent should carry " +
+            "group interceptors")
       else
         h.fail(
-          "/api/nonexistent miss should "
-            + "have interceptors")
+          "/api/nonexistent miss should " +
+            "have interceptors")
       end
     | let _: _RouteMatch =>
       h.fail("expected miss for /api/nonexistent")
@@ -1402,8 +1400,8 @@ class \nodoc\ iso _TestInterceptorSegmentBoundaryMiss is UnitTest
     | let miss: _RouteMiss =>
       h.assert_true(
         miss.interceptors is None,
-        "/api-unknown miss must not inherit "
-          + "/api group interceptors")
+        "/api-unknown miss must not inherit " +
+          "/api group interceptors")
     | let _: _RouteMatch =>
       h.fail("expected miss for /api-unknown")
     end
@@ -1438,8 +1436,8 @@ class \nodoc\ iso _TestInterceptorSegmentBoundaryNestedGroups is UnitTest
         h.assert_eq[USize](
           2,
           ints.size(),
-          "/api/users should have "
-            + "app + api interceptors")
+          "/api/users should have " +
+            "app + api interceptors")
       else
         h.fail(
           "/api/users should have interceptors")
@@ -1456,13 +1454,13 @@ class \nodoc\ iso _TestInterceptorSegmentBoundaryNestedGroups is UnitTest
         h.assert_eq[USize](
           1,
           ints.size(),
-          "/api-docs should have only "
-            + "app interceptors")
+          "/api-docs should have only " +
+            "app interceptors")
         try
           h.assert_true(
             ints(0)? is app_interceptor,
-            "/api-docs should have app "
-              + "interceptor, not api interceptor")
+            "/api-docs should have app " +
+              "interceptor, not api interceptor")
         else
           h.fail("interceptor access failed")
         end
@@ -1510,8 +1508,8 @@ class \nodoc\ iso _TestDeepestMissPreservesRicherInterceptors is UnitTest
         h.assert_eq[USize](
           2,
           ints.size(),
-          "miss should carry [A, B] from "
-            + "deeper static traversal, not [A]")
+          "miss should carry [A, B] from " +
+            "deeper static traversal, not [A]")
       else
         h.fail("expected interceptors on miss")
       end
@@ -1624,8 +1622,8 @@ class \nodoc\ iso _TestWildcardDoubleSlashNormalization is UnitTest
         h.assert_eq[String](
           "a/b/c",
           m.params("path")?,
-          "wildcard should normalize "
-            + "double slash to single")
+          "wildcard should normalize " +
+            "double slash to single")
       else
         h.fail("wildcard param 'path' not found")
       end
@@ -2029,8 +2027,8 @@ class \nodoc\ iso _TestMethodNotAllowedCarriesInterceptors is UnitTest
         try
           h.assert_true(
             ints(0)? is interceptor,
-            "405 should carry request "
-              + "interceptor from /api")
+            "405 should carry request " +
+              "interceptor from /api")
         else
           h.fail("interceptor access failed")
         end
@@ -2044,8 +2042,8 @@ class \nodoc\ iso _TestMethodNotAllowedCarriesInterceptors is UnitTest
         try
           h.assert_true(
             ris(0)? is resp_interceptor,
-            "405 should carry response "
-              + "interceptor from /api")
+            "405 should carry response " +
+              "interceptor from /api")
         else
           h.fail("response interceptor access failed")
         end

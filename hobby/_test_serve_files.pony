@@ -635,8 +635,8 @@ actor \nodoc\ _TestNoCacheControlClient is
     if response_str.contains(_expected) then
       _h.assert_false(
         response_str.contains(_forbidden),
-        "Response must not contain: "
-          + _forbidden)
+        "Response must not contain: " +
+          _forbidden)
       _tcp_connection.close()
       _server.dispose()
       _h.complete(true)
@@ -972,8 +972,8 @@ actor \nodoc\ _PauseResumeTarget is _FileTarget
   be _file_done() =>
     _h.assert_true(
       _chunks_received >= 2,
-      "expected multiple chunks, got "
-        + _chunks_received.string())
+      "expected multiple chunks, got " +
+        _chunks_received.string())
     _h.assert_true(
       _paused, "pause should have been triggered")
     _timers.dispose()
@@ -1093,8 +1093,8 @@ actor \nodoc\ _BackpressureMockConnection is _ConnectionProtocol
   be _handler_finish(token: U64) =>
     _h.assert_true(
       _chunks_received >= 2,
-      "expected multiple chunks, got "
-        + _chunks_received.string())
+      "expected multiple chunks, got " +
+        _chunks_received.string())
     _h.assert_true(
       _paused, "pause should have been triggered")
     _timers.dispose()

@@ -268,9 +268,7 @@ class ref Application
 
     // Build app-level request interceptors as a val array (or None
     // if empty)
-    let app_interceptors:
-      (Array[RequestInterceptor val] val | None)
-    =
+    let app_interceptors: (Array[RequestInterceptor val] val | None) =
       if _app_interceptors.size() > 0 then
         let gs_iso: Array[RequestInterceptor val] iso =
           recover iso Array[RequestInterceptor val] end
@@ -284,9 +282,7 @@ class ref Application
 
     // Build app-level response interceptors as a val array (or None
     // if empty)
-    let app_response_interceptors:
-      (Array[ResponseInterceptor val] val | None)
-    =
+    let app_response_interceptors: (Array[ResponseInterceptor val] val | None) =
       if _app_response_interceptors.size() > 0 then
         let ri_iso: Array[ResponseInterceptor val] iso =
           recover iso Array[ResponseInterceptor val] end
