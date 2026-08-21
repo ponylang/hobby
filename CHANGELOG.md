@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Changed
 
+- Require ponyc 0.69.1 or later ([PR #123](https://github.com/ponylang/hobby/pull/123))
 
 ## [0.10.0] - 2026-08-07
 
