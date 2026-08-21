@@ -32,8 +32,8 @@ actor Main is hobby.ServerNotify
           hobby.RequestHandler(consume ctx)
             .respond(
               stallion.StatusOK,
-              "Visit /stream to see a chunked"
-                + " streaming response.")
+              "Visit /stream to see a chunked" +
+                " streaming response.")
         } val)
       .> get(
         "/stream",
@@ -77,8 +77,8 @@ actor StreamHandler is hobby.HandlerReceiver
     | stallion.ChunkedNotSupported =>
       _handler.respond(
         stallion.StatusOK,
-        "Chunked encoding not supported"
-          + " — upgrade to HTTP/1.1.")
+        "Chunked encoding not supported" +
+          " — upgrade to HTTP/1.1.")
     | hobby.BodyNotNeeded => None
     end
 

@@ -32,8 +32,8 @@ class \nodoc\ iso _TestBuildValidConfig is UnitTest
     match \exhaustive\ app.build()
     | let _: BuiltApplication => h.assert_true(true)
     | let err: ConfigError =>
-      h.fail("expected BuiltApplication, got: "
-        + err.message)
+      h.fail("expected BuiltApplication, got: " +
+        err.message)
     end
 
 class \nodoc\ iso _TestBuildInvalidConfig is UnitTest

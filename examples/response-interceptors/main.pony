@@ -131,8 +131,8 @@ class val LogResponseInterceptor is hobby.ResponseInterceptor
 
   fun apply(ctx: hobby.ResponseContext ref) =>
     _out.print(
-      ctx.request().method.string() + " " + ctx.request().uri.path
-        + " -> " + ctx.status().string())
+      ctx.request().method.string() + " " + ctx.request().uri.path +
+        " -> " + ctx.status().string())
 
 // --- Request interceptor ---
 class val AuthInterceptor is hobby.RequestInterceptor

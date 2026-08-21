@@ -592,8 +592,8 @@ actor \nodoc\ _TestHeadClient is
     if response_str.contains(_expect_header) then
       _h.assert_false(
         response_str.contains(_forbid_body),
-        "HEAD response must not contain body: "
-          + _forbid_body)
+        "HEAD response must not contain body: " +
+          _forbid_body)
       _tcp_connection.close()
       _server.dispose()
       _h.complete(true)
@@ -1353,8 +1353,8 @@ actor \nodoc\ _TestTimeoutNormalClient is
       _h.complete(true)
     elseif response_str.contains("Gateway Timeout") then
       _h.fail(
-        "unexpected 504 — handler completed"
-          + " before timeout")
+        "unexpected 504 — handler completed" +
+          " before timeout")
       _tcp_connection.close()
       _server.dispose()
       _h.complete(false)

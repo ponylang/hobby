@@ -260,15 +260,11 @@ class \nodoc\ iso _TestNestedGroupInfoCollection is UnitTest
     "route-group/nested group info collection"
 
   fun apply(h: TestHelper) =>
-    let outer_interceptors:
-      Array[RequestInterceptor val] val
-    =
+    let outer_interceptors: Array[RequestInterceptor val] val =
       recover val
         [as RequestInterceptor val: _PassInterceptor]
       end
-    let inner_interceptors:
-      Array[RequestInterceptor val] val
-    =
+    let inner_interceptors: Array[RequestInterceptor val] val =
       recover val
         [as RequestInterceptor val: _RejectInterceptor]
       end
@@ -309,21 +305,15 @@ class \nodoc\ iso _TestTripleLevelGroupInfoCollection is UnitTest
     "route-group/triple level group info collection"
 
   fun apply(h: TestHelper) =>
-    let deep_interceptors:
-      Array[RequestInterceptor val] val
-    =
+    let deep_interceptors: Array[RequestInterceptor val] val =
       recover val
         [as RequestInterceptor val: _PassInterceptor]
       end
-    let inner_interceptors:
-      Array[RequestInterceptor val] val
-    =
+    let inner_interceptors: Array[RequestInterceptor val] val =
       recover val
         [as RequestInterceptor val: _RejectInterceptor]
       end
-    let outer_interceptors:
-      Array[RequestInterceptor val] val
-    =
+    let outer_interceptors: Array[RequestInterceptor val] val =
       recover val
         [as RequestInterceptor val: _PassInterceptor]
       end
