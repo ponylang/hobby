@@ -941,12 +941,12 @@ primitive \nodoc\ _GenPermutation
     Generator[Array[USize] val](
       object is GenObj[Array[USize] val]
         let _n: USize = n
-        fun generate(r: Randomness): Array[USize] val^ =>
+        fun generate(r: Randomness): Array[USize] val^ ? =>
           let a = Array[USize](_n)
           for i in Range(0, _n) do
             a.push(i)
           end
-          r.shuffle[USize](a)
+          r.shuffle[USize](a)?
           let result = recover iso Array[USize](_n) end
           for v in a.values() do
             result.push(v)
