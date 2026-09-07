@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Changed
 
+- SSLContext moved from ssl/net to lori ([PR #125](https://github.com/ponylang/hobby/pull/125))
 
 ## [0.12.0] - 2026-09-04
 
