@@ -5,7 +5,6 @@ use "files"
 use "time"
 use stallion = "stallion"
 use lori = "lori"
-use ssl_net = "ssl/net"
 use "net"
 
 primitive \nodoc\ _TestIntegrationList
@@ -1493,10 +1492,10 @@ class \nodoc\ iso _TestMethodNotAllowed405 is UnitTest
 
 // --- SSL test helpers ---
 primitive \nodoc\ _TestSSLContext
-  fun apply(h: TestHelper): ssl_net.SSLContext val ? =>
+  fun apply(h: TestHelper): lori.SSLContext val ? =>
     let file_auth = FileAuth(h.env.root)
     recover val
-      ssl_net.SSLContext
+      lori.SSLContext
         .> set_authority(
           FilePath(file_auth, "assets/cert.pem"))?
         .> set_cert(
@@ -1522,7 +1521,7 @@ actor \nodoc\ _TestSSLClient is
 
   new create(
     auth: lori.TCPConnectAuth,
-    ssl_ctx: ssl_net.SSLContext val,
+    ssl_ctx: lori.SSLContext val,
     host: String,
     port: String,
     h: TestHelper,
@@ -1710,7 +1709,7 @@ actor \nodoc\ _PlainTCPThenSSLClient is
   var _tcp_connection: lori.TCPConnection =
     lori.TCPConnection.none()
   let _connect_auth: lori.TCPConnectAuth
-  let _ssl_ctx: ssl_net.SSLContext val
+  let _ssl_ctx: lori.SSLContext val
   let _host: String
   let _port: String
   let _h: TestHelper
@@ -1718,7 +1717,7 @@ actor \nodoc\ _PlainTCPThenSSLClient is
 
   new create(
     connect_auth: lori.TCPConnectAuth,
-    ssl_ctx: ssl_net.SSLContext val,
+    ssl_ctx: lori.SSLContext val,
     host: String,
     port: String,
     h: TestHelper,
