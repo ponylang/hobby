@@ -4,7 +4,6 @@ use hobby = "../../hobby"
 use "files"
 use stallion = "stallion"
 use lori = "lori"
-use ssl_net = "ssl/net"
 
 actor Main is hobby.ServerNotify
   """
@@ -26,7 +25,7 @@ actor Main is hobby.ServerNotify
     let sslctx =
       try
         recover val
-          ssl_net.SSLContext
+          lori.SSLContext
             .> set_authority(
               FilePath(file_auth, "assets/cert.pem"))?
             .> set_cert(

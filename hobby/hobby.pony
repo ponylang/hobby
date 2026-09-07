@@ -214,7 +214,6 @@ use "files"
 use hobby = "hobby"
 use stallion = "stallion"
 use lori = "lori"
-use ssl_net = "ssl/net"
 
 actor Main is hobby.ServerNotify
   let _env: Env
@@ -226,7 +225,7 @@ actor Main is hobby.ServerNotify
     let sslctx =
       try
         recover val
-          ssl_net.SSLContext
+          lori.SSLContext
             .> set_authority(
               FilePath(file_auth, "cert.pem"))?
             .> set_cert(
@@ -306,7 +305,7 @@ resolves to a directory, `ServeFiles` automatically serves `index.html`.
 
 ## Imports
 
-Users import up to five packages:
+Users import up to four packages:
 
 - **`hobby`**: Application, BodyNotNeeded, BuildResult, BuiltApplication,
   ConfigError, ContentTypes, CookieSigningKey, CryptoFailure,
@@ -319,8 +318,8 @@ Users import up to five packages:
   SignedCookieError, StreamingStarted
 - **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig,
   ChunkedNotSupported)
-- **`lori`**: `TCPListenAuth(env.root)` for network access
-- **`ssl/net`**: `SSLContext` (only needed when using `Server.ssl()`)
+- **`lori`**: `TCPListenAuth(env.root)` for network access, `SSLContext`
+  for `Server.ssl()`
 - **`files`**: `FilePath`, `FileAuth` (needed for `ServeFiles` and
   `Server.ssl()` certificate loading)
 """

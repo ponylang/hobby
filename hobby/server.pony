@@ -1,7 +1,6 @@
 use "time"
 use lori = "lori"
 use stallion = "stallion"
-use ssl_net = "ssl/net"
 
 actor Server is lori.TCPListenerActor
   """
@@ -50,7 +49,7 @@ actor Server is lori.TCPListenerActor
   let _notify: ServerNotify
   let _timers: Timers tag
   let _timeout_ns: U64
-  let _ssl_ctx: (ssl_net.SSLContext val | None)
+  let _ssl_ctx: (lori.SSLContext val | None)
   var _state: _ServerState =
     _ServerStarting
 
@@ -88,7 +87,7 @@ actor Server is lori.TCPListenerActor
     auth: lori.TCPListenAuth,
     app: BuiltApplication,
     notify: ServerNotify,
-    ssl_ctx: ssl_net.SSLContext val,
+    ssl_ctx: lori.SSLContext val,
     host: String = "localhost",
     port: String = "0",
     handler_timeout: (HandlerTimeout | None) =

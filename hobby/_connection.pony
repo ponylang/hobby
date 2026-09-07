@@ -2,7 +2,6 @@ use "collections"
 use "time"
 use stallion = "stallion"
 use lori = "lori"
-use ssl_net = "ssl/net"
 
 // Connection states
 primitive _Idle
@@ -50,7 +49,7 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
     timers: Timers tag,
     timeout_ns: U64,
     server: Server tag,
-    ssl_ctx: (ssl_net.SSLContext val | None) = None)
+    ssl_ctx: (lori.SSLContext val | None) = None)
   =>
     _router = router
     _timers = timers
@@ -59,7 +58,7 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
     _pending_requests = Array[_PendingRequest]
     _http =
       match ssl_ctx
-      | let ctx: ssl_net.SSLContext val =>
+      | let ctx: lori.SSLContext val =>
         stallion.HTTPServer.ssl(auth, ctx, fd, this, config)
       else
         stallion.HTTPServer(auth, fd, this, config)
