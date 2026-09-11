@@ -1,4 +1,4 @@
-use lori = "lori"
+use "net"
 
 trait _ServerState
   """
@@ -11,7 +11,7 @@ trait _ServerState
   fun ref on_accept(
     server: Server ref,
     fd: U32)
-    : lori.TCPConnectionActor
+    : TCPConnectionActor
 
   fun ref on_listening(
     server: Server ref)
@@ -31,7 +31,7 @@ trait _ServerState
 
 class _ServerStarting is _ServerState
   """
-  Server constructed, waiting for bind result from lori.
+  Server constructed, waiting for bind result from net.
   """
   fun ref dispose(server: Server ref): _ServerState =>
     server._do_dispose()
@@ -40,9 +40,9 @@ class _ServerStarting is _ServerState
   fun ref on_accept(
     server: Server ref,
     fd: U32)
-    : lori.TCPConnectionActor
+    : TCPConnectionActor
   =>
-    // Should not happen before _on_listening, but lori
+    // Should not happen before _on_listening, but net
     // requires a return value.
     server._do_accept(fd)
 
@@ -84,7 +84,7 @@ class _ServerListening is _ServerState
   fun ref on_accept(
     server: Server ref,
     fd: U32)
-    : lori.TCPConnectionActor
+    : TCPConnectionActor
   =>
     server._do_accept(fd)
 
@@ -125,9 +125,9 @@ class _ServerDisposed is _ServerState
   fun ref on_accept(
     server: Server ref,
     fd: U32)
-    : lori.TCPConnectionActor
+    : TCPConnectionActor
   =>
-    // Disposed but lori requires a return value.
+    // Disposed but net requires a return value.
     // The connection will close when the listener
     // finishes shutting down.
     server._do_accept(fd)

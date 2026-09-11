@@ -2,7 +2,7 @@ use "collections"
 use "pony_test"
 use "uri"
 use stallion = "stallion"
-use lori = "lori"
+use "net"
 
 primitive \nodoc\ _TestRequestInterceptorList
   fun tests(test: PonyTest) =>

@@ -2,7 +2,7 @@ use "collections"
 use "pony_test"
 use "uri"
 use stallion = "stallion"
-use lori = "lori"
+use "net"
 
 primitive \nodoc\ _TestResponseInterceptorList
   fun tests(test: PonyTest) =>
@@ -482,9 +482,9 @@ class \nodoc\ iso _TestResponseInterceptorStreamingIntegration is UnitTest
     let router = builder.build()
     h.long_test(5_000_000_000)
     let host = _TestHost()
-    let auth = lori.TCPListenAuth(h.env.root)
+    let auth = TCPListenAuth(h.env.root)
     let connect_auth =
-      lori.TCPConnectAuth(h.env.root)
+      TCPConnectAuth(h.env.root)
     let app = BuiltApplication._create(router)
     let notify =
       _TestServerNotify(
@@ -535,14 +535,14 @@ class \nodoc\ iso _TestResponseInterceptorGroupOn404 is UnitTest
       "x-group: api-404")
 
 actor \nodoc\ _TestStreamingNoOpClient is
-  (lori.TCPConnectionActor &
-    lori.ClientLifecycleEventReceiver)
+  (TCPConnectionActor &
+    ClientLifecycleEventReceiver)
   """
   TCP client for streaming no-op test: expects chunk data
   present AND a forbidden header absent.
   """
-  var _tcp_connection: lori.TCPConnection =
-    lori.TCPConnection.none()
+  var _tcp_connection: TCPConnection =
+    TCPConnection.none()
   let _h: TestHelper
   let _request: String
   let _expect: String
@@ -551,7 +551,7 @@ actor \nodoc\ _TestStreamingNoOpClient is
   var _response: String iso = recover iso String end
 
   new create(
-    auth: lori.TCPConnectAuth,
+    auth: TCPConnectAuth,
     host: String,
     port: String,
     h: TestHelper,
@@ -566,16 +566,16 @@ actor \nodoc\ _TestStreamingNoOpClient is
     _forbid = forbid
     _server = server
     _tcp_connection =
-      lori.TCPConnection.client(
+      TCPConnection.client(
         auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection =>
+  fun ref _connection(): TCPConnection =>
     _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
 
-  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
+  fun ref _on_received(data: Array[U8] iso): ReadAction =>
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains(_expect) then
@@ -587,12 +587,12 @@ actor \nodoc\ _TestStreamingNoOpClient is
       _server.dispose()
       _h.complete(true)
     end
-    lori.KeepReading
+    KeepReading
 
   fun ref _on_closed() => None
 
   fun ref _on_connection_failure(
-    reason: lori.ConnectionFailureReason)
+    reason: ConnectionFailureReason)
   =>
     _h.fail("connection failed")
     _server.dispose()

@@ -8,7 +8,7 @@ hobby is beta quality software that will change frequently. Expect breaking chan
 
 ## Installation
 
-* Requires ponyc 0.71.0 or later.
+* Requires ponyc 0.72.0 or later.
 * Install [corral](https://github.com/ponylang/corral)
 * `corral add github.com/ponylang/hobby.git --version 0.14.0`
 * `corral fetch` to fetch your dependencies
@@ -22,14 +22,14 @@ Note: The ssl transitive dependency requires a C SSL library to be installed. Pl
 ```pony
 use hobby = "hobby"
 use stallion = "stallion"
-use lori = "lori"
+use "net"
 
 actor Main is hobby.ServerNotify
   let _env: Env
 
   new create(env: Env) =>
     _env = env
-    let auth = lori.TCPListenAuth(env.root)
+    let auth = TCPListenAuth(env.root)
     let app = hobby.Application
       .>get("/", {(ctx) =>
         hobby.RequestHandler(consume ctx)

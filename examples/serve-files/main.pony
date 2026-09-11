@@ -3,7 +3,7 @@
 use "files"
 use hobby = "../../hobby"
 use stallion = "stallion"
-use lori = "lori"
+use "net"
 
 actor Main is hobby.ServerNotify
   """
@@ -30,7 +30,7 @@ actor Main is hobby.ServerNotify
     _env = env
     try
       let dir = env.args(1)?
-      let auth = lori.TCPListenAuth(env.root)
+      let auth = TCPListenAuth(env.root)
       let root = FilePath(FileAuth(env.root), dir)
 
       let app = hobby.Application

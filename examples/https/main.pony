@@ -3,7 +3,7 @@
 use hobby = "../../hobby"
 use "files"
 use stallion = "stallion"
-use lori = "lori"
+use "net"
 
 actor Main is hobby.ServerNotify
   """
@@ -20,12 +20,12 @@ actor Main is hobby.ServerNotify
 
   new create(env: Env) =>
     _env = env
-    let auth = lori.TCPListenAuth(env.root)
+    let auth = TCPListenAuth(env.root)
     let file_auth = FileAuth(env.root)
     let sslctx =
       try
         recover val
-          lori.SSLContext
+          SSLContext
             .> set_authority(
               FilePath(file_auth, "assets/cert.pem"))?
             .> set_cert(

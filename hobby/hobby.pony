@@ -12,14 +12,14 @@ Create an `Application`, register routes with `.>` chaining, call
 ```pony
 use hobby = "hobby"
 use stallion = "stallion"
-use lori = "lori"
+use "net"
 
 actor Main is hobby.ServerNotify
   let _env: Env
 
   new create(env: Env) =>
     _env = env
-    let auth = lori.TCPListenAuth(env.root)
+    let auth = TCPListenAuth(env.root)
     let app = hobby.Application
       .> get("/", {(ctx) =>
         hobby.RequestHandler(consume ctx)
@@ -213,19 +213,19 @@ Use `Server.ssl()` instead of `Server` to listen over TLS. Pass an
 use "files"
 use hobby = "hobby"
 use stallion = "stallion"
-use lori = "lori"
+use "net"
 
 actor Main is hobby.ServerNotify
   let _env: Env
 
   new create(env: Env) =>
     _env = env
-    let auth = lori.TCPListenAuth(env.root)
+    let auth = TCPListenAuth(env.root)
     let file_auth = FileAuth(env.root)
     let sslctx =
       try
         recover val
-          lori.SSLContext
+          SSLContext
             .> set_authority(
               FilePath(file_auth, "cert.pem"))?
             .> set_cert(
@@ -279,11 +279,11 @@ Path traversal is prevented by Pony's `FilePath` capability system.
 use "files"
 use hobby = "hobby"
 use stallion = "stallion"
-use lori = "lori"
+use "net"
 
 actor Main is hobby.ServerNotify
   new create(env: Env) =>
-    let auth = lori.TCPListenAuth(env.root)
+    let auth = TCPListenAuth(env.root)
     let root =
       FilePath(FileAuth(env.root), "./public")
     let app = hobby.Application
@@ -318,7 +318,7 @@ Users import up to four packages:
   SignedCookieError, StreamingStarted
 - **`stallion`**: HTTP vocabulary (Status codes, Method, Headers, ServerConfig,
   ChunkedNotSupported)
-- **`lori`**: `TCPListenAuth(env.root)` for network access, `SSLContext`
+- **`net`**: `TCPListenAuth(env.root)` for network access, `SSLContext`
   for `Server.ssl()`
 - **`files`**: `FilePath`, `FileAuth` (needed for `ServeFiles` and
   `Server.ssl()` certificate loading)

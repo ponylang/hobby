@@ -48,7 +48,7 @@ make clean                          # clean build artifacts + corral cache
 make lint                           # run pony-lint
 ```
 
-`ssl=` is required (hobby uses `ssl/crypto` for cookie signing, and lori links against OpenSSL/LibreSSL): `3.0.x`, `1.1.x`, or `libressl` (CI uses libressl). Run `make lint` before pushing.
+`ssl=` is required (hobby uses `ssl/crypto` for cookie signing, and the stdlib `net` package links against OpenSSL/LibreSSL): `3.0.x`, `1.1.x`, or `libressl` (CI uses libressl). Run `make lint` before pushing.
 
 ## Architecture
 

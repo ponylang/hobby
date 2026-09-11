@@ -1,8 +1,8 @@
 use "time"
-use lori = "lori"
+use "net"
 use stallion = "stallion"
 
-actor Server is lori.TCPListenerActor
+actor Server is TCPListenerActor
   """
   HTTP/HTTPS server that accepts connections and dispatches requests
   through a compiled routing tree.
@@ -17,7 +17,7 @@ actor Server is lori.TCPListenerActor
 
     new create(env: Env) =>
       _env = env
-      let auth = lori.TCPListenAuth(env.root)
+      let auth = TCPListenAuth(env.root)
       let app = hobby.Application
         .> get("/", {(ctx) =>
           hobby.RequestHandler(consume ctx)
@@ -41,20 +41,20 @@ actor Server is lori.TCPListenerActor
 
   Call `dispose()` to shut down. In-flight connections drain naturally.
   """
-  var _tcp_listener: lori.TCPListener =
-    lori.TCPListener.none()
-  let _server_auth: lori.TCPServerAuth
+  var _tcp_listener: TCPListener =
+    TCPListener.none()
+  let _server_auth: TCPServerAuth
   let _config: stallion.ServerConfig
   let _router: _Router val
   let _notify: ServerNotify
   let _timers: Timers tag
   let _timeout_ns: U64
-  let _ssl_ctx: (lori.SSLContext val | None)
+  let _ssl_ctx: (SSLContext val | None)
   var _state: _ServerState =
     _ServerStarting
 
   new create(
-    auth: lori.TCPListenAuth,
+    auth: TCPListenAuth,
     app: BuiltApplication,
     notify: ServerNotify,
     host: String = "localhost",
@@ -72,7 +72,7 @@ actor Server is lori.TCPListenerActor
     timeout, etc.) — the host/port in `config` are not used for
     binding.
     """
-    _server_auth = lori.TCPServerAuth(auth)
+    _server_auth = TCPServerAuth(auth)
     _config = config
     _router = app._get_router()
     _notify = notify
@@ -81,13 +81,13 @@ actor Server is lori.TCPListenerActor
       _HandlerTimeoutToNs(handler_timeout)
     _ssl_ctx = None
     _tcp_listener =
-      lori.TCPListener(auth, host, port, this)
+      TCPListener(auth, host, port, this)
 
   new ssl(
-    auth: lori.TCPListenAuth,
+    auth: TCPListenAuth,
     app: BuiltApplication,
     notify: ServerNotify,
-    ssl_ctx: lori.SSLContext val,
+    ssl_ctx: SSLContext val,
     host: String = "localhost",
     port: String = "0",
     handler_timeout: (HandlerTimeout | None) =
@@ -102,7 +102,7 @@ actor Server is lori.TCPListenerActor
     `SSLContext`. The context must be configured with a certificate and
     private key.
     """
-    _server_auth = lori.TCPServerAuth(auth)
+    _server_auth = TCPServerAuth(auth)
     _config = config
     _router = app._get_router()
     _notify = notify
@@ -111,7 +111,7 @@ actor Server is lori.TCPListenerActor
       _HandlerTimeoutToNs(handler_timeout)
     _ssl_ctx = ssl_ctx
     _tcp_listener =
-      lori.TCPListener(auth, host, port, this)
+      TCPListener(auth, host, port, this)
 
   be dispose() =>
     """
@@ -127,11 +127,11 @@ actor Server is lori.TCPListenerActor
     """
     _state.connection_failed(this, reason)
 
-  fun ref _listener(): lori.TCPListener =>
+  fun ref _listener(): TCPListener =>
     _tcp_listener
 
   fun ref _on_accept(fd: U32)
-    : lori.TCPConnectionActor
+    : TCPConnectionActor
   =>
     _state.on_accept(this, fd)
 
@@ -150,7 +150,7 @@ actor Server is lori.TCPListenerActor
     _timers.dispose()
 
   fun ref _do_accept(fd: U32)
-    : lori.TCPConnectionActor
+    : TCPConnectionActor
   =>
     _Connection(
       _server_auth,
