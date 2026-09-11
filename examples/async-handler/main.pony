@@ -2,7 +2,7 @@
 // use hobby = "hobby"
 use hobby = "../../hobby"
 use stallion = "stallion"
-use lori = "lori"
+use "net"
 
 actor Main is hobby.ServerNotify
   """
@@ -25,7 +25,7 @@ actor Main is hobby.ServerNotify
 
   new create(env: Env) =>
     _env = env
-    let auth = lori.TCPListenAuth(env.root)
+    let auth = TCPListenAuth(env.root)
     let slow = SlowService
     let app = hobby.Application
       .> get(

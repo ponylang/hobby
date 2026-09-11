@@ -1,7 +1,7 @@
 use "collections"
 use "time"
 use stallion = "stallion"
-use lori = "lori"
+use "net"
 
 // Connection states
 primitive _Idle
@@ -42,14 +42,14 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
   embed _pending_requests: Array[_PendingRequest]
 
   new create(
-    auth: lori.TCPServerAuth,
+    auth: TCPServerAuth,
     fd: U32,
     config: stallion.ServerConfig,
     router: _Router val,
     timers: Timers tag,
     timeout_ns: U64,
     server: Server tag,
-    ssl_ctx: (lori.SSLContext val | None) = None)
+    ssl_ctx: (SSLContext val | None) = None)
   =>
     _router = router
     _timers = timers
@@ -58,7 +58,7 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
     _pending_requests = Array[_PendingRequest]
     _http =
       match ssl_ctx
-      | let ctx: lori.SSLContext val =>
+      | let ctx: SSLContext val =>
         stallion.HTTPServer.ssl(auth, ctx, fd, this, config)
       else
         stallion.HTTPServer(auth, fd, this, config)
@@ -121,9 +121,9 @@ actor _Connection is (stallion.HTTPServerActor & _ConnectionProtocol)
     | let h: HandlerReceiver tag => h.unthrottled()
     end
 
-  fun ref on_start_failure(reason: lori.StartFailureReason) =>
+  fun ref on_start_failure(reason: StartFailureReason) =>
     match \exhaustive\ reason
-    | lori.StartFailedSSL =>
+    | StartFailedSSL =>
       _server._connection_failed("SSL handshake")
     end
 

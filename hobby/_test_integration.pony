@@ -4,7 +4,6 @@ use "constrained_types"
 use "files"
 use "time"
 use stallion = "stallion"
-use lori = "lori"
 use "net"
 
 primitive \nodoc\ _TestIntegrationList
@@ -46,13 +45,13 @@ primitive \nodoc\ _TestHost
     ifdef linux then "127.0.0.2" else "localhost" end
 
 actor \nodoc\ _TestClient is
-  (lori.TCPConnectionActor &
-    lori.ClientLifecycleEventReceiver)
+  (TCPConnectionActor &
+    ClientLifecycleEventReceiver)
   """
   Simple TCP client that sends raw HTTP and collects the response.
   """
-  var _tcp_connection: lori.TCPConnection =
-    lori.TCPConnection.none()
+  var _tcp_connection: TCPConnection =
+    TCPConnection.none()
   let _h: TestHelper
   let _request: String
   let _expected: String
@@ -60,7 +59,7 @@ actor \nodoc\ _TestClient is
   var _response: String iso = recover iso String end
 
   new create(
-    auth: lori.TCPConnectAuth,
+    auth: TCPConnectAuth,
     host: String,
     port: String,
     h: TestHelper,
@@ -73,16 +72,16 @@ actor \nodoc\ _TestClient is
     _expected = expected
     _server = server
     _tcp_connection =
-      lori.TCPConnection.client(
+      TCPConnection.client(
         auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection =>
+  fun ref _connection(): TCPConnection =>
     _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
 
-  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
+  fun ref _on_received(data: Array[U8] iso): ReadAction =>
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains(_expected) then
@@ -90,12 +89,12 @@ actor \nodoc\ _TestClient is
       _server.dispose()
       _h.complete(true)
     end
-    lori.KeepReading
+    KeepReading
 
   fun ref _on_closed() => None
 
   fun ref _on_connection_failure(
-    reason: lori.ConnectionFailureReason)
+    reason: ConnectionFailureReason)
   =>
     _h.fail("connection failed")
     _server.dispose()
@@ -181,8 +180,8 @@ primitive \nodoc\ _IntegrationHelpers
   =>
     h.long_test(5_000_000_000)
     let host = _TestHost()
-    let auth = lori.TCPListenAuth(h.env.root)
-    let connect_auth = lori.TCPConnectAuth(h.env.root)
+    let auth = TCPListenAuth(h.env.root)
+    let connect_auth = TCPConnectAuth(h.env.root)
     let app = BuiltApplication._create(router)
     let notify =
       _TestServerNotify(
@@ -545,14 +544,14 @@ class \nodoc\ iso _TestPipelinedStreaming is UnitTest
 
 // --- HEAD test helpers ---
 actor \nodoc\ _TestHeadClient is
-  (lori.TCPConnectionActor &
-    lori.ClientLifecycleEventReceiver)
+  (TCPConnectionActor &
+    ClientLifecycleEventReceiver)
   """
   TCP client for HEAD tests: checks that an expected header is present
   AND a forbidden body string is absent.
   """
-  var _tcp_connection: lori.TCPConnection =
-    lori.TCPConnection.none()
+  var _tcp_connection: TCPConnection =
+    TCPConnection.none()
   let _h: TestHelper
   let _request: String
   let _expect_header: String
@@ -561,7 +560,7 @@ actor \nodoc\ _TestHeadClient is
   var _response: String iso = recover iso String end
 
   new create(
-    auth: lori.TCPConnectAuth,
+    auth: TCPConnectAuth,
     host: String,
     port: String,
     h: TestHelper,
@@ -576,16 +575,16 @@ actor \nodoc\ _TestHeadClient is
     _forbid_body = forbid_body
     _server = server
     _tcp_connection =
-      lori.TCPConnection.client(
+      TCPConnection.client(
         auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection =>
+  fun ref _connection(): TCPConnection =>
     _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
 
-  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
+  fun ref _on_received(data: Array[U8] iso): ReadAction =>
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains(_expect_header) then
@@ -597,12 +596,12 @@ actor \nodoc\ _TestHeadClient is
       _server.dispose()
       _h.complete(true)
     end
-    lori.KeepReading
+    KeepReading
 
   fun ref _on_closed() => None
 
   fun ref _on_connection_failure(
-    reason: lori.ConnectionFailureReason)
+    reason: ConnectionFailureReason)
   =>
     _h.fail("connection failed")
     _server.dispose()
@@ -625,8 +624,8 @@ primitive \nodoc\ _HeadIntegrationHelpers
   =>
     h.long_test(5_000_000_000)
     let host = _TestHost()
-    let auth = lori.TCPListenAuth(h.env.root)
-    let connect_auth = lori.TCPConnectAuth(h.env.root)
+    let auth = TCPListenAuth(h.env.root)
+    let connect_auth = TCPConnectAuth(h.env.root)
     let app = BuiltApplication._create(router)
     let notify =
       _TestServerNotify(
@@ -811,7 +810,7 @@ primitive \nodoc\ _TimeoutTestHelpers
   =>
     h.long_test(10_000_000_000)
     let host = _TestHost()
-    let auth = lori.TCPListenAuth(h.env.root)
+    let auth = TCPListenAuth(h.env.root)
     let app = BuiltApplication._create(router)
     let timeout =
       match MakeHandlerTimeout(500)
@@ -829,20 +828,20 @@ primitive \nodoc\ _TimeoutTestHelpers
       handler_timeout = timeout)
 
 actor \nodoc\ _TestTimeoutClient is
-  (lori.TCPConnectionActor &
-    lori.ClientLifecycleEventReceiver)
+  (TCPConnectionActor &
+    ClientLifecycleEventReceiver)
   """
   TCP client for timeout tests that expects 504.
   """
-  var _tcp_connection: lori.TCPConnection =
-    lori.TCPConnection.none()
+  var _tcp_connection: TCPConnection =
+    TCPConnection.none()
   let _h: TestHelper
   let _request: String
   let _server: Server tag
   var _response: String iso = recover iso String end
 
   new create(
-    auth: lori.TCPConnectAuth,
+    auth: TCPConnectAuth,
     host: String,
     port: String,
     h: TestHelper,
@@ -853,16 +852,16 @@ actor \nodoc\ _TestTimeoutClient is
     _request = request
     _server = server
     _tcp_connection =
-      lori.TCPConnection.client(
+      TCPConnection.client(
         auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection =>
+  fun ref _connection(): TCPConnection =>
     _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
 
-  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
+  fun ref _on_received(data: Array[U8] iso): ReadAction =>
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains("504") or
@@ -872,12 +871,12 @@ actor \nodoc\ _TestTimeoutClient is
       _server.dispose()
       _h.complete(true)
     end
-    lori.KeepReading
+    KeepReading
 
   fun ref _on_closed() => None
 
   fun ref _on_connection_failure(
-    reason: lori.ConnectionFailureReason)
+    reason: ConnectionFailureReason)
   =>
     _h.fail("connection failed")
     _server.dispose()
@@ -893,7 +892,7 @@ class \nodoc\ iso _TestHandlerTimeout504 is UnitTest
 
   fun apply(h: TestHelper) =>
     let host = _TestHost()
-    let connect_auth = lori.TCPConnectAuth(h.env.root)
+    let connect_auth = TCPConnectAuth(h.env.root)
     let router =
       _IntegrationHelpers.build_router(
         recover val
@@ -934,13 +933,13 @@ actor \nodoc\ _StreamTimeoutHandler is HandlerReceiver
   be unthrottled() => None
 
 actor \nodoc\ _TestStreamTimeoutClient is
-  (lori.TCPConnectionActor &
-    lori.ClientLifecycleEventReceiver)
+  (TCPConnectionActor &
+    ClientLifecycleEventReceiver)
   """
   Accumulates response; expects chunk received then connection closed.
   """
-  var _tcp_connection: lori.TCPConnection =
-    lori.TCPConnection.none()
+  var _tcp_connection: TCPConnection =
+    TCPConnection.none()
   let _h: TestHelper
   let _request: String
   let _server: Server tag
@@ -948,7 +947,7 @@ actor \nodoc\ _TestStreamTimeoutClient is
   var _got_chunk: Bool = false
 
   new create(
-    auth: lori.TCPConnectAuth,
+    auth: TCPConnectAuth,
     host: String,
     port: String,
     h: TestHelper,
@@ -959,22 +958,22 @@ actor \nodoc\ _TestStreamTimeoutClient is
     _request = request
     _server = server
     _tcp_connection =
-      lori.TCPConnection.client(
+      TCPConnection.client(
         auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection =>
+  fun ref _connection(): TCPConnection =>
     _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
 
-  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
+  fun ref _on_received(data: Array[U8] iso): ReadAction =>
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains("stream-timeout-chunk") then
       _got_chunk = true
     end
-    lori.KeepReading
+    KeepReading
 
   fun ref _on_closed() =>
     if _got_chunk then
@@ -988,7 +987,7 @@ actor \nodoc\ _TestStreamTimeoutClient is
     end
 
   fun ref _on_connection_failure(
-    reason: lori.ConnectionFailureReason)
+    reason: ConnectionFailureReason)
   =>
     _h.fail("connection failed")
     _server.dispose()
@@ -1004,7 +1003,7 @@ class \nodoc\ iso _TestStreamingTimeout is UnitTest
 
   fun apply(h: TestHelper) =>
     let host = _TestHost()
-    let connect_auth = lori.TCPConnectAuth(h.env.root)
+    let connect_auth = TCPConnectAuth(h.env.root)
     let factory: HandlerFactory =
       {(ctx) =>
       _StreamTimeoutHandler(consume ctx)
@@ -1072,17 +1071,17 @@ actor \nodoc\ _WaitForDisposeHandler is HandlerReceiver
   be unthrottled() => None
 
 actor \nodoc\ _DisconnectAfterSendClient is
-  (lori.TCPConnectionActor &
-    lori.ClientLifecycleEventReceiver)
+  (TCPConnectionActor &
+    ClientLifecycleEventReceiver)
   """
   Sends a request then closes the connection after a short delay.
   """
-  var _tcp_connection: lori.TCPConnection = lori.TCPConnection.none()
+  var _tcp_connection: TCPConnection = TCPConnection.none()
   let _h: TestHelper
   let _request: String
 
   new create(
-    auth: lori.TCPConnectAuth,
+    auth: TCPConnectAuth,
     host: String,
     port: String,
     h: TestHelper,
@@ -1091,10 +1090,10 @@ actor \nodoc\ _DisconnectAfterSendClient is
     _h = h
     _request = request
     _tcp_connection =
-      lori.TCPConnection.client(
+      TCPConnection.client(
         auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection => _tcp_connection
+  fun ref _connection(): TCPConnection => _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
@@ -1107,12 +1106,12 @@ actor \nodoc\ _DisconnectAfterSendClient is
   be _disconnect_now() =>
     _tcp_connection.close()
 
-  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
-    lori.KeepReading
+  fun ref _on_received(data: Array[U8] iso): ReadAction =>
+    KeepReading
 
   fun ref _on_closed() => None
 
-  fun ref _on_connection_failure(reason: lori.ConnectionFailureReason) =>
+  fun ref _on_connection_failure(reason: ConnectionFailureReason) =>
     _h.fail("connection failed")
     _h.complete(false)
 
@@ -1127,8 +1126,8 @@ class \nodoc\ iso _TestOnClosedDispose is UnitTest
   fun apply(h: TestHelper) =>
     h.long_test(10_000_000_000)
     let host = _TestHost()
-    let auth = lori.TCPListenAuth(h.env.root)
-    let connect_auth = lori.TCPConnectAuth(h.env.root)
+    let auth = TCPListenAuth(h.env.root)
+    let connect_auth = TCPConnectAuth(h.env.root)
     let coordinator = _DisposeCoordinator
     let factory: HandlerFactory =
       {(ctx)(coordinator) =>
@@ -1283,7 +1282,7 @@ class \nodoc\ iso _TestRespondAfterDispose is UnitTest
 
   fun apply(h: TestHelper) =>
     let host = _TestHost()
-    let connect_auth = lori.TCPConnectAuth(h.env.root)
+    let connect_auth = TCPConnectAuth(h.env.root)
     let factory: HandlerFactory =
       {(ctx) =>
       _LateRespondHandler(consume ctx)
@@ -1310,20 +1309,20 @@ class \nodoc\ iso _TestRespondAfterDispose is UnitTest
 
 // --- Normal completion with timeout test ---
 actor \nodoc\ _TestTimeoutNormalClient is
-  (lori.TCPConnectionActor &
-    lori.ClientLifecycleEventReceiver)
+  (TCPConnectionActor &
+    ClientLifecycleEventReceiver)
   """
   TCP client that expects a normal response, fails on 504.
   """
-  var _tcp_connection: lori.TCPConnection =
-    lori.TCPConnection.none()
+  var _tcp_connection: TCPConnection =
+    TCPConnection.none()
   let _h: TestHelper
   let _request: String
   let _server: Server tag
   var _response: String iso = recover iso String end
 
   new create(
-    auth: lori.TCPConnectAuth,
+    auth: TCPConnectAuth,
     host: String,
     port: String,
     h: TestHelper,
@@ -1334,16 +1333,16 @@ actor \nodoc\ _TestTimeoutNormalClient is
     _request = request
     _server = server
     _tcp_connection =
-      lori.TCPConnection.client(
+      TCPConnection.client(
         auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection =>
+  fun ref _connection(): TCPConnection =>
     _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
 
-  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
+  fun ref _on_received(data: Array[U8] iso): ReadAction =>
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains("Hello from Hobby!") then
@@ -1358,12 +1357,12 @@ actor \nodoc\ _TestTimeoutNormalClient is
       _server.dispose()
       _h.complete(false)
     end
-    lori.KeepReading
+    KeepReading
 
   fun ref _on_closed() => None
 
   fun ref _on_connection_failure(
-    reason: lori.ConnectionFailureReason)
+    reason: ConnectionFailureReason)
   =>
     _h.fail("connection failed")
     _server.dispose()
@@ -1379,7 +1378,7 @@ class \nodoc\ iso _TestNormalCompletionWithTimeout is UnitTest
 
   fun apply(h: TestHelper) =>
     let host = _TestHost()
-    let connect_auth = lori.TCPConnectAuth(h.env.root)
+    let connect_auth = TCPConnectAuth(h.env.root)
     let router =
       _IntegrationHelpers.build_router(
         recover val
@@ -1437,8 +1436,8 @@ class \nodoc\ iso _TestOnClosedStreamingDispose is UnitTest
   fun apply(h: TestHelper) =>
     h.long_test(10_000_000_000)
     let host = _TestHost()
-    let auth = lori.TCPListenAuth(h.env.root)
-    let connect_auth = lori.TCPConnectAuth(h.env.root)
+    let auth = TCPListenAuth(h.env.root)
+    let connect_auth = TCPConnectAuth(h.env.root)
     let coordinator = _DisposeCoordinator
     let factory: HandlerFactory =
       {(ctx)(coordinator) =>
@@ -1492,10 +1491,10 @@ class \nodoc\ iso _TestMethodNotAllowed405 is UnitTest
 
 // --- SSL test helpers ---
 primitive \nodoc\ _TestSSLContext
-  fun apply(h: TestHelper): lori.SSLContext val ? =>
+  fun apply(h: TestHelper): SSLContext val ? =>
     let file_auth = FileAuth(h.env.root)
     recover val
-      lori.SSLContext
+      SSLContext
         .> set_authority(
           FilePath(file_auth, "assets/cert.pem"))?
         .> set_cert(
@@ -1506,13 +1505,13 @@ primitive \nodoc\ _TestSSLContext
     end
 
 actor \nodoc\ _TestSSLClient is
-  (lori.TCPConnectionActor &
-    lori.ClientLifecycleEventReceiver)
+  (TCPConnectionActor &
+    ClientLifecycleEventReceiver)
   """
   SSL-aware TCP client for HTTPS integration tests.
   """
-  var _tcp_connection: lori.TCPConnection =
-    lori.TCPConnection.none()
+  var _tcp_connection: TCPConnection =
+    TCPConnection.none()
   let _h: TestHelper
   let _request: String
   let _expected: String
@@ -1520,8 +1519,8 @@ actor \nodoc\ _TestSSLClient is
   var _response: String iso = recover iso String end
 
   new create(
-    auth: lori.TCPConnectAuth,
-    ssl_ctx: lori.SSLContext val,
+    auth: TCPConnectAuth,
+    ssl_ctx: SSLContext val,
     host: String,
     port: String,
     h: TestHelper,
@@ -1534,16 +1533,16 @@ actor \nodoc\ _TestSSLClient is
     _expected = expected
     _server = server
     _tcp_connection =
-      lori.TCPConnection.ssl_client(
+      TCPConnection.ssl_client(
         auth, ssl_ctx, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection =>
+  fun ref _connection(): TCPConnection =>
     _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(_request)
 
-  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
+  fun ref _on_received(data: Array[U8] iso): ReadAction =>
     _response.append(consume data)
     let response_str: String val = _response.clone()
     if response_str.contains(_expected) then
@@ -1551,12 +1550,12 @@ actor \nodoc\ _TestSSLClient is
       _server.dispose()
       _h.complete(true)
     end
-    lori.KeepReading
+    KeepReading
 
   fun ref _on_closed() => None
 
   fun ref _on_connection_failure(
-    reason: lori.ConnectionFailureReason)
+    reason: ConnectionFailureReason)
   =>
     _h.fail("SSL connection failed")
     _server.dispose()
@@ -1571,8 +1570,8 @@ primitive \nodoc\ _SSLIntegrationHelpers
   =>
     h.long_test(5_000_000_000)
     let host = _TestHost()
-    let auth = lori.TCPListenAuth(h.env.root)
-    let connect_auth = lori.TCPConnectAuth(h.env.root)
+    let auth = TCPListenAuth(h.env.root)
+    let connect_auth = TCPConnectAuth(h.env.root)
     let ssl_ctx =
       try
         _TestSSLContext(h)?
@@ -1660,8 +1659,8 @@ class \nodoc\ iso _TestSSLHandshakeFailure is UnitTest
   fun apply(h: TestHelper) =>
     h.long_test(5_000_000_000)
     let host = _TestHost()
-    let auth = lori.TCPListenAuth(h.env.root)
-    let connect_auth = lori.TCPConnectAuth(h.env.root)
+    let auth = TCPListenAuth(h.env.root)
+    let connect_auth = TCPConnectAuth(h.env.root)
     let ssl_ctx =
       try
         _TestSSLContext(h)?
@@ -1699,25 +1698,25 @@ class \nodoc\ iso _TestSSLHandshakeFailure is UnitTest
       where host = host, port = "0")
 
 actor \nodoc\ _PlainTCPThenSSLClient is
-  (lori.TCPConnectionActor &
-    lori.ClientLifecycleEventReceiver)
+  (TCPConnectionActor &
+    ClientLifecycleEventReceiver)
   """
   Sends a plain HTTP request to an SSL listener (triggering a
   handshake failure), then connects with a proper SSL client to
   verify the server survived.
   """
-  var _tcp_connection: lori.TCPConnection =
-    lori.TCPConnection.none()
-  let _connect_auth: lori.TCPConnectAuth
-  let _ssl_ctx: lori.SSLContext val
+  var _tcp_connection: TCPConnection =
+    TCPConnection.none()
+  let _connect_auth: TCPConnectAuth
+  let _ssl_ctx: SSLContext val
   let _host: String
   let _port: String
   let _h: TestHelper
   let _server: Server tag
 
   new create(
-    connect_auth: lori.TCPConnectAuth,
-    ssl_ctx: lori.SSLContext val,
+    connect_auth: TCPConnectAuth,
+    ssl_ctx: SSLContext val,
     host: String,
     port: String,
     h: TestHelper,
@@ -1731,10 +1730,10 @@ actor \nodoc\ _PlainTCPThenSSLClient is
     _server = server
     // Connect as plain TCP — no SSL
     _tcp_connection =
-      lori.TCPConnection.client(
+      TCPConnection.client(
         connect_auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection =>
+  fun ref _connection(): TCPConnection =>
     _tcp_connection
 
   fun ref _on_connected() =>
@@ -1742,8 +1741,8 @@ actor \nodoc\ _PlainTCPThenSSLClient is
     _tcp_connection.send(
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
 
-  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
-    lori.KeepReading
+  fun ref _on_received(data: Array[U8] iso): ReadAction =>
+    KeepReading
 
   fun ref _on_closed() =>
     // Plain connection was closed (expected). Now connect
@@ -1759,7 +1758,7 @@ actor \nodoc\ _PlainTCPThenSSLClient is
       _server)
 
   fun ref _on_connection_failure(
-    reason: lori.ConnectionFailureReason)
+    reason: ConnectionFailureReason)
   =>
     // Connection failure is also acceptable — the SSL
     // listener may reject before we connect. Proceed to
@@ -1788,7 +1787,7 @@ class \nodoc\ iso _TestSSLConnectionFailedNotify
   fun apply(h: TestHelper) =>
     h.long_test(5_000_000_000)
     let host = _TestHost()
-    let auth = lori.TCPListenAuth(h.env.root)
+    let auth = TCPListenAuth(h.env.root)
     let ssl_ctx =
       try
         _TestSSLContext(h)?
@@ -1827,7 +1826,7 @@ actor \nodoc\ _ConnectionFailedNotify
     service: String)
   =>
     let connect_auth =
-      lori.TCPConnectAuth(_h.env.root)
+      TCPConnectAuth(_h.env.root)
     // Send plain TCP to SSL server
     _PlainTCPClient(
       connect_auth, host, service, this)
@@ -1857,42 +1856,42 @@ actor \nodoc\ _ConnectionFailedNotify
     end
 
 actor \nodoc\ _PlainTCPClient is
-  (lori.TCPConnectionActor &
-    lori.ClientLifecycleEventReceiver)
+  (TCPConnectionActor &
+    ClientLifecycleEventReceiver)
   """
   Sends plain HTTP to an SSL listener, triggering a handshake
   failure. Notifies the coordinator when done.
   """
-  var _tcp_connection: lori.TCPConnection =
-    lori.TCPConnection.none()
+  var _tcp_connection: TCPConnection =
+    TCPConnection.none()
   let _notify: _ConnectionFailedNotify
 
   new create(
-    auth: lori.TCPConnectAuth,
+    auth: TCPConnectAuth,
     host: String,
     port: String,
     notify: _ConnectionFailedNotify)
   =>
     _notify = notify
     _tcp_connection =
-      lori.TCPConnection.client(
+      TCPConnection.client(
         auth, host, port, "", this, this)
 
-  fun ref _connection(): lori.TCPConnection =>
+  fun ref _connection(): TCPConnection =>
     _tcp_connection
 
   fun ref _on_connected() =>
     _tcp_connection.send(
       "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
 
-  fun ref _on_received(data: Array[U8] iso): lori.ReadAction =>
-    lori.KeepReading
+  fun ref _on_received(data: Array[U8] iso): ReadAction =>
+    KeepReading
 
   fun ref _on_closed() =>
     _notify.plain_client_done()
 
   fun ref _on_connection_failure(
-    reason: lori.ConnectionFailureReason)
+    reason: ConnectionFailureReason)
   =>
     _notify.plain_client_done()
 
