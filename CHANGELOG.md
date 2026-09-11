@@ -2,18 +2,11 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a CHANGELOG](http://keepachangelog.com/).
 
-## [unreleased] - unreleased
-
-### Fixed
-
-
-### Added
-
+## [0.15.0] - 2026-09-11
 
 ### Changed
 
 - Update to work with ponyc 0.72.0 ([PR #127](https://github.com/ponylang/hobby/pull/127))
-
 
 ## [0.14.0] - 2026-09-07
 
