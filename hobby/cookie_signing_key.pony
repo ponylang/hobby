@@ -1,4 +1,4 @@
-use crypto = "ssl/crypto"
+use crypto = "crypto"
 
 class val CookieSigningKey
   """

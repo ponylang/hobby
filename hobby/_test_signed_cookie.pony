@@ -1,6 +1,6 @@
 use "pony_test"
 use "pony_check"
-use crypto = "ssl/crypto"
+use crypto = "crypto"
 
 primitive \nodoc\ _TestSignedCookieList
   fun tests(test: PonyTest) =>
