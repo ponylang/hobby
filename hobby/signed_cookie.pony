@@ -1,4 +1,4 @@
-use crypto = "ssl/crypto"
+use crypto = "crypto"
 use "encode/base64"
 
 primitive SignedCookie

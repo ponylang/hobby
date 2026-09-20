@@ -8,14 +8,12 @@ hobby is beta quality software that will change frequently. Expect breaking chan
 
 ## Installation
 
-* Requires ponyc 0.72.1 or later.
+* Requires ponyc 0.73.0 or later.
 * Install [corral](https://github.com/ponylang/corral)
 * `corral add github.com/ponylang/hobby.git --version 0.16.0`
 * `corral fetch` to fetch your dependencies
 * `use "hobby"` to include this package
 * `corral run -- ponyc` to compile your application
-
-Note: The ssl transitive dependency requires a C SSL library to be installed. Please see the ssl installation instructions for more information.
 
 ## Usage
 
