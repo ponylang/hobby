@@ -1,15 +1,14 @@
 use "pony_test"
-use "pony_check"
 
 primitive \nodoc\ _TestHTTPDateList
   fun tests(test: PonyTest) =>
     test(_TestHTTPDateEpochZero)
     test(_TestHTTPDateSunday)
     test(_TestHTTPDateKnownDate)
-    test(Property1UnitTest[I64](_PropertyHTTPDateLength))
-    test(Property1UnitTest[I64](_PropertyHTTPDateEndsWithGMT))
-    test(Property1UnitTest[I64](_PropertyHTTPDateStartsWithDayName))
-    test(Property1UnitTest[I64](_PropertyHTTPDateDayPadded))
+    test.property(_PropertyHTTPDateLength)
+    test.property(_PropertyHTTPDateEndsWithGMT)
+    test.property(_PropertyHTTPDateStartsWithDayName)
+    test.property(_PropertyHTTPDateDayPadded)
 
 // --- Generators ---
 primitive \nodoc\ _GenEpochSeconds
@@ -53,7 +52,7 @@ class \nodoc\ iso _TestHTTPDateKnownDate is UnitTest
       "Mon, 15 Jul 2024 14:30:00 GMT", _HTTPDate(1_721_053_800))
 
 // --- Property tests ---
-class \nodoc\ iso _PropertyHTTPDateLength is Property1[I64]
+class \nodoc\ iso _PropertyHTTPDateLength is Property[I64]
   """
   IMF-fixdate is always 29 characters.
   """
@@ -64,7 +63,7 @@ class \nodoc\ iso _PropertyHTTPDateLength is Property1[I64]
   fun property(seconds: I64, h: PropertyHelper) =>
     h.assert_eq[USize](29, _HTTPDate(seconds).size())
 
-class \nodoc\ iso _PropertyHTTPDateEndsWithGMT is Property1[I64]
+class \nodoc\ iso _PropertyHTTPDateEndsWithGMT is Property[I64]
   """
   Output always ends with ' GMT'.
   """
@@ -78,7 +77,7 @@ class \nodoc\ iso _PropertyHTTPDateEndsWithGMT is Property1[I64]
       result.contains(" GMT"),
       "Expected ' GMT' suffix in: " + result)
 
-class \nodoc\ iso _PropertyHTTPDateStartsWithDayName is Property1[I64]
+class \nodoc\ iso _PropertyHTTPDateStartsWithDayName is Property[I64]
   """
   Output always starts with a valid 3-letter day name followed by ', '.
   """
@@ -103,7 +102,7 @@ class \nodoc\ iso _PropertyHTTPDateStartsWithDayName is Property1[I64]
       found,
       "Expected valid day prefix in: " + result)
 
-class \nodoc\ iso _PropertyHTTPDateDayPadded is Property1[I64]
+class \nodoc\ iso _PropertyHTTPDateDayPadded is Property[I64]
   """
   Day-of-month is always 2 digits (zero-padded).
   """

@@ -1,13 +1,12 @@
 use "pony_test"
-use "pony_check"
 
 primitive \nodoc\ _TestContentTypeList
   fun tests(test: PonyTest) =>
-    test(Property1UnitTest[String](_PropertyKnownExtensionMapsToMIME))
-    test(Property1UnitTest[String](_PropertyUnknownExtensionMapsToOctetStream))
+    test.property(_PropertyKnownExtensionMapsToMIME)
+    test.property(_PropertyUnknownExtensionMapsToOctetStream)
     test(_TestContentTypeCaseInsensitive)
-    test(Property1UnitTest[(String, String)](_PropertyOverrideReplacesDefault))
-    test(Property1UnitTest[(String, String)](_PropertyOverrideAddsNew))
+    test.property(_PropertyOverrideReplacesDefault)
+    test.property(_PropertyOverrideAddsNew)
     test(_TestOverridePreservesDefaults)
     test(_TestOverrideCaseInsensitive)
 
@@ -41,7 +40,7 @@ primitive \nodoc\ _GenMIMEType
       .map[String]({(s: String): String => "test/" + s })
 
 // --- Property tests ---
-class \nodoc\ iso _PropertyKnownExtensionMapsToMIME is Property1[String]
+class \nodoc\ iso _PropertyKnownExtensionMapsToMIME is Property[String]
   """
   Every known extension maps to a non-empty, non-default MIME type.
   """
@@ -56,7 +55,7 @@ class \nodoc\ iso _PropertyKnownExtensionMapsToMIME is Property1[String]
     h.assert_ne[String]("application/octet-stream", mime)
 
 class \nodoc\ iso _PropertyUnknownExtensionMapsToOctetStream is
-  Property1[String]
+  Property[String]
   """
   Unknown extensions map to application/octet-stream.
   """
@@ -70,7 +69,7 @@ class \nodoc\ iso _PropertyUnknownExtensionMapsToOctetStream is
     h.assert_eq[String]("application/octet-stream", ct(ext))
 
 class \nodoc\ iso _PropertyOverrideReplacesDefault is
-  Property1[(String, String)]
+  Property[(String, String)]
   """
   Overriding a known extension replaces the default MIME type.
   """
@@ -86,7 +85,7 @@ class \nodoc\ iso _PropertyOverrideReplacesDefault is
     h.assert_eq[String](mime, ct(ext))
 
 class \nodoc\ iso _PropertyOverrideAddsNew is
-  Property1[(String, String)]
+  Property[(String, String)]
   """
   Adding an unknown extension via add makes it resolvable.
   """
