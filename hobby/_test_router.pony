@@ -1,26 +1,21 @@
 use "pony_test"
-use "pony_check"
 use "collections"
 use stallion = "stallion"
 
 primitive \nodoc\ _TestRouterList
   fun tests(test: PonyTest) =>
-    test(Property1UnitTest[String](_PropertyStaticRouteMatches))
-    test(Property1UnitTest[String](_PropertyUnregisteredReturnsMiss))
-    test(Property1UnitTest[
-      (String, String)](_PropertyParamExtraction))
-    test(Property1UnitTest[
-      (String, String, String)](_PropertyMultipleParams))
-    test(Property1UnitTest[stallion.Method](_PropertyMethodIsolation))
-    test(Property1UnitTest[String](_PropertyWildcardCapture))
+    test.property(_PropertyStaticRouteMatches)
+    test.property(_PropertyUnregisteredReturnsMiss)
+    test.property(_PropertyParamExtraction)
+    test.property(_PropertyMultipleParams)
+    test.property(_PropertyMethodIsolation)
+    test.property(_PropertyWildcardCapture)
     test(_TestStaticPriorityOverParam)
     test(_TestRootPath)
     test(_TestOverlappingPrefixes)
     test(_TestWildcardSingleSegment)
     test(_TestTrailingSlashNormalization)
-    test(Property1UnitTest[
-      (Array[USize] val, Array[USize] val)](
-      _PropertyInsertionOrderInvariance))
+    test.property(_PropertyInsertionOrderInvariance)
     test(_TestHeadFallbackInRouter)
     test(_TestInterceptorAccumulation)
     test(_TestMissCarriesInterceptors)
@@ -51,7 +46,7 @@ primitive \nodoc\ _TestRouterList
     test(_TestDoubleSlashNormalization)
     test(_TestWildcardDoubleSlashNormalization)
     test(_TestSplitSegmentsEdgeCases)
-    test(Property1UnitTest[String](_PropertySplitJoinRoundTrip))
+    test.property(_PropertySplitJoinRoundTrip)
     test(_TestJoinRemainingSegments)
     test(_TestRoutesBeforeInterceptors)
     test(_TestMethodNotAllowedCarriesInterceptors)
@@ -113,7 +108,7 @@ primitive \nodoc\ _NoOpFactory
     RequestHandler(consume ctx).respond(stallion.StatusOK, "ok")
 
 // --- Property tests ---
-class \nodoc\ iso _PropertyStaticRouteMatches is Property1[String]
+class \nodoc\ iso _PropertyStaticRouteMatches is Property[String]
   """
   A registered static route always matches.
   """
@@ -132,7 +127,7 @@ class \nodoc\ iso _PropertyStaticRouteMatches is Property1[String]
       h.fail("expected match for " + path)
     end
 
-class \nodoc\ iso _PropertyUnregisteredReturnsMiss is Property1[String]
+class \nodoc\ iso _PropertyUnregisteredReturnsMiss is Property[String]
   """
   An unregistered path returns _RouteMiss.
   """
@@ -151,7 +146,7 @@ class \nodoc\ iso _PropertyUnregisteredReturnsMiss is Property1[String]
     end
 
 class \nodoc\ iso _PropertyParamExtraction is
-  Property1[(String, String)]
+  Property[(String, String)]
   """
   `:name` segments are captured correctly.
   """
@@ -182,7 +177,7 @@ class \nodoc\ iso _PropertyParamExtraction is
     end
 
 class \nodoc\ iso _PropertyMultipleParams is
-  Property1[(String, String, String)]
+  Property[(String, String, String)]
   """
   Multiple `:name` segments are all extracted.
   """
@@ -221,7 +216,7 @@ class \nodoc\ iso _PropertyMultipleParams is
     end
 
 class \nodoc\ iso _PropertyMethodIsolation is
-  Property1[stallion.Method]
+  Property[stallion.Method]
   """
   A route registered for one method does not match another.
   """
@@ -259,7 +254,7 @@ class \nodoc\ iso _PropertyMethodIsolation is
       h.fail("should be 405, not 404")
     end
 
-class \nodoc\ iso _PropertyWildcardCapture is Property1[String]
+class \nodoc\ iso _PropertyWildcardCapture is Property[String]
   """
   `*name` captures the remainder of the path.
   """
@@ -830,7 +825,7 @@ class \nodoc\ iso _Test405MergeDeduplicatesOverlappingMethods
 
 // --- Property test: insertion order invariance ---
 class \nodoc\ iso _PropertyInsertionOrderInvariance is
-  Property1[(Array[USize] val, Array[USize] val)]
+  Property[(Array[USize] val, Array[USize] val)]
   """
   Route lookup results are independent of insertion order.
 
@@ -1862,7 +1857,7 @@ class \nodoc\ iso _TestSplitSegmentsEdgeCases is UnitTest
       h.fail("param/wildcard segment access failed")
     end
 
-class \nodoc\ iso _PropertySplitJoinRoundTrip is Property1[String]
+class \nodoc\ iso _PropertySplitJoinRoundTrip is Property[String]
   """
   Splitting a static path into segments and joining them all back produces
   the original path without the leading slash.

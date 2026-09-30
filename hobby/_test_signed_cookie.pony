@@ -1,5 +1,4 @@
 use "pony_test"
-use "pony_check"
 use crypto = "crypto"
 
 primitive \nodoc\ _TestSignedCookieList
@@ -16,13 +15,12 @@ primitive \nodoc\ _TestSignedCookieList
     test(_TestSignedCookieKeyBoundary)
     test(_TestSignedCookieRfc4231Vector)
     test(_TestSignedCookieCrossLanguageVector)
-    test(Property1UnitTest[String](_PropSignedCookieRoundTrip))
-    test(Property1UnitTest[String](_PropSignedCookieDeterministic))
-    test(Property1UnitTest[
-      (String, USize)](_PropSignedCookieTamperDetection))
-    test(Property1UnitTest[String](_PropSignedCookieKeyIndependence))
-    test(Property1UnitTest[String](_PropSignedCookieCookieOctetValidity))
-    test(Property1UnitTest[String](_PropSignedCookieSignatureLength))
+    test.property(_PropSignedCookieRoundTrip)
+    test.property(_PropSignedCookieDeterministic)
+    test.property(_PropSignedCookieTamperDetection)
+    test.property(_PropSignedCookieKeyIndependence)
+    test.property(_PropSignedCookieCookieOctetValidity)
+    test.property(_PropSignedCookieSignatureLength)
 
 class \nodoc\ iso _TestSignedCookieRoundTrip is UnitTest
   fun name(): String => "SignedCookie/round-trip"
@@ -288,7 +286,7 @@ class \nodoc\ iso _TestSignedCookieCrossLanguageVector is UnitTest
     | let e: SignedCookieError => h.fail(e.string())
     end
 
-class \nodoc\ iso _PropSignedCookieRoundTrip is Property1[String]
+class \nodoc\ iso _PropSignedCookieRoundTrip is Property[String]
   """
   For any printable ASCII value, sign then verify returns the original.
   """
@@ -313,7 +311,7 @@ class \nodoc\ iso _PropSignedCookieRoundTrip is Property1[String]
     | let e: SignedCookieError => h.fail(e.string())
     end
 
-class \nodoc\ iso _PropSignedCookieDeterministic is Property1[String]
+class \nodoc\ iso _PropSignedCookieDeterministic is Property[String]
   """
   Signing the same value with the same key always produces the same output.
   """
@@ -341,7 +339,7 @@ class \nodoc\ iso _PropSignedCookieDeterministic is Property1[String]
     h.assert_eq[String](a, b)
 
 class \nodoc\ iso _PropSignedCookieTamperDetection is
-  Property1[(String, USize)]
+  Property[(String, USize)]
   """
   Flipping any byte in a signed value causes verification to fail.
   """
@@ -388,7 +386,7 @@ class \nodoc\ iso _PropSignedCookieTamperDetection is
     | let _: SignedCookieError => None
     end
 
-class \nodoc\ iso _PropSignedCookieKeyIndependence is Property1[String]
+class \nodoc\ iso _PropSignedCookieKeyIndependence is Property[String]
   """
   A value signed with one key does not verify with a different key.
   """
@@ -415,7 +413,7 @@ class \nodoc\ iso _PropSignedCookieKeyIndependence is Property1[String]
     | let _: SignedCookieError => None
     end
 
-class \nodoc\ iso _PropSignedCookieCookieOctetValidity is Property1[String]
+class \nodoc\ iso _PropSignedCookieCookieOctetValidity is Property[String]
   """
   The separator and signature portion of a signed cookie contain only
   valid cookie-octet bytes (RFC 6265 section 4.1.1): US-ASCII excluding
@@ -461,7 +459,7 @@ class \nodoc\ iso _PropSignedCookieCookieOctetValidity is Property1[String]
       end
     end
 
-class \nodoc\ iso _PropSignedCookieSignatureLength is Property1[String]
+class \nodoc\ iso _PropSignedCookieSignatureLength is Property[String]
   """
   The signature portion (after the last `.`) is always 44 characters —
   the Base64-URL encoding of a 32-byte HMAC with padding.

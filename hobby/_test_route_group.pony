@@ -1,19 +1,13 @@
 use "pony_test"
-use "pony_check"
 use "collections"
 use stallion = "stallion"
 
 primitive \nodoc\ _TestRouteGroupList
   fun tests(test: PonyTest) =>
     // Property tests
-    test(Property1UnitTest[
-      (String, String)](_PropertyGroupPrefixMatches))
-    test(Property1UnitTest[
-      (String, String, String)](
-      _PropertyNestedGroupPrefixOrder))
-    test(Property1UnitTest[
-      (String, String)](
-      _PropertyGroupFlattenEquivalence))
+    test.property(_PropertyGroupPrefixMatches)
+    test.property(_PropertyNestedGroupPrefixOrder)
+    test.property(_PropertyGroupFlattenEquivalence)
     // Example tests
     test(_TestJoinPath)
     test(_TestEmptyGroup)
@@ -32,7 +26,7 @@ primitive \nodoc\ _GenSegment
 
 // --- Property tests ---
 class \nodoc\ iso _PropertyGroupPrefixMatches is
-  Property1[(String, String)]
+  Property[(String, String)]
   """
   A route registered via a group matches at the joined path.
   """
@@ -58,7 +52,7 @@ class \nodoc\ iso _PropertyGroupPrefixMatches is
     end
 
 class \nodoc\ iso _PropertyNestedGroupPrefixOrder is
-  Property1[(String, String, String)]
+  Property[(String, String, String)]
   """
   Nested group paths join as outer + inner + route.
   """
@@ -87,7 +81,7 @@ class \nodoc\ iso _PropertyNestedGroupPrefixOrder is
     end
 
 class \nodoc\ iso _PropertyGroupFlattenEquivalence is
-  Property1[(String, String)]
+  Property[(String, String)]
   """
   Flattened group route matches the same as a manually built route.
   """

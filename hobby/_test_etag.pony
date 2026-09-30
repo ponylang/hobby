@@ -1,5 +1,4 @@
 use "pony_test"
-use "pony_check"
 
 primitive \nodoc\ _TestETagList
   fun tests(test: PonyTest) =>
@@ -12,8 +11,8 @@ primitive \nodoc\ _TestETagList
     test(_TestETagCommaSeparatedNoMatch)
     test(_TestETagStrongMatchesWeak)
     test(_TestETagCaseInsensitivePrefix)
-    test(Property1UnitTest[(U64, USize, I64)](_PropertyETagSelfMatch))
-    test(Property1UnitTest[(U64, USize, I64)](_PropertyETagWildcardMatch))
+    test.property(_PropertyETagSelfMatch)
+    test.property(_PropertyETagWildcardMatch)
 
 // --- Example-based tests ---
 class \nodoc\ iso _TestETagFormat is UnitTest
@@ -105,7 +104,7 @@ class \nodoc\ iso _TestETagCaseInsensitivePrefix is UnitTest
     h.assert_true(_ETag.matches("w/\"1-20-12345\"", etag))
 
 // --- Property tests ---
-class \nodoc\ iso _PropertyETagSelfMatch is Property1[(U64, USize, I64)]
+class \nodoc\ iso _PropertyETagSelfMatch is Property[(U64, USize, I64)]
   """
   An ETag always matches itself (all three components varied).
   """
@@ -120,7 +119,7 @@ class \nodoc\ iso _PropertyETagSelfMatch is Property1[(U64, USize, I64)]
     let etag = _ETag(inode, size, mtime)
     h.assert_true(_ETag.matches(etag, etag))
 
-class \nodoc\ iso _PropertyETagWildcardMatch is Property1[(U64, USize, I64)]
+class \nodoc\ iso _PropertyETagWildcardMatch is Property[(U64, USize, I64)]
   """
   `*` matches any generated ETag (all three components varied).
   """
