@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file. This projec
 
 ### Changed
 
+- Update to work with pony 0.77.0 ([PR #134](https://github.com/ponylang/hobby/pull/134))
 
 ## [0.18.0] - 2026-09-30
 
