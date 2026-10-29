@@ -5,8 +5,8 @@ primitive MalformedSignedValue
   empty or not valid Base64.
   """
 
-  fun string(): String iso^ =>
-    "malformed signed value".clone()
+  fun string(): String =>
+    "malformed signed value"
 
 primitive InvalidSignature
   """
@@ -14,8 +14,8 @@ primitive InvalidSignature
   signed with a different key.
   """
 
-  fun string(): String iso^ =>
-    "invalid signature".clone()
+  fun string(): String =>
+    "invalid signature"
 
 primitive CryptoFailure
   """
@@ -23,8 +23,8 @@ primitive CryptoFailure
   caused by a broken or misconfigured OpenSSL installation.
   """
 
-  fun string(): String iso^ =>
-    "crypto failure".clone()
+  fun string(): String =>
+    "crypto failure"
 
 type SignedCookieError is
   (MalformedSignedValue | InvalidSignature | CryptoFailure)
