@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file. This projec
 ### Changed
 
 - Update to work with ponyc 0.78.0 ([PR #135](https://github.com/ponylang/hobby/pull/135))
+- Update to work with ponyc 0.78.0 ([PR #136](https://github.com/ponylang/hobby/pull/136))
 
 ## [0.19.0] - 2026-10-17
 
