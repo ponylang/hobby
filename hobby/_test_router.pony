@@ -938,7 +938,7 @@ primitive \nodoc\ _GenPermutation
         let _n: USize = n
         fun generate(r: Randomness): Array[USize] val^ ? =>
           let a = Array[USize](_n)
-          for i in Range(0, _n) do
+          for i in Range[USize].till(0, _n) do
             a.push(i)
           end
           r.shuffle[USize](a)?
